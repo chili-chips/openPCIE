@@ -37,7 +37,7 @@
 //              https://opensource.org/license/bsd-3-clause
 //--------------------------------------------------------------------------
 
-module lane_keeper #(
+module lane_status #(
   localparam RXCDRLOCK_MAX = 4'd15,
   localparam RXVALID_MAX   = 4'd15) (
   input               USER_TXUSRCLK,

@@ -70,7 +70,6 @@ interface gtp_if #(parameter int LANES = link_pkg::PCIE_LANES);
   logic [LANES-1:0] drp_done;
   logic [LANES-1:0] rxpmaresetdone;
   logic [LANES-1:0] rate_idle;
-  logic [LANES-1:0] rxcdrlock;
   logic [LANES-1:0] resetdone;
   logic [LANES-1:0] phystatus;
   logic [LANES-1:0] phystatus_rst;
@@ -85,7 +84,6 @@ interface gtp_if #(parameter int LANES = link_pkg::PCIE_LANES);
   logic [LANES-1:0] txsyncout;
   logic [LANES-1:0] rxsyncout;
   logic [LANES-1:0] txoutclk;
-  logic [LANES-1:0] rxoutclk;
   logic [LANES-1:0] pclk_sel;
   logic [3:0]       rxchbondo [LANES];
 
@@ -94,18 +92,18 @@ interface gtp_if #(parameter int LANES = link_pkg::PCIE_LANES);
            rst_drp_x16, rst_userrdy, rst_txsync_start, rst_idle,
            txsyncallin, rxsyncallin, txphinitdone_all, txdlysresetdone_all, rxdlysresetdone_all,
            rxphaligndone_m, rxphaligndone_s, rxsync_donem_m, txsyncin, rxsyncin, rxchbondi,
-    input  drp_done, rxpmaresetdone, rate_idle, rxcdrlock, resetdone, phystatus, phystatus_rst,
+    input  drp_done, rxpmaresetdone, rate_idle, resetdone, phystatus, phystatus_rst,
            txsync_done, active_lane, txphinitdone, txdlysresetdone, txphaligndone, rxdlysresetdone,
-           rxphaligndone, rxsync_donem, txsyncout, rxsyncout, txoutclk, rxoutclk, pclk_sel, rxchbondo
+           rxphaligndone, rxsync_donem, txsyncout, rxsyncout, txoutclk, pclk_sel, rxchbondo
   );
   modport lane (
     input  rst_cpllreset, rst_rxusrclk_reset, rst_dclk_reset, rst_gtreset, rst_drp_start,
            rst_drp_x16, rst_userrdy, rst_txsync_start, rst_idle,
            txsyncallin, rxsyncallin, txphinitdone_all, txdlysresetdone_all, rxdlysresetdone_all,
            rxphaligndone_m, rxphaligndone_s, rxsync_donem_m, txsyncin, rxsyncin, rxchbondi,
-    output drp_done, rxpmaresetdone, rate_idle, rxcdrlock, resetdone, phystatus, phystatus_rst,
+    output drp_done, rxpmaresetdone, rate_idle, resetdone, phystatus, phystatus_rst,
            txsync_done, active_lane, txphinitdone, txdlysresetdone, txphaligndone, rxdlysresetdone,
-           rxphaligndone, rxsync_donem, txsyncout, rxsyncout, txoutclk, rxoutclk, pclk_sel, rxchbondo
+           rxphaligndone, rxsync_donem, txsyncout, rxsyncout, txoutclk, pclk_sel, rxchbondo
   );
 endinterface
 // -----------------------------------------------------------------------------

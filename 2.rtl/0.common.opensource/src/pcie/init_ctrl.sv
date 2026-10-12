@@ -40,8 +40,7 @@
 module init_ctrl
   import link_pkg::*;
 #(
-  localparam CFG_WAIT_MAX = 6'd63,
-  localparam BYPASS_RXCDRLOCK = 1) (
+  localparam CFG_WAIT_MAX = 6'd63) (
   input                       RST_CLK,
   input                       RST_RXUSRCLK,
   input                       RST_DCLK,
@@ -50,7 +49,6 @@ module init_ctrl
   input      [PCIE_LANES-1:0] RST_RXPMARESETDONE,
   input                       RST_PLLLOCK,
   input      [PCIE_LANES-1:0] RST_RATE_IDLE,
-  input      [PCIE_LANES-1:0] RST_RXCDRLOCK,
   input                       RST_MMCM_LOCK,
   input      [PCIE_LANES-1:0] RST_RESETDONE,
   input      [PCIE_LANES-1:0] RST_PHYSTATUS,
@@ -82,7 +80,6 @@ module init_ctrl
   (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic [PCIE_LANES-1:0] rxpma_r1,          rxpma_r2;
   (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic                 plllock_r1,        plllock_r2;
   (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic [PCIE_LANES-1:0] rate_idle_r1,      rate_idle_r2;
-  (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic [PCIE_LANES-1:0] rxcdrlock_r1,      rxcdrlock_r2;
   (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic                 mmcmlock_r1,       mmcmlock_r2;
   (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic [PCIE_LANES-1:0] resetdone_r1,      resetdone_r2;
   (* ASYNC_REG = "TRUE", SHIFT_EXTRACT = "NO" *) logic [PCIE_LANES-1:0] phystatus_r1,      phystatus_r2;
@@ -90,15 +87,14 @@ module init_ctrl
 
   always_ff @(posedge RST_CLK) begin
     if (!RST_RST_N) begin
-      {drp_done_r1, rxpma_r1, rate_idle_r1, rxcdrlock_r1, resetdone_r1, phystatus_r1, txsyncdone_r1} <= '0;
-      {drp_done_r2, rxpma_r2, rate_idle_r2, rxcdrlock_r2, resetdone_r2, phystatus_r2, txsyncdone_r2} <= '0;
+      {drp_done_r1, rxpma_r1, rate_idle_r1, resetdone_r1, phystatus_r1, txsyncdone_r1} <= '0;
+      {drp_done_r2, rxpma_r2, rate_idle_r2, resetdone_r2, phystatus_r2, txsyncdone_r2} <= '0;
       {plllock_r1, mmcmlock_r1, plllock_r2, mmcmlock_r2} <= '0;
     end else begin
       drp_done_r1  <= RST_DRP_DONE;       drp_done_r2  <= drp_done_r1;
       rxpma_r1     <= RST_RXPMARESETDONE; rxpma_r2     <= rxpma_r1;
       plllock_r1   <= RST_PLLLOCK;        plllock_r2   <= plllock_r1;
       rate_idle_r1 <= RST_RATE_IDLE;      rate_idle_r2 <= rate_idle_r1;
-      rxcdrlock_r1 <= RST_RXCDRLOCK;      rxcdrlock_r2 <= rxcdrlock_r1;
       mmcmlock_r1  <= RST_MMCM_LOCK;      mmcmlock_r2  <= mmcmlock_r1;
       resetdone_r1 <= RST_RESETDONE;      resetdone_r2 <= resetdone_r1;
       phystatus_r1 <= RST_PHYSTATUS;      phystatus_r2 <= phystatus_r1;
@@ -117,7 +113,7 @@ module init_ctrl
   wire phystatus_lo = &(~phystatus_r2);
   wire txsync_lo    = &(~txsyncdone_r2);
   wire txsync_hi    = &txsyncdone_r2;
-  wire locks_ok     = mmcmlock_r2 && (&rxcdrlock_r2 || (BYPASS_RXCDRLOCK == 1));
+  wire locks_ok     = mmcmlock_r2;
 
   logic [5:0] cfg_wait_cnt = 6'd0;
 

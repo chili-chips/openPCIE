@@ -79,7 +79,7 @@ around it - what AMD ships as encrypted IP - is opensource RTL here.
 | Streaming | `trn_bridge.sv`, `trn_tx.sv`, `trn_rx.sv`, `trn_tx_throttle.sv` | AXI-Stream TLP interface towards the SOC |
 | Bridge | `pcie_top.sv` | ties the transaction and PHY sides together |
 | PHY control | `phy_top.sv`, `gtp_wrapper.sv` | PIPE-level control, reset and rate sequencing |
-| Bring-up FSMs | `init_ctrl.sv`, `phase_align.sv`, `lane_keeper.sv` | GT reset sequence, TX/RX phase alignment |
+| Bring-up FSMs | `init_ctrl.sv`, `phase_align.sv`, `lane_status.sv` | GT reset sequence, TX/RX phase alignment, per-lane status |
 | Transceiver | `lane_xcvr.sv`, `gtp_wrapper.sv` | `GTPE2_CHANNEL` and `GTPE2_COMMON` instances |
 | Clocking | `clk_gen.sv` | MMCM: 125 / 250 / 62.5 MHz from the 100 MHz refclk |
 | Tuning | `chan_retune.sv`, `speed_ctrl.sv`, `rx_eios_filter.sv` | RX-reset DRP write (UG482), rate change, equalisation, electrical-idle detection |

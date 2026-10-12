@@ -29,4 +29,4 @@ create_clock -period  8.000 -name clk_125mhz [get_nets u_pcie.u_clk_gen.clk_125m
 create_clock -period  4.000 -name clk_250mhz [get_nets u_pcie.u_clk_gen.clk_250mhz]
 create_clock -period  4.000 -name pclk [get_nets u_pcie.clk_oobclk]
 create_clock -period  8.000 -name dclk   [get_nets u_pcie.clk_dclk]
-create_clock -period 16.000 -name usrclk [get_nets u_pcie.clk_userclk2]
+create_clock -period 16.000 -name usrclk [get_nets u_pcie.clk_userclk1]

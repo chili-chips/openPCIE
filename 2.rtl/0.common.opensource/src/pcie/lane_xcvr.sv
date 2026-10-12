@@ -63,7 +63,7 @@ module lane_xcvr
   // PCIE_LANES <= 4: one GTP quad, channel bonding chain lane 0 -> 1 -> 2 -> 3
   localparam int CLK_COR_MIN_LAT = (PCIE_LANES == 1) ? 13 : (PCIE_LANES == 4) ? 19 : 18;
 
-  // ---- lane_keeper
+  // ---- lane_status
   logic user_oobclk, user_rxcdrlock, active_lane;
   // ---- speed_ctrl
   logic       rate_drp_start, rate_drp_x16, rate_pclk_sel, rate_txsync_start, rate_done, rate_idle;
@@ -84,7 +84,6 @@ module lane_xcvr
 
   assign gtp.drp_done[LANE]       = drp_done;
   assign gtp.rate_idle[LANE]      = rate_idle;
-  assign gtp.rxcdrlock[LANE]      = user_rxcdrlock;
   assign gtp.phystatus[LANE]      = gt_phystatus;
   assign gtp.txsync_done[LANE]    = sync_txsync_done;
   assign gtp.active_lane[LANE]    = active_lane;
@@ -94,7 +93,7 @@ module lane_xcvr
   assign pipe_phy.rx[LANE].elec_idle = gt_rxelecidle;
   assign pipe_phy.rx[LANE].status    = gt_rxstatus;
 
-  lane_keeper u_lane_keeper (
+  lane_status u_lane_status (
     .USER_TXUSRCLK        (clk_pclk),
     .USER_RXUSRCLK        (clk_rxusrclk),
     .USER_OOBCLK_IN       (clk_oobclk),
@@ -125,7 +124,7 @@ module lane_xcvr
   speed_ctrl u_speed_ctrl (
     .RATE_CLK             (clk_pclk),
     .RATE_RST_N           (!gtp.rst_cpllreset),
-    .RATE_RATE_IN         ({1'b0, pipe_phy.tx_ctrl.rate}),
+    .RATE_RATE_IN         (pipe_phy.tx_ctrl.rate),
     .RATE_DRP_DONE        (drp_done),
     .RATE_RXPMARESETDONE  (gt_rxpmaresetdone),
     .RATE_TXRATEDONE      (gt_txratedone),
@@ -448,7 +447,7 @@ GTPE2_CHANNEL #
     .CLKRSVD1                       (1'd0),
 
     .TXOUTCLK                       (gtp.txoutclk[LANE]),
-    .RXOUTCLK                       (gtp.rxoutclk[LANE]),
+    .RXOUTCLK                       (),
     .TXOUTCLKFABRIC                 (),
     .RXOUTCLKFABRIC                 (),
     .TXOUTCLKPCS                    (),

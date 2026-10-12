@@ -43,7 +43,6 @@ module gtp_wrapper
     input                           PIPE_CLK,          // 100 MHz refclk (IBUFDS_GTE2)
     input                           PIPE_RESET_N,
 
-    output                          PIPE_PCLK,
     pipe_if.phy                     pipe_phy,          // 32-bit PIPE from phy_top (see pipe_if.sv)
 
     output      [PCIE_LANES-1:0]    PIPE_TXP,
@@ -53,24 +52,14 @@ module gtp_wrapper
 
     output      [PCIE_LANES-1:0]    PIPE_PHYSTATUS_RST,
 
-    input                           PIPE_MMCM_RST_N,
-    output                          PIPE_PCLK_LOCK,
-    output                          PIPE_USERCLK1,
-    output                          PIPE_USERCLK2,
-
     input                           PIPE_PCLK_IN,
     input                           PIPE_RXUSRCLK_IN,
-    input       [PCIE_LANES-1:0]    PIPE_RXOUTCLK_IN,
     input                           PIPE_DCLK_IN,
-    input                           PIPE_USERCLK1_IN,
-    input                           PIPE_USERCLK2_IN,
     input                           PIPE_OOBCLK_IN,
     input                           PIPE_MMCM_LOCK_IN,
 
     output                          PIPE_TXOUTCLK_OUT,
-    output      [PCIE_LANES-1:0]    PIPE_RXOUTCLK_OUT,
-    output      [PCIE_LANES-1:0]    PIPE_PCLK_SEL_OUT,
-    output                          PIPE_GEN3_OUT
+    output      [PCIE_LANES-1:0]    PIPE_PCLK_SEL_OUT
 );
 
   wire clk_pclk      = PIPE_PCLK_IN;
@@ -107,7 +96,6 @@ module gtp_wrapper
     .RST_RXPMARESETDONE (gtp.rxpmaresetdone),
     .RST_PLLLOCK        (pll0_lock),
     .RST_RATE_IDLE      (gtp.rate_idle),
-    .RST_RXCDRLOCK      (gtp.rxcdrlock),
     .RST_MMCM_LOCK      (clk_mmcm_lock),
     .RST_RESETDONE      (gtp.resetdone),
     .RST_PHYSTATUS      (gtp.phystatus),
@@ -260,15 +248,9 @@ module gtp_wrapper
 
   wire [PCIE_LANES-1:0] gt_txoutclk = gtp.txoutclk;    // openxc7.xdc creates the txoutclk clock on this net
 
-  assign PIPE_PCLK          = clk_pclk;
-  assign PIPE_PCLK_LOCK     = clk_mmcm_lock;
-  assign PIPE_USERCLK1      = PIPE_USERCLK1_IN;
-  assign PIPE_USERCLK2      = PIPE_USERCLK2_IN;
   assign PIPE_PHYSTATUS_RST = gtp.phystatus_rst;
   assign PIPE_TXOUTCLK_OUT  = gt_txoutclk[0];
-  assign PIPE_RXOUTCLK_OUT  = gtp.rxoutclk;
   assign PIPE_PCLK_SEL_OUT  = gtp.pclk_sel;
-  assign PIPE_GEN3_OUT      = 1'b0;
 
 endmodule
 // -----------------------------------------------------------------------------

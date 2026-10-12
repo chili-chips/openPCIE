@@ -38,18 +38,15 @@
 //--------------------------------------------------------------------------
 
 module buffer_bank #(
-  parameter [3:0] LINK_CAP_MAX_LINK_SPEED = 4'h1,
-  parameter [5:0] LINK_CAP_MAX_LINK_WIDTH = 6'h08,
-  parameter       IMPL_TARGET       = "HARD",
-  parameter       NUM_BRAMS         = 0,
-  parameter       RAM_RADDR_LATENCY = 1,
-  parameter       RAM_RDATA_LATENCY = 1,
-  parameter       RAM_WRITE_LATENCY = 1
+  parameter int NUM_BRAMS         = 4,
+  parameter int RAM_RDATA_LATENCY = 2    // TL_*_RAM_RDATA_LATENCY of PCIE_2_1
 ) (
   input          user_clk_i,
   mim_if.ram     mim                // packet buffer port of PCIE_2_1 (see mim_if.sv)
 );
-
+  // PCIE_2_1 runs with TL_*_RAM_RADDR_LATENCY = TL_*_RAM_WRITE_LATENCY = 0, so
+  // address and write data go straight to the BRAMs; a read data latency of 2
+  // is the BRAM output register (DOB_REG).
   localparam DOB_REG = (RAM_RDATA_LATENCY > 1) ? 1 : 0;
   localparam [6:0] WIDTH = (NUM_BRAMS == 1) ? 72 :
                            (NUM_BRAMS == 2) ? 36 :
@@ -57,104 +54,46 @@ module buffer_bank #(
                            (NUM_BRAMS == 8) ?  9 : 4;
 
   // the PCIE_2_1 data is 68 or 69 bits wide; the tiles are 72
-  wire        wen   = mim.wen;
-  wire [12:0] waddr = mim.waddr;
   wire [71:0] wdata = mim.wdata;
-  wire        ren   = mim.ren;
-  wire [12:0] raddr = mim.raddr;
   wire [71:0] rdata;
   assign mim.rdata  = rdata;
-
-  wire        wen_int;
-  wire [12:0] waddr_int;
-  wire [71:0] wdata_int;
-  wire        ren_int;
-  wire [12:0] raddr_int;
-  wire [71:0] rdata_int;
-
-  generate
-    if (RAM_WRITE_LATENCY == 1) begin : wr_lat_2
-      logic        wen_q;
-      logic [12:0] waddr_q;
-      logic [71:0] wdata_q;
-      always_ff @(posedge user_clk_i) begin
-        wen_q   <= wen;
-        waddr_q <= waddr;
-        wdata_q <= wdata;
-      end
-      assign wen_int   = wen_q;
-      assign waddr_int = waddr_q;
-      assign wdata_int = wdata_q;
-    end else begin : wr_lat_1
-      assign wen_int   = wen;
-      assign waddr_int = waddr;
-      assign wdata_int = wdata;
-    end
-
-    if (RAM_RADDR_LATENCY == 1) begin : raddr_lat_2
-      logic        ren_q;
-      logic [12:0] raddr_q;
-      always_ff @(posedge user_clk_i) begin
-        ren_q   <= ren;
-        raddr_q <= raddr;
-      end
-      assign ren_int   = ren_q;
-      assign raddr_int = raddr_q;
-    end else begin : raddr_lat_1
-      assign ren_int   = ren;
-      assign raddr_int = raddr;
-    end
-
-    if (RAM_RDATA_LATENCY == 3) begin : rdata_lat_3
-      logic [71:0] rdata_q;
-      always_ff @(posedge user_clk_i) rdata_q <= rdata_int;
-      assign rdata = rdata_q;
-    end else begin : rdata_lat_1_2
-      assign rdata = rdata_int;
-    end
-  endgenerate
 
   // One RAMB36 per tile, WIDTH bits of the 72-bit word each
   localparam ADDR_MSB   = (WIDTH == 4)  ? 12 :
                           (WIDTH == 9)  ? 11 :
                           (WIDTH == 18) ? 10 :
                           (WIDTH == 36) ?  9 : 8;
-  localparam WRITE_MODE = ((LINK_CAP_MAX_LINK_SPEED == 4'h2) && (LINK_CAP_MAX_LINK_WIDTH == 6'h08))
-                          ? "WRITE_FIRST" : "NO_CHANGE";
-  localparam DEVICE     = (IMPL_TARGET == "HARD") ? "7SERIES" : "VIRTEX6";
 
-  generate
-    for (genvar ii = 0; ii < NUM_BRAMS; ii = ii + 1) begin : tiles
-      BRAM_TDP_MACRO #(
-        .DEVICE        (DEVICE),
-        .BRAM_SIZE     ("36Kb"),
-        .DOA_REG       (0),
-        .DOB_REG       (DOB_REG),
-        .READ_WIDTH_A  (WIDTH),
-        .READ_WIDTH_B  (WIDTH),
-        .WRITE_WIDTH_A (WIDTH),
-        .WRITE_WIDTH_B (WIDTH),
-        .WRITE_MODE_A  (WRITE_MODE)
-      ) ramb36 (
-        .DOA    (),
-        .DOB    (rdata_int[(ii*WIDTH) +: WIDTH]),
-        .ADDRA  (waddr_int[ADDR_MSB:0]),
-        .ADDRB  (raddr_int[ADDR_MSB:0]),
-        .CLKA   (user_clk_i),
-        .CLKB   (user_clk_i),
-        .DIA    (wdata_int[(ii*WIDTH) +: WIDTH]),
-        .DIB    ('0),
-        .ENA    (wen_int),
-        .ENB    (ren_int),
-        .REGCEA (1'b0),
-        .REGCEB (1'b1),
-        .RSTA   (1'b0),
-        .RSTB   (1'b0),
-        .WEA    ('1),
-        .WEB    ('0)
-      );
-    end
-  endgenerate
+  for (genvar ii = 0; ii < NUM_BRAMS; ii = ii + 1) begin : tiles
+    BRAM_TDP_MACRO #(
+      .DEVICE        ("7SERIES"),
+      .BRAM_SIZE     ("36Kb"),
+      .DOA_REG       (0),
+      .DOB_REG       (DOB_REG),
+      .READ_WIDTH_A  (WIDTH),
+      .READ_WIDTH_B  (WIDTH),
+      .WRITE_WIDTH_A (WIDTH),
+      .WRITE_WIDTH_B (WIDTH),
+      .WRITE_MODE_A  ("NO_CHANGE")
+    ) ramb36 (
+      .DOA    (),
+      .DOB    (rdata[(ii*WIDTH) +: WIDTH]),
+      .ADDRA  (mim.waddr[ADDR_MSB:0]),
+      .ADDRB  (mim.raddr[ADDR_MSB:0]),
+      .CLKA   (user_clk_i),
+      .CLKB   (user_clk_i),
+      .DIA    (wdata[(ii*WIDTH) +: WIDTH]),
+      .DIB    ('0),
+      .ENA    (mim.wen),
+      .ENB    (mim.ren),
+      .REGCEA (1'b0),
+      .REGCEB (1'b1),
+      .RSTA   (1'b0),
+      .RSTB   (1'b0),
+      .WEA    ('1),
+      .WEB    ('0)
+    );
+  end
 
 endmodule
 // -----------------------------------------------------------------------------

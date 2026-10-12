@@ -167,7 +167,7 @@
           <Attr Name="UsedIn" Val="simulation"/>
         </FileInfo>
       </File>
-      <File Path="$PPRDIR/../../0.common.opensource/src/pcie/lane_keeper.sv">
+      <File Path="$PPRDIR/../../0.common.opensource/src/pcie/lane_status.sv">
         <FileInfo>
           <Attr Name="UsedIn" Val="synthesis"/>
           <Attr Name="UsedIn" Val="implementation"/>

@@ -69,8 +69,7 @@ module pcie_core
   pipe_if.mac           pipe_mac,
   input                      phy_rdy_n,
   input                      pipe_clk,
-  input                      user_clk,
-  input                      user_clk2
+  input                      user_clk
 );
 
   wire  tx_cfg_req;
@@ -527,7 +526,6 @@ module pcie_core
 
   wire [3:0]        trn_tdst_rdy_bus;
 
-  assign            user_clk_out = user_clk2;
   assign            trn.tdst_rdy = trn_tdst_rdy_bus[0];
 
   mim_if #(.DATA_W(69)) mim_tx ();
@@ -548,24 +546,16 @@ localparam BRT_TLM_TX_OVERHEAD = 24;
                              (VC0_RX_RAM_LIMIT < 'h1000) ? 8 : 18;
 
   buffer_bank #(
-    .LINK_CAP_MAX_LINK_WIDTH (LINK_CAP_MAX_LINK_WIDTH),
-    .LINK_CAP_MAX_LINK_SPEED (LINK_CAP_MAX_LINK_SPEED),
-    .NUM_BRAMS               (BRT_COLS_TX),
-    .RAM_RADDR_LATENCY       (TL_TX_RAM_RADDR_LATENCY),
-    .RAM_RDATA_LATENCY       (TL_TX_RAM_RDATA_LATENCY),
-    .RAM_WRITE_LATENCY       (TL_TX_RAM_WRITE_LATENCY)
+    .NUM_BRAMS         (BRT_COLS_TX),
+    .RAM_RDATA_LATENCY (TL_TX_RAM_RDATA_LATENCY)
   ) tx_buf_bank (
     .user_clk_i (user_clk),
     .mim        (mim_tx)
   );
 
   buffer_bank #(
-    .LINK_CAP_MAX_LINK_WIDTH (LINK_CAP_MAX_LINK_WIDTH),
-    .LINK_CAP_MAX_LINK_SPEED (LINK_CAP_MAX_LINK_SPEED),
-    .NUM_BRAMS               (BRT_COLS_RX),
-    .RAM_RADDR_LATENCY       (TL_RX_RAM_RADDR_LATENCY),
-    .RAM_RDATA_LATENCY       (TL_RX_RAM_RDATA_LATENCY),
-    .RAM_WRITE_LATENCY       (TL_RX_RAM_WRITE_LATENCY)
+    .NUM_BRAMS         (BRT_COLS_RX),
+    .RAM_RDATA_LATENCY (TL_RX_RAM_RDATA_LATENCY)
   ) rx_buf_bank (
     .user_clk_i (user_clk),
     .mim        (mim_rx)
@@ -953,7 +943,7 @@ localparam BRT_TLM_TX_OVERHEAD = 24;
     .PIPERX7ELECIDLE                     ((rx_blk[7].elec_idle)                         ),
     .PIPECLK                             (pipe_clk                                   ),
     .USERCLK                             (user_clk                                   ),
-    .USERCLK2                            (user_clk2                                  ),
+    .USERCLK2                            (user_clk                                  ),
     .SYSRSTN                             ((~phy_rdy_n)                                  ),
     .CMRSTN                              (1'b1),
     .CMSTICKYRSTN                        (1'b1),

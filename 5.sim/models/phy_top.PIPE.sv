@@ -59,23 +59,14 @@ module phy_top
 
   input  wire                                   sys_clk,
   input  wire                                   sys_rst_n,
-  input  wire                                   PIPE_MMCM_RST_N,
-  output wire                                   pipe_clk,
-  output wire                                   user_clk,
-  output wire                                   user_clk2,
 
   input  wire                                   PIPE_PCLK_IN,
   input  wire                                   PIPE_RXUSRCLK_IN,
-  input  wire [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_RXOUTCLK_IN,
   input  wire                                   PIPE_DCLK_IN,
-  input  wire                                   PIPE_USERCLK1_IN,
-  input  wire                                   PIPE_USERCLK2_IN,
   input  wire                                   PIPE_OOBCLK_IN,
   input  wire                                   PIPE_MMCM_LOCK_IN,
   output wire                                   PIPE_TXOUTCLK_OUT,
-  output wire [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_RXOUTCLK_OUT,
   output wire [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_PCLK_SEL_OUT,
-  output wire                                   PIPE_GEN3_OUT,
 
   output wire                                   phy_rdy_n
 );
@@ -123,17 +114,13 @@ module phy_top
   end
 
   assign PIPE_TXOUTCLK_OUT = txoutclk;
-  assign PIPE_RXOUTCLK_OUT = {LINK_CAP_MAX_LINK_WIDTH{txoutclk}};
 
   // PCLK, USERCLK1 and USERCLK2 come straight back from clk_gen, exactly as
   // gtp_wrapper passes them through in the synthesis build
-  assign pipe_clk  = PIPE_PCLK_IN;
-  assign user_clk  = PIPE_USERCLK1_IN;
-  assign user_clk2 = PIPE_USERCLK2_IN;
+  wire   pipe_clk  = PIPE_PCLK_IN;
 
   // Tell clk_gen which PCLK to select. Gen3 does not exist on this device.
   assign PIPE_PCLK_SEL_OUT = {LINK_CAP_MAX_LINK_WIDTH{pipe_mac.tx_ctrl.rate}};
-  assign PIPE_GEN3_OUT     = 1'b0;
 
   //------------------------------------------------------------------
   // PHY ready

@@ -51,53 +51,39 @@ module phy_top
 
   input  wire                                   sys_clk,
   input  wire                                   sys_rst_n,
-  input  wire                                   PIPE_MMCM_RST_N,
-  output wire                                   pipe_clk,
-  output wire                                   user_clk,
-  output wire                                   user_clk2,
 
   input  wire                                   PIPE_PCLK_IN,
   input  wire                                   PIPE_RXUSRCLK_IN,
-  input  wire [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_RXOUTCLK_IN,
   input  wire                                   PIPE_DCLK_IN,
-  input  wire                                   PIPE_USERCLK1_IN,
-  input  wire                                   PIPE_USERCLK2_IN,
   input  wire                                   PIPE_OOBCLK_IN,
   input  wire                                   PIPE_MMCM_LOCK_IN,
   output wire                                   PIPE_TXOUTCLK_OUT,
-  output wire [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_RXOUTCLK_OUT,
   output wire [LINK_CAP_MAX_LINK_WIDTH-1:0]     PIPE_PCLK_SEL_OUT,
-  output wire                                   PIPE_GEN3_OUT,
 
   output wire                                   phy_rdy_n
 );
 
   wire [LINK_CAP_MAX_LINK_WIDTH-1:0] phystatus_rst;
-  wire                               clock_locked;
 
   // PIPE towards gtp_wrapper (GTP side, 32-bit per lane)
   pipe_if #(.LANES(LINK_CAP_MAX_LINK_WIDTH), .DATA_W(32)) pipe_phy ();
 
-  wire                               pipe_clk_int;
   logic                                phy_rdy_n_int;
   logic                                reg_clock_locked;
   wire                               all_phystatus_rst;
-
-  assign pipe_clk = pipe_clk_int;
 
   mac2phy u_mac2phy (
     .pipe_mac       (pipe_mac),
     .pipe_phy       (pipe_phy),
     .pl_ltssm_state (pl_ltssm_state),
-    .pipe_clk       (pipe_clk_int),
-    .clock_locked   (clock_locked),
+    .pipe_clk       (PIPE_PCLK_IN),
+    .clock_locked   (PIPE_MMCM_LOCK_IN),
     .phy_rdy_n      (phy_rdy_n_int)
   );
 
   gtp_wrapper u_gtp_wrapper (
     .PIPE_CLK           (sys_clk),
     .PIPE_RESET_N       (sys_rst_n),
-    .PIPE_PCLK          (pipe_clk_int),
 
     .pipe_phy           (pipe_phy),
     .PIPE_TXP           (pci_exp_txp),
@@ -108,33 +94,23 @@ module phy_top
 
     .PIPE_PHYSTATUS_RST (phystatus_rst),
 
-    .PIPE_MMCM_RST_N    (PIPE_MMCM_RST_N),
-    .PIPE_PCLK_LOCK     (clock_locked),
-    .PIPE_USERCLK1      (user_clk),
-    .PIPE_USERCLK2      (user_clk2),
-
     .PIPE_PCLK_IN       (PIPE_PCLK_IN),
     .PIPE_RXUSRCLK_IN   (PIPE_RXUSRCLK_IN),
-    .PIPE_RXOUTCLK_IN   (PIPE_RXOUTCLK_IN),
     .PIPE_DCLK_IN       (PIPE_DCLK_IN),
-    .PIPE_USERCLK1_IN   (PIPE_USERCLK1_IN),
-    .PIPE_USERCLK2_IN   (PIPE_USERCLK2_IN),
     .PIPE_OOBCLK_IN     (PIPE_OOBCLK_IN),
     .PIPE_MMCM_LOCK_IN  (PIPE_MMCM_LOCK_IN),
     .PIPE_TXOUTCLK_OUT  (PIPE_TXOUTCLK_OUT),
-    .PIPE_RXOUTCLK_OUT  (PIPE_RXOUTCLK_OUT),
-    .PIPE_PCLK_SEL_OUT  (PIPE_PCLK_SEL_OUT),
-    .PIPE_GEN3_OUT      (PIPE_GEN3_OUT)
+    .PIPE_PCLK_SEL_OUT  (PIPE_PCLK_SEL_OUT)
   );
 
-  always_ff @(posedge pipe_clk_int or negedge clock_locked) begin
-    if (!clock_locked) reg_clock_locked <= 1'b0;
+  always_ff @(posedge PIPE_PCLK_IN or negedge PIPE_MMCM_LOCK_IN) begin
+    if (!PIPE_MMCM_LOCK_IN) reg_clock_locked <= 1'b0;
     else               reg_clock_locked <= 1'b1;
   end
 
   assign all_phystatus_rst = &phystatus_rst;
 
-  always_ff @(posedge pipe_clk_int) begin
+  always_ff @(posedge PIPE_PCLK_IN) begin
     if (!reg_clock_locked) phy_rdy_n_int <= 1'b0;
     else                   phy_rdy_n_int <= all_phystatus_rst;
   end

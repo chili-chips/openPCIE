@@ -53,7 +53,7 @@ sv work ../2.rtl/0.common.opensource/src/soc_csr.sv
 # phy_top.sv is DELIBERATELY absent -- models/phy_top.PIPE.sv below
 # provides that module instead. mac2phy.sv, rx_eios_filter.sv, gtp_wrapper.sv,
 # lane_xcvr.sv, chan_retune.sv, phase_align.sv, speed_ctrl.sv,
-# lane_keeper.sv and init_ctrl.sv only exist inside phy_top,
+# lane_status.sv and init_ctrl.sv only exist inside phy_top,
 # so they go with it.
 sv work ../2.rtl/0.common.opensource/src/pcie/buffer_bank.sv
 sv work ../2.rtl/0.common.opensource/src/pcie/clk_gen.sv

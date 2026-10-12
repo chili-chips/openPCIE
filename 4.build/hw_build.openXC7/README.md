@@ -102,9 +102,10 @@ The script first installs any missing Ubuntu packages (asking for the `sudo` pas
 ```bash
 source $HOME/opt/openxc7/export.sh
 cd 4.build/hw_build.openXC7
-make TOOLCHAIN=new check-env
-make TOOLCHAIN=new                      # -> build_artifacts.new/top.bit
-make TOOLCHAIN=new VARIANT=switched     # -> build_artifacts.switched.new/top.bit
+make check-env
+make                                    # read_slang -> build_artifacts.slang/top.bit
+make VARIANT=switched                   # read_slang -> build_artifacts.switched.slang/top.bit
+make FRONTEND=sv2v                      # sv2v       -> build_artifacts.new/top.bit
 ```
 
 The new toolchain has its own `chipdb.new/` (the database format differs) and its own output folders, so it never overwrites the validated `build_artifacts*/top.bit`. Its bitstreams are not kept in git.
@@ -130,12 +131,12 @@ nextpnr also warns "Overriding derived constraint of 250.0 MHz on net u_pcie.clk
 
 Open-source Yosys has long read only a subset of SystemVerilog. This design uses packages, interfaces with modports and packed structs, which Yosys's own Verilog front end does not take; hence sv2v. Full SystemVerilog in Yosys came only with the commercial Verific front end, sold by YosysHQ in its Tabby CAD Suite.
 
-Since **Yosys 0.67**, open-source Yosys has its own SystemVerilog front end: `read_slang`, built on the [slang](https://github.com/MikePopoloski/slang) compiler through [sv-elab](https://github.com/povik/sv-elab), and included in every Yosys build. With v1.0.0 this design builds without sv2v:
+Since **Yosys 0.67**, open-source Yosys has its own SystemVerilog front end: `read_slang`, built on the [slang](https://github.com/MikePopoloski/slang) compiler through [sv-elab](https://github.com/povik/sv-elab), and included in every Yosys build. With v1.0.0 this design builds without sv2v, and that is the default front end:
 
 ```bash
 source $HOME/opt/openxc7/export.sh
-make TOOLCHAIN=new FRONTEND=slang                     # -> build_artifacts.slang/top.bit
-make TOOLCHAIN=new FRONTEND=slang VARIANT=switched    # -> build_artifacts.switched.slang/top.bit
+make                                    # -> build_artifacts.slang/top.bit
+make VARIANT=switched                   # -> build_artifacts.switched.slang/top.bit
 ```
 
 **Our SystemVerilog goes in unchanged.** `read_slang` takes all 34 SystemVerilog files (packages, interfaces, structs, the SystemVerilog picorv32) without a single language error. Synthesis takes about 10 seconds, the whole build 2 min 26 s (2 min 13 s with sv2v).
@@ -289,16 +290,17 @@ They are checked in, so this is only needed after editing `csr.rdl`.
 ```bash
 make check-env                          # confirms tools present AND warns if nextpnr is the wrong version
 make check-sources                      # confirms every RTL file and firmware.hex is present
-make                                    # v1.0.0 (default) -> build_artifacts.new/top.bit
+make                                    # v1.0.0, read_slang (default) -> build_artifacts.slang/top.bit
+make FRONTEND=sv2v                      # v1.0.0, sv2v       -> build_artifacts.new/top.bit
 make TOOLCHAIN=old                      # pre-v1.0.0       -> build_artifacts/top.bit
 make TOOLCHAIN=old VARIANT=switched     # pre-v1.0.0       -> build_artifacts.switched/top.bit
 ```
 
 | Target | Purpose |
 |---|---|
-| `make convert` | only sv2v conversion + module extraction |
+| `make convert` | only sv2v conversion + module extraction (`FRONTEND=sv2v`) |
 | `make TOOLCHAIN=old` | build with the pre-v1.0.0 toolchain, into `build_artifacts/` |
-| `make FRONTEND=slang` | v1.0.0 without sv2v, into `build_artifacts.slang/` - see [Native SV within Yosys, through Slang](#native-sv-within-yosys-through-slang) |
+| `make FRONTEND=sv2v` | v1.0.0 through sv2v instead of `read_slang`, into `build_artifacts.new/` |
 | `make info` | print resolved configuration |
 | `make clean` | remove `build_artifacts/` and the local copy of `firmware.hex` |
 | `make clean-converted` | remove `converted/` |

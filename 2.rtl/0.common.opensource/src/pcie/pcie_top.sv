@@ -69,9 +69,6 @@ module pcie_top
   localparam [15:0] CFG_SUBSYS_VEND_ID = 16'h10EE;
   localparam [15:0] CFG_SUBSYS_ID      = 16'h0007;
 
-  wire pipe_clk;
-  wire user_clk;
-  wire user_clk2;
   wire phy_rdy_n;
   wire user_rst_n;
   wire trn_lnk_up;
@@ -80,15 +77,11 @@ module pcie_top
   wire        clk_rxusrclk;
   wire        clk_dclk;
   wire        clk_userclk1;
-  wire        clk_userclk2;
   wire        clk_oobclk;
   wire        clk_mmcm_lock;
-  wire [(LINK_CAP_MAX_LINK_WIDTH-1):0] clk_rxoutclk;
 
   wire                                 pipe_txoutclk;
-  wire [(LINK_CAP_MAX_LINK_WIDTH-1):0] pipe_rxoutclk;
   wire [(LINK_CAP_MAX_LINK_WIDTH-1):0] pipe_pclk_sel;
-  wire                                 pipe_gen3;
 
   wire [5:0] pl_ltssm_state_int;
   wire       pl_phy_lnk_up_wire;
@@ -99,18 +92,14 @@ module pcie_top
   clk_gen  u_clk_gen (
     .CLK_CLK            (sys_clk),
     .CLK_TXOUTCLK       (pipe_txoutclk),
-    .CLK_RXOUTCLK_IN    (pipe_rxoutclk),
     .CLK_RST_N          (pipe_mmcm_rst_n),
     .CLK_PCLK_SEL       (pipe_pclk_sel),
-    .CLK_GEN3           (pipe_gen3),
 
     .CLK_PCLK           (clk_pclk),
     .CLK_RXUSRCLK       (clk_rxusrclk),
-    .CLK_RXOUTCLK_OUT   (clk_rxoutclk),
     .CLK_DCLK           (clk_dclk),
     .CLK_OOBCLK         (clk_oobclk),
     .CLK_USERCLK1       (clk_userclk1),
-    .CLK_USERCLK2       (clk_userclk2),
     .CLK_MMCM_LOCK      (clk_mmcm_lock)
   );
 
@@ -125,23 +114,14 @@ module pcie_top
 
     .sys_clk          (sys_clk),
     .sys_rst_n        (sys_rst_n),
-    .PIPE_MMCM_RST_N  (pipe_mmcm_rst_n),
-    .pipe_clk         (pipe_clk),
-    .user_clk         (user_clk),
-    .user_clk2        (user_clk2),
 
     .PIPE_PCLK_IN     (clk_pclk),
     .PIPE_RXUSRCLK_IN (clk_rxusrclk),
-    .PIPE_RXOUTCLK_IN (clk_rxoutclk),
     .PIPE_DCLK_IN     (clk_dclk),
-    .PIPE_USERCLK1_IN (clk_userclk1),
-    .PIPE_USERCLK2_IN (clk_userclk2),
     .PIPE_OOBCLK_IN   (clk_oobclk),
     .PIPE_MMCM_LOCK_IN(clk_mmcm_lock),
     .PIPE_TXOUTCLK_OUT(pipe_txoutclk),
-    .PIPE_RXOUTCLK_OUT(pipe_rxoutclk),
     .PIPE_PCLK_SEL_OUT(pipe_pclk_sel),
-    .PIPE_GEN3_OUT    (pipe_gen3),
 
     .phy_rdy_n        (phy_rdy_n)
   );
@@ -172,9 +152,8 @@ module pcie_top
 
     .pipe_mac       (pipe_mac),
     .phy_rdy_n      (phy_rdy_n),
-    .pipe_clk       (pipe_clk),
-    .user_clk       (user_clk),
-    .user_clk2      (user_clk2)
+    .pipe_clk       (clk_pclk),
+    .user_clk       (clk_userclk1)
   );
 
   (* KEEP = "TRUE", ASYNC_REG = "TRUE" *) logic user_lnk_up_int;
@@ -189,13 +168,13 @@ module pcie_top
   assign sys_or_hot_rst     = !sys_rst_n || pl_received_hot_rst_q;
 
   xpm_cdc_single #(.DEST_SYNC_FF(2), .SRC_INPUT_REG(0)) phy_lnk_up_cdc (
-    .src_clk  (pipe_clk),
+    .src_clk  (clk_pclk),
     .src_in   (pl_phy_lnk_up_wire),
     .dest_clk (user_clk_out),
     .dest_out (pl_phy_lnk_up_sync)
   );
   xpm_cdc_single #(.DEST_SYNC_FF(2), .SRC_INPUT_REG(0)) pl_received_hot_rst_cdc (
-    .src_clk  (pipe_clk),
+    .src_clk  (clk_pclk),
     .src_in   (pl_received_hot_rst_wire),
     .dest_clk (user_clk_out),
     .dest_out (pl_received_hot_rst_sync)

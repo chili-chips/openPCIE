@@ -286,7 +286,6 @@ module riscv_pcie_soc (
     assign csr_in.status.phy.tx_state.next         = tx_state;
     assign csr_in.status.phy.tx_buf_avail.next        = cfg.tx_buf_avail;
 
-
     assign m_axis_rx.tready = 1'b1;
 
     // Per-packet transmit qualifiers of the hard macro, none of which this

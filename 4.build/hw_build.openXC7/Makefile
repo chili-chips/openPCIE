@@ -18,19 +18,21 @@
 # Flow (TOOLCHAIN=old, pre-v1.0.0, the one validated on hardware):
 #        .sv --sv2v--> .v --yosys--> .json --nextpnr-xilinx--> .fasm
 #            --fasm2frames--> .frames --xc7frames2bit--> .bit
-# TOOLCHAIN=new  (openXC7 v1.0.0, the default; not yet tested on hardware):
+# TOOLCHAIN=new  (openXC7 v1.0.0, the default; not yet tested on hardware),
+# FRONTEND=slang (the default with TOOLCHAIN=new, no sv2v):
+#        .sv --yosys read_slang--> .json --nextpnr (himbaechel)--> .fasm
+#            --fpga-as--> .bit
+# TOOLCHAIN=new FRONTEND=sv2v:
 #        .sv --sv2v--> .v --yosys--> .json --nextpnr (himbaechel)--> .fasm
 #            --fpga-as--> .bit
-# TOOLCHAIN=new FRONTEND=slang  (no sv2v):
-#        .sv --yosys read_slang--> .json --nextpnr--> .fasm --fpga-as--> .bit
 #
 # Recipes that use a pipeline need  set -o pipefail  -- otherwise make sees the
 # exit status of the last command in the pipe (tee) and a tool crash passes as
 # success.
 #
-# The design is SystemVerilog (a package + 2 interfaces + packed structs), which
-# Yosys does not understand. Hence sv2v in two steps, as in the wireguard-fpga
-# project:
+# The design is SystemVerilog (packages, interfaces, packed structs). Yosys reads
+# it natively through read_slang (FRONTEND=slang). With FRONTEND=sv2v, and always
+# with TOOLCHAIN=old, it goes through sv2v in two steps:
 #   1) batch conversion of ALL .sv together (so sv2v can resolve dependencies)
 #   2) splitting all_converted.v into individual modules
 # =============================================================================
@@ -52,14 +54,15 @@
 #   the himbaechel engine behind a nextpnr-xilinx shim, Yosys 0.67 or later,
 #   fpga-as. Builds both variants; NOT yet tested on hardware. Source its
 #   export.sh first.
-# FRONTEND=sv2v (default): SystemVerilog through sv2v, as always.
-# FRONTEND=slang: Yosys's own SystemVerilog front end (read_slang) instead, no
-#   sv2v. New toolchain only. Defines SYN_YOSYS_BUG for the RTL.
+# FRONTEND=slang (default with TOOLCHAIN=new): Yosys's own SystemVerilog front
+#   end (read_slang), no sv2v. Defines SYN_YOSYS_BUG for the RTL.
+# FRONTEND=sv2v: SystemVerilog through sv2v. The only choice with TOOLCHAIN=old
+#   (Yosys 0.38 has no read_slang), so that is its default.
 # New-toolchain output goes to its own folders (build_artifacts*.new,
 # build_artifacts*.slang, chipdb.new), so it never touches the validated
 # build_artifacts*/top.bit.
 TOOLCHAIN ?= new
-FRONTEND  ?= sv2v
+FRONTEND  ?= $(if $(filter old,$(TOOLCHAIN)),sv2v,slang)
 
 ifeq ($(TOOLCHAIN),new)
     # export.sh sets NEXTPNR_XILINX_DIR (and PRJXRAY_DB_DIR) to its prefix
@@ -271,9 +274,9 @@ help:
 	@echo "================================================================"
 	@echo " make                 full build up to top.bit"
 	@echo " make VARIANT=switched  build the RC-switched variant"
-	@echo " make TOOLCHAIN=new    openXC7's current toolchain (not hardware-tested)"
-	@echo " make TOOLCHAIN=new FRONTEND=slang   ... and Yosys read_slang, no sv2v"
-	@echo " make convert         sv2v conversion + splitting only"
+	@echo " make FRONTEND=sv2v   v1.0.0 through sv2v instead of read_slang"
+	@echo " make TOOLCHAIN=old   pre-v1.0.0 toolchain (hardware-validated), sv2v"
+	@echo " make convert         sv2v conversion + splitting only (FRONTEND=sv2v)"
 	@echo " make check-env       verify the tools are present"
 	@echo " make check-sources   verify all source files exist"
 	@echo " make info            print the configuration"

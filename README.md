@@ -570,6 +570,12 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
   <a href="https://www.envox.eu"><img alt="EEZ / Envox logo" width="25%" src="0.doc/artwork/EEZ-web-logo.png"></a>
 </p>
 
+**PeakRDL** turns our single SystemRDL file into the CSR RTL, the firmware and co-simulation headers, and the register map documentation -- thank you for this toolset.
+
+<p align="center">
+  <a href="https://peakrdl.readthedocs.io"><img alt="PeakRDL logo" width="12%" src="0.doc/artwork/PeakRDL.logo.png"></a>
+</p>
+
 ### Crowd Supply Campaign
  - [Info Page](https://www.chili-chips.xyz/openpcie-backplane-put-your-fpga-in-control), [Intro Video](https://www.canva.com/design/DAHXSTcjxEc/odZj_VbgU20EEeZ1zuJlJA/watch?utm_content=DAHXSTcjxEc&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h8306e0024f)
  - [Hackster](https://www.hackster.io/chili-chips-ba/openpcie-backplane-76fdb0)
