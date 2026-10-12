@@ -200,8 +200,6 @@ public:
     inline void     full(const uint32_t data) {reg->w = data;};
     inline uint32_t full()                    {return reg->w;};
 
-    inline void     cfg_status(const uint32_t data) {reg->f.cfg_status = data;};
-    inline uint32_t cfg_status()                    {return reg->f.cfg_status;};
     inline void     msg_err_fatal(const uint32_t data) {reg->f.msg_err_fatal = data;};
     inline uint32_t msg_err_fatal()                    {return reg->f.msg_err_fatal;};
 
@@ -220,8 +218,8 @@ public:
     inline void     full(const uint32_t data) {reg->w = data;};
     inline uint32_t full()                    {return reg->w;};
 
-    inline void     tx_buf_av(const uint32_t data) {reg->f.tx_buf_av = data;};
-    inline uint32_t tx_buf_av()                    {return reg->f.tx_buf_av;};
+    inline void     tx_buf_avail(const uint32_t data) {reg->f.tx_buf_avail = data;};
+    inline uint32_t tx_buf_avail()                    {return reg->f.tx_buf_avail;};
     inline void     tx_state(const uint32_t data) {reg->f.tx_state = data;};
     inline uint32_t tx_state()                    {return reg->f.tx_state;};
 

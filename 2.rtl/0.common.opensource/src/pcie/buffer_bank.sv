@@ -47,14 +47,7 @@ module buffer_bank #(
   parameter       RAM_WRITE_LATENCY = 1
 ) (
   input          user_clk_i,
-  input          reset_i,
-  input          wen,
-  input  [12:0]  waddr,
-  input  [71:0]  wdata,
-  input          ren,
-  input          rce,
-  input  [12:0]  raddr,
-  output [71:0]  rdata
+  mim_if.ram     mim                // packet buffer port of PCIE_2_1 (see mim_if.sv)
 );
 
   localparam DOB_REG = (RAM_RDATA_LATENCY > 1) ? 1 : 0;
@@ -62,6 +55,15 @@ module buffer_bank #(
                            (NUM_BRAMS == 2) ? 36 :
                            (NUM_BRAMS == 4) ? 18 :
                            (NUM_BRAMS == 8) ?  9 : 4;
+
+  // the PCIE_2_1 data is 68 or 69 bits wide; the tiles are 72
+  wire        wen   = mim.wen;
+  wire [12:0] waddr = mim.waddr;
+  wire [71:0] wdata = mim.wdata;
+  wire        ren   = mim.ren;
+  wire [12:0] raddr = mim.raddr;
+  wire [71:0] rdata;
+  assign mim.rdata  = rdata;
 
   wire        wen_int;
   wire [12:0] waddr_int;
@@ -76,13 +78,8 @@ module buffer_bank #(
       logic [12:0] waddr_q;
       logic [71:0] wdata_q;
       always_ff @(posedge user_clk_i) begin
-        if (reset_i) begin
-          wen_q   <= 1'b0;
-          waddr_q <= 13'b0;
-        end else begin
-          wen_q   <= wen;
-          waddr_q <= waddr;
-        end
+        wen_q   <= wen;
+        waddr_q <= waddr;
         wdata_q <= wdata;
       end
       assign wen_int   = wen_q;
@@ -98,13 +95,8 @@ module buffer_bank #(
       logic        ren_q;
       logic [12:0] raddr_q;
       always_ff @(posedge user_clk_i) begin
-        if (reset_i) begin
-          ren_q   <= 1'b0;
-          raddr_q <= 13'b0;
-        end else begin
-          ren_q   <= ren;
-          raddr_q <= raddr;
-        end
+        ren_q   <= ren;
+        raddr_q <= raddr;
       end
       assign ren_int   = ren_q;
       assign raddr_int = raddr_q;
@@ -122,24 +114,44 @@ module buffer_bank #(
     end
   endgenerate
 
+  // One RAMB36 per tile, WIDTH bits of the 72-bit word each
+  localparam ADDR_MSB   = (WIDTH == 4)  ? 12 :
+                          (WIDTH == 9)  ? 11 :
+                          (WIDTH == 18) ? 10 :
+                          (WIDTH == 36) ?  9 : 8;
+  localparam WRITE_MODE = ((LINK_CAP_MAX_LINK_SPEED == 4'h2) && (LINK_CAP_MAX_LINK_WIDTH == 6'h08))
+                          ? "WRITE_FIRST" : "NO_CHANGE";
+  localparam DEVICE     = (IMPL_TARGET == "HARD") ? "7SERIES" : "VIRTEX6";
+
   generate
     for (genvar ii = 0; ii < NUM_BRAMS; ii = ii + 1) begin : tiles
-      buffer_tile #(
-        .LINK_CAP_MAX_LINK_WIDTH (LINK_CAP_MAX_LINK_WIDTH),
-        .LINK_CAP_MAX_LINK_SPEED (LINK_CAP_MAX_LINK_SPEED),
-        .IMPL_TARGET (IMPL_TARGET),
-        .DOB_REG     (DOB_REG),
-        .WIDTH       (WIDTH)
-      ) tile (
-        .user_clk_i (user_clk_i),
-        .reset_i    (reset_i),
-        .wen_i      (wen_int),
-        .waddr_i    (waddr_int),
-        .wdata_i    (wdata_int[(ii*WIDTH) +: WIDTH]),
-        .ren_i      (ren_int),
-        .raddr_i    (raddr_int),
-        .rdata_o    (rdata_int[(ii*WIDTH) +: WIDTH]),
-        .rce_i      (rce)
+      BRAM_TDP_MACRO #(
+        .DEVICE        (DEVICE),
+        .BRAM_SIZE     ("36Kb"),
+        .DOA_REG       (0),
+        .DOB_REG       (DOB_REG),
+        .READ_WIDTH_A  (WIDTH),
+        .READ_WIDTH_B  (WIDTH),
+        .WRITE_WIDTH_A (WIDTH),
+        .WRITE_WIDTH_B (WIDTH),
+        .WRITE_MODE_A  (WRITE_MODE)
+      ) ramb36 (
+        .DOA    (),
+        .DOB    (rdata_int[(ii*WIDTH) +: WIDTH]),
+        .ADDRA  (waddr_int[ADDR_MSB:0]),
+        .ADDRB  (raddr_int[ADDR_MSB:0]),
+        .CLKA   (user_clk_i),
+        .CLKB   (user_clk_i),
+        .DIA    (wdata_int[(ii*WIDTH) +: WIDTH]),
+        .DIB    ('0),
+        .ENA    (wen_int),
+        .ENB    (ren_int),
+        .REGCEA (1'b0),
+        .REGCEB (1'b1),
+        .RSTA   (1'b0),
+        .RSTB   (1'b0),
+        .WEA    ('1),
+        .WEB    ('0)
       );
     end
   endgenerate

@@ -57,7 +57,8 @@ module init_ctrl
   input      [PCIE_LANES-1:0] RST_TXSYNC_DONE,
 
   output                      RST_CPLLRESET,
-  output                      RST_CPLLPD,
+  output                      RST_PLLPD,
+  output                      RST_PLLRESET,
   output logic                RST_DRP_START,
   output logic                RST_DRP_X16,
   output                      RST_RXUSRCLK_RESET,
@@ -65,8 +66,7 @@ module init_ctrl
   output                      RST_GTRESET,
   output                      RST_USERRDY,
   output                      RST_TXSYNC_START,
-  output                      RST_IDLE,
-  output     [4:0]            RST_FSM
+  output                      RST_IDLE
 );
 
   typedef enum logic [4:0] {
@@ -204,14 +204,27 @@ module init_ctrl
   end
 
   assign RST_CPLLRESET      = cpllreset_q;
-  assign RST_CPLLPD         = 1'b0;
   assign RST_RXUSRCLK_RESET = rxusrclk_rst_r2;
   assign RST_DCLK_RESET     = dclk_rst_r2;
   assign RST_GTRESET        = gtreset_q;
   assign RST_USERRDY        = userrdy_q;
   assign RST_TXSYNC_START   = (state == ST_TXSYNC_REQ);
   assign RST_IDLE           = (state == ST_IDLE);
-  assign RST_FSM            = state;
+
+  // PLL0 power-up after configuration: power-down for 96, then reset until
+  // 128 clock cycles. FIXME: clocked from RST_DCLK as a workaround for openXC7's
+  // dead IBUFDS_GTE2.O -> BUFG clock (openPCIE #22). Back to BUFG(PIPE_CLK)
+  // once a v1.0.0 bitstream proves the fix on hardware.
+  (* equivalent_register_removal = "no" *) logic  [95:0] pll_pd_sr  = '1;
+  (* equivalent_register_removal = "no" *) logic [127:0] pll_rst_sr = 128'hFF;
+
+  always_ff @(posedge RST_DCLK) begin
+    pll_pd_sr  <= {pll_pd_sr[94:0],   1'b0};
+    pll_rst_sr <= {pll_rst_sr[126:0], 1'b0};
+  end
+
+  assign RST_PLLPD    = pll_pd_sr[95];
+  assign RST_PLLRESET = pll_rst_sr[127] | RST_CPLLRESET;
 
 endmodule
 // -----------------------------------------------------------------------------

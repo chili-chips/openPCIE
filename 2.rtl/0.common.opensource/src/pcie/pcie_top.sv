@@ -37,7 +37,7 @@
 //              https://opensource.org/license/bsd-3-clause
 //--------------------------------------------------------------------------
 
-module host_bridge   
+module pcie_top
   import link_pkg::*;
 #(
   localparam int C_DATA_WIDTH            = 64,
@@ -54,25 +54,10 @@ module host_bridge
   output logic                  user_reset_out,
   output                        user_lnk_up,
 
-  output                        s_axis_tx_tready,
-  input  [C_DATA_WIDTH-1:0]     s_axis_tx_tdata,
-  input  [KEEP_WIDTH-1:0]       s_axis_tx_tkeep,
-  input  [3:0]                  s_axis_tx_tuser,
-  input                         s_axis_tx_tlast,
-  input                         s_axis_tx_tvalid,
+  axis_if.slave               s_axis_tx,   // TLPs from the SOC (USER_W 4)
+  axis_if.master              m_axis_rx,   // TLPs to the SOC   (USER_W 22)
 
-  output  [C_DATA_WIDTH-1:0]    m_axis_rx_tdata,
-  output  [KEEP_WIDTH-1:0]      m_axis_rx_tkeep,
-  output                        m_axis_rx_tlast,
-  output                        m_axis_rx_tvalid,
-  output  [21:0]                m_axis_rx_tuser,
-  input                         m_axis_rx_tready,
-
-  // TODO (SV interface): cfg sideband shared by host_bridge and the SOC
-  // (cfg_status, cfg_command, cfg_msg_received_err_fatal, tx_buf_av). Candidate for a small cfg_if.
-  output  [5:0]                 tx_buf_av,
-  output  [15:0]                cfg_status,
-  output                        cfg_msg_received_err_fatal,
+  cfg_if.core                   cfg,      // status sideband to the SOC
 
   input                 sys_clk,
   input                 sys_rst_n
@@ -109,35 +94,17 @@ module host_bridge
   wire       pl_phy_lnk_up_wire;
   wire       pl_received_hot_rst_wire;
 
-  phy_lanes_if                                 pipe();
-  stream_if #(.DATA_W(C_DATA_WIDTH), .USER_W(4))  s_axis_tx_if();
-  stream_if #(.DATA_W(C_DATA_WIDTH), .USER_W(22)) m_axis_rx_if();
+  pipe_if                                 pipe_mac ();   // 16-bit PIPE at the MAC
 
-  assign s_axis_tx_if.tdata  = s_axis_tx_tdata;
-  assign s_axis_tx_if.tkeep  = s_axis_tx_tkeep;
-  assign s_axis_tx_if.tuser  = s_axis_tx_tuser;
-  assign s_axis_tx_if.tlast  = s_axis_tx_tlast;
-  assign s_axis_tx_if.tvalid = s_axis_tx_tvalid;
-  assign s_axis_tx_tready    = s_axis_tx_if.tready;
-
-  assign m_axis_rx_tdata     = m_axis_rx_if.tdata;
-  assign m_axis_rx_tkeep     = m_axis_rx_if.tkeep;
-  assign m_axis_rx_tuser     = m_axis_rx_if.tuser;
-  assign m_axis_rx_tlast     = m_axis_rx_if.tlast;
-  assign m_axis_rx_tvalid    = m_axis_rx_if.tvalid;
-  assign m_axis_rx_if.tready = m_axis_rx_tready;
-
-  clk_synth  clk_synth_i (
+  clk_gen  u_clk_gen (
     .CLK_CLK            (sys_clk),
     .CLK_TXOUTCLK       (pipe_txoutclk),
     .CLK_RXOUTCLK_IN    (pipe_rxoutclk),
     .CLK_RST_N          (pipe_mmcm_rst_n),
     .CLK_PCLK_SEL       (pipe_pclk_sel),
-    .CLK_PCLK_SEL_SLAVE (1'b0),
     .CLK_GEN3           (pipe_gen3),
 
     .CLK_PCLK           (clk_pclk),
-    .CLK_PCLK_SLAVE     (),
     .CLK_RXUSRCLK       (clk_rxusrclk),
     .CLK_RXOUTCLK_OUT   (clk_rxoutclk),
     .CLK_DCLK           (clk_dclk),
@@ -147,9 +114,9 @@ module host_bridge
     .CLK_MMCM_LOCK      (clk_mmcm_lock)
   );
 
-  serdes_front serdes_front_i (
+  phy_top u_phy_top (
     .pl_ltssm_state   (pl_ltssm_state_int),
-    .pipe             (pipe),
+    .pipe_mac         (pipe_mac),
 
     .pci_exp_txn      (pci_exp_txn),
     .pci_exp_txp      (pci_exp_txp),
@@ -179,101 +146,17 @@ module host_bridge
     .phy_rdy_n        (phy_rdy_n)
   );
 
-  cfg_regs_t cfg_regs;
-  assign cfg_status = cfg_regs.status;
-
-  txn_engine txn_engine_i (
+  pcie_core u_pcie_core (
     .user_clk_out   (user_clk_out),
     .user_reset     (user_reset_out),
     .user_lnk_up    (user_lnk_up),
     .trn_lnk_up     (trn_lnk_up),
     .user_rst_n     (user_rst_n),
 
-    .s_axis_tx      (s_axis_tx_if),
-    .m_axis_rx      (m_axis_rx_if),
+    .s_axis_tx      (s_axis_tx),
+    .m_axis_rx      (m_axis_rx),
 
-    .tx_buf_av      (tx_buf_av),
-    .tx_err_drop    (),
-    .tx_cfg_req     (),
-    .tx_cfg_gnt     (1'b0),
-    .rx_np_ok       (1'b1),
-    .rx_np_req      (1'b1),
-
-    .fc_cpld        (),
-    .fc_cplh        (),
-    .fc_npd         (),
-    .fc_nph         (),
-    .fc_pd          (),
-    .fc_ph          (),
-    .fc_sel         (3'b0),
-
-    .cfg_regs       (cfg_regs),
-
-    .cfg_mgmt_do            (),
-    .cfg_mgmt_rd_wr_done    (),
-    .cfg_mgmt_di            (32'd0),
-    .cfg_mgmt_byte_en       (4'h0),
-    .cfg_mgmt_dwaddr        (10'd0),
-    .cfg_mgmt_wr_en         (1'b0),
-    .cfg_mgmt_rd_en         (1'b0),
-    .cfg_mgmt_wr_readonly   (1'b0),
-    .cfg_mgmt_wr_rw1c_as_rw (1'b0),
-
-    .cfg_err_ecrc                  (1'b0),
-    .cfg_err_ur                    (1'b0),
-    .cfg_err_cpl_timeout           (1'b0),
-    .cfg_err_cpl_unexpect          (1'b0),
-    .cfg_err_cpl_abort             (1'b0),
-    .cfg_err_posted                (1'b0),
-    .cfg_err_cor                   (1'b0),
-    .cfg_err_atomic_egress_blocked (1'b0),
-    .cfg_err_internal_cor          (1'b0),
-    .cfg_err_malformed             (1'b0),
-    .cfg_err_mc_blocked            (1'b0),
-    .cfg_err_poisoned              (1'b0),
-    .cfg_err_norecovery            (1'b0),
-    .cfg_err_locked                (1'b0),
-    .cfg_err_internal_uncor        (1'b0),
-    .cfg_err_tlp_cpl_header        (48'd0),
-    .cfg_err_cpl_rdy               (),
-    .cfg_err_aer_headerlog         (128'd0),
-    .cfg_aer_interrupt_msgnum      (5'd0),
-    .cfg_err_aer_headerlog_set     (),
-    .cfg_aer_ecrc_check_en         (),
-    .cfg_aer_ecrc_gen_en           (),
-
-    .cfg_interrupt                 (1'b0),
-    .cfg_interrupt_rdy             (),
-    .cfg_interrupt_assert          (1'b0),
-    .cfg_interrupt_di              (8'd0),
-    .cfg_interrupt_do              (),
-    .cfg_interrupt_mmenable        (),
-    .cfg_interrupt_msienable       (),
-    .cfg_interrupt_msixenable      (),
-    .cfg_interrupt_msixfm          (),
-    .cfg_interrupt_stat            (1'b0),
-    .cfg_pciecap_interrupt_msgnum  (5'd0),
-
-    .cfg_trn_pending        (1'b0),
-    .cfg_pm_halt_aspm_l0s   (1'b0),
-    .cfg_pm_halt_aspm_l1    (1'b0),
-    .cfg_pm_force_state_en  (1'b0),
-    .cfg_pm_force_state     (2'b00),
-    .cfg_pm_wake            (1'b0),
-    .cfg_dsn                (64'd0),
-    .cfg_ds_bus_number      (8'd0),
-    .cfg_ds_device_number   (5'd0),
-    .cfg_ds_function_number (3'b000),
-    .cfg_turnoff_ok         (1'b0),
-    .cfg_to_turnoff         (),
-    .cfg_bus_number         (),
-    .cfg_device_number      (),
-    .cfg_function_number    (),
-    .cfg_pcie_link_state    (),
-    .cfg_pmcsr_pme_en       (),
-    .cfg_pmcsr_powerstate   (),
-    .cfg_pmcsr_pme_status   (),
-    .cfg_received_func_lvl_rst (),
+    .tx_buf_avail      (cfg.tx_buf_avail),
 
     .cfg_dev_id             (CFG_DEV_ID),
     .cfg_vend_id            (CFG_VEND_ID),
@@ -281,68 +164,13 @@ module host_bridge
     .cfg_subsys_id          (CFG_SUBSYS_ID),
     .cfg_subsys_vend_id     (CFG_SUBSYS_VEND_ID),
 
-    .cfg_msg_received                (),
-    .cfg_msg_data                    (),
-    .cfg_msg_received_pm_as_nak      (),
-    .cfg_msg_received_setslotpowerlimit (),
-    .cfg_msg_received_err_cor        (),
-    .cfg_msg_received_err_non_fatal  (),
-    .cfg_msg_received_err_fatal      (cfg_msg_received_err_fatal),
-    .cfg_msg_received_pm_pme         (),
-    .cfg_msg_received_pme_to_ack     (),
-    .cfg_msg_received_assert_int_a   (),
-    .cfg_msg_received_assert_int_b   (),
-    .cfg_msg_received_assert_int_c   (),
-    .cfg_msg_received_assert_int_d   (),
-    .cfg_msg_received_deassert_int_a (),
-    .cfg_msg_received_deassert_int_b (),
-    .cfg_msg_received_deassert_int_c (),
-    .cfg_msg_received_deassert_int_d (),
+    .cfg_msg_received_err_fatal      (cfg.msg_err_fatal),
 
-    .cfg_bridge_serr_en                        (),
-    .cfg_slot_control_electromech_il_ctl_pulse (),
-    .cfg_root_control_syserr_corr_err_en       (),
-    .cfg_root_control_syserr_non_fatal_err_en  (),
-    .cfg_root_control_syserr_fatal_err_en      (),
-    .cfg_root_control_pme_int_en               (),
-    .cfg_aer_rooterr_corr_err_reporting_en     (),
-    .cfg_aer_rooterr_non_fatal_err_reporting_en(),
-    .cfg_aer_rooterr_fatal_err_reporting_en    (),
-    .cfg_aer_rooterr_corr_err_received         (),
-    .cfg_aer_rooterr_non_fatal_err_received    (),
-    .cfg_aer_rooterr_fatal_err_received        (),
-    .cfg_vc_tcvc_map                           (),
-
-    .pl_directed_link_change     (2'd0),
-    .pl_directed_link_width      (2'b0),
-    .pl_directed_link_speed      (1'b0),
-    .pl_directed_link_auton      (1'b0),
-    .pl_upstream_prefer_deemph   (1'b0),
-    .pl_downstream_deemph_source (1'b0),
-    .pl_transmit_hot_rst         (1'b0),
-    .pl_sel_lnk_rate             (),
-    .pl_sel_lnk_width            (),
     .pl_ltssm_state              (pl_ltssm_state_int),
-    .pl_lane_reversal_mode       (),
     .pl_phy_lnk_up               (pl_phy_lnk_up_wire),
-    .pl_tx_pm_state              (),
-    .pl_rx_pm_state              (),
-    .pl_link_upcfg_cap           (),
-    .pl_link_gen2_cap            (),
-    .pl_link_partner_gen2_supported (),
-    .pl_initial_link_width       (),
-    .pl_directed_change_done     (),
     .pl_received_hot_rst         (pl_received_hot_rst_wire),
 
-    .pcie_drp_clk   (1'b1),
-    .pcie_drp_en    (1'b0),
-    .pcie_drp_we    (1'b0),
-    .pcie_drp_addr  (9'd0),
-    .pcie_drp_di    (16'd0),
-    .pcie_drp_rdy   (),
-    .pcie_drp_do    (),
-
-    .pipe           (pipe),
+    .pipe_mac       (pipe_mac),
     .phy_rdy_n      (phy_rdy_n),
     .pipe_clk       (pipe_clk),
     .user_clk       (user_clk),

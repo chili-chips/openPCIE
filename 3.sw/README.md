@@ -116,7 +116,7 @@ The driver exposes four high-level functions for interacting with the PCIE Endpo
 The driver interacts with the custom PCIE Bridge RTL via **Memory Mapped I/O (MMIO)**. The C code writes to specific memory addresses that the hardware interprets as control registers.
 
 ### Register Map
-The following addresses map directly to the RTL bridge inputs/outputs. With the default `CSR = peakrdl` (set in [`4.build/config.mk`](../4.build/config.mk)) `common/pcie.h` takes them from the generated `openpcie_regs.h`; with `CSR=legacy` it uses the same values hard-coded. Either way the map is the same - see [4.build/README.md](../4.build/README.md#the-register-map).
+The following addresses map directly to the RTL bridge inputs/outputs. `common/pcie.h` takes them from `openpcie_regs.h`, generated from `csr.rdl` - see [4.build/README.md](../4.build/README.md#the-register-map).
 
 <div align="center">
 
@@ -129,7 +129,7 @@ The following addresses map directly to the RTL bridge inputs/outputs. With the 
 | `PCIE_RX_STATUS` | `0x30000010` | R | Completion Status (`0`=Success, `1`=UR, `2`=CRS, `4`=CA). |
 | `PCIE_RX_DATA` | `0x30000014` | R | Data received from Memory Read Completions. |
 | `PCIE_RX_HEADER_INFO`| `0x30000018` | R | **Completion Info:** Requester ID, Tag and Lower Address, for matching. |
-| `PCIE_ERR_STATUS` | `0x3000001C` | R | **Error Status:** the hard macro's `cfg_status`, plus a flag for a received fatal-error Message. |
+| `PCIE_ERR_STATUS` | `0x3000001C` | R | **Error Status:** a flag for a received fatal-error Message (bit 16). The `PCIE_2_1` hard block does not export its PCI Status register, so bits [15:0] read 0. |
 | `PCIE_PHY_STATUS` | `0x30000020` | R | Tx FSM state and the number of free hard-macro Tx buffers - polled before every send. |
 
 </div>

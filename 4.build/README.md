@@ -18,6 +18,10 @@ bitstream.
 | 2. SW | [`sw_build`](./sw_build) | `firmware.elf`, `firmware.bin`, `firmware.hex` |
 | 3. HW | [`hw_build.openXC7`](./hw_build.openXC7) | `build_artifacts/top.bit` |
 
+<p align="center"><img src="../0.doc/4.build/build-flow.drawio.svg" width="100%" alt="Build flow: csr.rdl through PeakRDL into the register RTL and the firmware and co-sim headers; the firmware build into firmware.hex; the bitstream build through Vivado or openXC7 (sv2v or slang, yosys, nextpnr, fpga-as) into top.bit for the Acorn CLE-215+; co-simulation and the formal equivalence check alongside"></p>
+
+The diagram source is [`0.doc/4.build/build-flow.drawio`](../0.doc/4.build/build-flow.drawio).
+
 ## CSR HAL Compilation
 
 The openPCIE CSR HAL is auto-generated, as is the CSR RTL, using `peakrdl`. For
@@ -165,46 +169,14 @@ the SOC address map:
 | `0x10` | `rx.status` | R | Completion Status of the last Completion TLP |
 | `0x14` | `rx.data` | R | Payload DWORD of the last Completion TLP |
 | `0x18` | `rx.header_info` | R | `requester_id`, `tag`, `lower_addr` |
-| `0x1C` | `status.err` | R | `cfg_status` + fatal-error message flag |
+| `0x1C` | `status.err` | R | fatal-error message flag |
 | `0x20` | `status.phy` | R | Tx FSM state + free hard-macro Tx buffers |
 
-The send trigger is the `swmod` strobe PeakRDL raises on `tx.data` - the same
-"write the payload last" protocol the hand-written block used, only now it is
-described in the RDL rather than in a case statement.
+The send trigger is the `swmod` strobe PeakRDL raises on `tx.data`: the
+firmware writes the payload last.
 
-### Two interchangeable CSR implementations
-
-The hand-written register block is **not** gone. It lives on inside
-`riscv_pcie_soc.sv` behind `` `ifdef SOC_CSR_LEGACY `` as the reference
-implementation, and every build flow can select it:
-
-The choice is made once, in [`config.mk`](./config.mk), and every build step
-reads it - the firmware, the openXC7 bitstream and the Vivado project:
-
-```makefile
-CSR ?= peakrdl        # or: legacy
-```
-
-so that hardware and software are never built different ways by accident. With
-`legacy` nothing generated is used at all, and `make -f MakefileCSR` never has
-to be run.
-
-A single build can still override it without editing the file:
-
-| Flow | Override |
-|---|---|
-| openXC7 | `make CSR=legacy` |
-| Firmware | `make CSR=legacy` |
-| Vivado tcl | `set ::use_legacy_csr 1` before sourcing the script |
-
-Both describe the same map down to the byte offset, so any firmware runs on
-either bitstream. That was checked by compiling `main.c` both ways with the
-RISC-V toolchain and comparing the output: `firmware.bin` is byte-identical,
-for both RC-direct and RC-switched.
-
-The PeakRDL path is also the one exercised by the
-[co-simulation](../5.sim), which runs the real firmware against a PCIE endpoint
-model and ends with the memory read-back check passing.
+The [co-simulation](../5.sim) runs the real firmware against a PCIE endpoint
+model on this register block and ends with the memory read-back check passing.
 
 ## SW Compilation
 
@@ -235,11 +207,7 @@ make VARIANT=switched
 Both variants write the same three output names, but every `make` rebuilds the
 firmware (about a second), so no `make clean` is needed to switch.
 
-By default (`CSR ?= peakrdl` in `config.mk`) the firmware takes its register map
-from the headers generated in step 1; `make CSR=legacy` uses the addresses
-hard-coded in `3.sw/common/pcie.h` instead - see
-[Two interchangeable CSR implementations](#two-interchangeable-csr-implementations)
-above.
+The firmware takes its register map from the headers generated in step 1.
 
 > **Run this step on Windows** (`cmd` or PowerShell). The RISC-V toolchain and
 > Python are Windows programs, whereas the openXC7 step below runs in WSL because

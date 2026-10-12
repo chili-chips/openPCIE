@@ -37,7 +37,7 @@
 //              https://opensource.org/license/bsd-3-clause
 //--------------------------------------------------------------------------
 
-module clk_synth
+module clk_gen
   import link_pkg::*;
 #(
   localparam PCIE_REFCLK_FREQ = 0,
@@ -48,11 +48,9 @@ module clk_synth
   input        [PCIE_LANES-1:0] CLK_RXOUTCLK_IN,
   input                        CLK_RST_N,
   input        [PCIE_LANES-1:0] CLK_PCLK_SEL,
-  input        [PCIE_LANES-1:0] CLK_PCLK_SEL_SLAVE,
   input                        CLK_GEN3,
 
   output                       CLK_PCLK,
-  output                       CLK_PCLK_SLAVE,
   output                       CLK_RXUSRCLK,
   output       [PCIE_LANES-1:0] CLK_RXOUTCLK_OUT,
   output                       CLK_DCLK,
@@ -110,7 +108,7 @@ module clk_synth
     else if (&(~pclk_sel_reg2))   pclk_sel <= 1'b0;
   end
 
-  BUFG txoutclk_i (
+  BUFG u_txoutclk (
     .I (CLK_TXOUTCLK),
     .O (refclk)
   );
@@ -153,7 +151,7 @@ module clk_synth
     .REF_JITTER1          (0.010),
 `endif
     .CLKIN1_PERIOD        (CLKIN1_PERIOD)
-  ) mmcm_i (
+  ) u_mmcm (
     .CLKIN1       (refclk),
     .CLKIN2       (1'd0),
     .CLKINSEL     (1'd1),
@@ -175,10 +173,10 @@ module clk_synth
     .CLKOUT6      (),
     .LOCKED       (mmcm_lock),
     .DCLK         (1'd0),
-    .DADDR        (7'd0),
+    .DADDR        ('0),
     .DEN          (1'd0),
     .DWE          (1'd0),
-    .DI           (16'd0),
+    .DI           ('0),
     .DO           (),
     .DRDY         (),
     .PSCLK        (1'd0),
@@ -189,7 +187,7 @@ module clk_synth
     .CLKFBSTOPPED ()
   );
 
-  BUFGCTRL pclk_i1 (
+  BUFGCTRL u_pclk (
     .CE0     (1'd1),
     .CE1     (1'd1),
     .I0      (clk_125mhz),
@@ -201,12 +199,12 @@ module clk_synth
     .O       (pclk_1)
   );
 
-  BUFG dclk_i (
+  BUFG u_dclk (
     .I (clk_125mhz),
     .O (CLK_DCLK)
   );
 
-  BUFG usrclk1_i1 (
+  BUFG u_usrclk1 (
     .I (userclk1),
     .O (userclk1_1)
   );
@@ -215,7 +213,6 @@ module clk_synth
 
   assign pclk             = pclk_1;
   assign CLK_PCLK         = pclk;
-  assign CLK_PCLK_SLAVE   = 1'b0;
   assign CLK_RXUSRCLK     = pclk_1;
   assign CLK_RXOUTCLK_OUT = {PCIE_LANES{1'b0}};
   assign CLK_OOBCLK       = pclk;

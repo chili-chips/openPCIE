@@ -55,8 +55,7 @@ module speed_ctrl #(
   output      [2:0]   RATE_RATE_OUT,
   output              RATE_TXSYNC_START,
   output              RATE_DONE,
-  output              RATE_IDLE,
-  output      [4:0]   RATE_FSM
+  output              RATE_IDLE
 );
 
   typedef enum logic [3:0] {
@@ -167,7 +166,6 @@ module speed_ctrl #(
   assign RATE_TXSYNC_START = (state == ST_TXSYNC_REQ);
   assign RATE_DONE         = (state == ST_DONE);
   assign RATE_IDLE         = (state == ST_IDLE);
-  assign RATE_FSM          = {1'b0, state};
 
 endmodule
 // -----------------------------------------------------------------------------
