@@ -43,14 +43,15 @@ module PcieVhost
 (
   input             Clk,
   input             notReset,
-  output reg        Gen2ClkSel,
+  output bit        Gen2ClkSel,
 
   output            ClkOut,
 
-`ifdef VERILATOR
-  output reg [15:0] ElecIdleOut,
-  input             ElecIdleIn,
-`endif
+  // openPCIE: electrical idle per lane on ports, on every simulator; an idle
+  // lane's line is constant 0. Upstream had the ports under Verilator only,
+  // and Z on the line elsewhere
+  output bit [15:0] ElecIdleOut,
+  input      [15:0] ElecIdleIn,
 
   input       [9:0] LinkIn0,   LinkIn1,   LinkIn2,   LinkIn3,
   input       [9:0] LinkIn4,   LinkIn5,   LinkIn6,   LinkIn7,
@@ -64,41 +65,38 @@ module PcieVhost
   // Transaction taps (openPCIE): each TLP this node sends (Tx) or
   // receives (Rx), one DW per ClkOut with start/end flags, byte 0 in
   // [31:24]; each DLLP as one word. They follow the link, a few clocks late.
-  output reg [31:0] TlpTxData,
-  output reg        TlpTxSop,  TlpTxEop,  TlpTxValid,
-  output reg [31:0] TlpRxData,
-  output reg        TlpRxSop,  TlpRxEop,  TlpRxValid,
-  output reg [31:0] DllpTxData,
-  output reg        DllpTxValid,
-  output reg [31:0] DllpRxData,
-  output reg        DllpRxValid
+  output bit [31:0] TlpTxData,
+  output bit        TlpTxSop,  TlpTxEop,  TlpTxValid,
+  output bit [31:0] TlpRxData,
+  output bit        TlpRxSop,  TlpRxEop,  TlpRxValid,
+  output bit [31:0] DllpTxData,
+  output bit        DllpTxValid,
+  output bit [31:0] DllpRxData,
+  output bit        DllpRxValid
 );
 
 
-`ifdef VERILATOR
+// openPCIE: an idle lane sends constant 0, which no 8b/10b symbol is. The
+// model's state is bit/int: 0 at time 0 on every simulator, never X
 `define ELECIDLE 10'b0000000000
-`else
-reg   [15:0] ElecIdleOut;
-`define ELECIDLE 10'bzzzzzzzzzz
-`endif
 
-reg    [9:0] Out [0:15];
-reg   [31:0] DataIn;
-reg          notResetLast;
-reg          InvertIn;
-reg          InvertOut;
-reg          ReverseIn;
-reg          ReverseOut;
-reg          UpdateResponse;
-integer      ClkCount;
-integer      i;
+bit    [9:0] Out [0:15];
+bit   [31:0] DataIn;
+bit          notResetLast;
+bit          InvertIn;
+bit          InvertOut;
+bit          ReverseIn;
+bit          ReverseOut;
+bit          UpdateResponse;
+int          ClkCount;
+int          i;
 
 // Transaction tap queues (openPCIE): {sop, eop, data}, pushed by
 // the C model in zero time, popped one entry per clock
-reg   [33:0] TlpTxQ  [$];
-reg   [33:0] TlpRxQ  [$];
-reg   [31:0] DllpTxQ [$];
-reg   [31:0] DllpRxQ [$];
+bit   [33:0] TlpTxQ  [$];
+bit   [33:0] TlpRxQ  [$];
+bit   [31:0] DllpTxQ [$];
+bit   [31:0] DllpRxQ [$];
 
 // VP Interface wires
 wire  [31:0] Addr;
@@ -116,7 +114,7 @@ wire         Update;
 wire   [9:0] In [0:15];
 
 wire clk_main;
-reg  clk_div2;
+bit  clk_div2;
 
 // --------------------------------
 // Internal clocks
@@ -130,9 +128,14 @@ generate
   else
   begin
     // When using a GEN2 clock, create a half speed clock
-    always @(posedge Clk)
+    // openPCIE: reset on notReset to upstream's start value, 1. The model's
+    // clock then stops in reset, as pcieVHostPipex1's does at Gen2Clk = 1
+    always_ff @(posedge Clk or negedge notReset)
     begin
-        clk_div2           <= ~clk_div2;
+        if (notReset == 1'b0)
+            clk_div2       <= 1'b1;
+        else
+            clk_div2       <= ~clk_div2;
     end
 
     // Clock MUX to select between GEN1 and GEN2 clock sources
@@ -178,18 +181,8 @@ endgenerate
 // Combinatorial logic
 // --------------------------------
 
-// Generate flags for electrical idle stat on input links
-`ifndef VERILATOR
-wire [15:0] ElecIdleIn = {LinkIn15 === 10'bzzzzzzzzzz, LinkIn14 === 10'bzzzzzzzzzz, LinkIn13 === 10'bzzzzzzzzzz, LinkIn12 === 10'bzzzzzzzzzz,
-                          LinkIn11 === 10'bzzzzzzzzzz, LinkIn10 === 10'bzzzzzzzzzz, LinkIn9  === 10'bzzzzzzzzzz, LinkIn8  === 10'bzzzzzzzzzz,
-                          LinkIn7  === 10'bzzzzzzzzzz, LinkIn6  === 10'bzzzzzzzzzz, LinkIn5  === 10'bzzzzzzzzzz, LinkIn4  === 10'bzzzzzzzzzz,
-                          LinkIn3  === 10'bzzzzzzzzzz, LinkIn2  === 10'bzzzzzzzzzz, LinkIn1  === 10'bzzzzzzzzzz, LinkIn0  === 10'bzzzzzzzzzz};
-`endif
-// Generate flags for not valid data on links
-wire [15:0] RxDetect   = {^LinkOut15 === 1'bx, ^LinkOut14 === 1'bx, ^LinkOut13 === 1'bx, ^LinkOut12 === 1'bx,
-                          ^LinkOut11 === 1'bx, ^LinkOut10 === 1'bx, ^LinkOut9  === 1'bx, ^LinkOut8  === 1'bx,
-                          ^LinkOut7  === 1'bx, ^LinkOut6  === 1'bx, ^LinkOut5  === 1'bx, ^LinkOut4  === 1'bx,
-                          ^LinkOut3  === 1'bx, ^LinkOut2  === 1'bx, ^LinkOut1  === 1'bx, ^LinkOut0  === 1'bx};
+// openPCIE: no flags from Z or X here (upstream: idle from Z on LinkIn, and a
+// receiver detect from X on LinkOut nothing read, 4-state simulators only)
 
 
 // --------------------------------
@@ -208,31 +201,44 @@ begin
     ReverseIn              = 1'b0;
     ReverseOut             = 1'b0;
     ElecIdleOut            = 16'hffff;
-    notResetLast           = 1'b0;
     UpdateResponse         = 1'b1;
-    ClkCount               = 0;
     Gen2ClkSel             = 1'b0;
-    clk_div2               = 1'b1;
-
-    {TlpTxData,  TlpTxSop, TlpTxEop, TlpTxValid} = 35'h0;
-    {TlpRxData,  TlpRxSop, TlpRxEop, TlpRxValid} = 35'h0;
-    {DllpTxData, DllpTxValid}                    = 33'h0;
-    {DllpRxData, DllpRxValid}                    = 33'h0;
 end
 
 // --------------------------------
 // Synchronous processes
 // --------------------------------
 
-always @(posedge clk_main)
+// openPCIE: the registers are always_ff, reset on notReset, asynchronously.
+// The ones above, which VProc writes, start in the initial block; ClkCount,
+// the C model's time, has no reset (0 at time 0)
+always_ff @(posedge clk_main or negedge notReset)
 begin
-    notResetLast           <= #`RegDel notReset;
+    if (notReset == 1'b0)
+        notResetLast       <= #`RegDel 1'b0;
+    else
+        notResetLast       <= #`RegDel notReset;
+end
+
+always_ff @(posedge clk_main)
+begin
     ClkCount               <= #`RegDel ClkCount + 1;
 end
 
-// Transaction taps: one queued entry per clock, per stream
-always @(posedge clk_main)
+// Transaction taps: one queued entry per clock, per stream. openPCIE: plain
+// always, reset on notReset: the queues are popped here and pushed by VProc,
+// which always_ff forbids (one process per variable)
+always @(posedge clk_main or negedge notReset)
 begin
+    if (notReset == 1'b0)
+    begin
+        {TlpTxData,  TlpTxSop, TlpTxEop, TlpTxValid} <= #`RegDel 35'h0;
+        {TlpRxData,  TlpRxSop, TlpRxEop, TlpRxValid} <= #`RegDel 35'h0;
+        {DllpTxData, DllpTxValid}                    <= #`RegDel 33'h0;
+        {DllpRxData, DllpRxValid}                    <= #`RegDel 33'h0;
+    end
+    else
+    begin
     if (TlpTxQ.size() != 0)
     begin
         {TlpTxSop, TlpTxEop, TlpTxData} <= #`RegDel TlpTxQ.pop_front();
@@ -264,6 +270,7 @@ begin
     end
     else
         DllpRxValid        <= #`RegDel 1'b0;
+    end
 end
 
 always @(Update)
@@ -299,7 +306,7 @@ begin
             begin
                 ElecIdleOut[LinkWidth-1:0] = DataOut[LinkWidth-1:0] ;
             end
-            DataIn     = {RxDetect, ElecIdleIn};
+            DataIn     = {16'h0000, ElecIdleIn};
         end
 
         `GEN2_CLK:
@@ -428,8 +435,9 @@ wire [9:0] PLinkOut12, PLinkOut13, PLinkOut14, PLinkOut15;
 
 wire       Gen2ClkSel;
 wire       serclk_main;
+logic [15:0] SerIdle;   // openPCIE: per lane; a lane never synced (unused) is idle
 
-reg        serclk_div2;
+bit        serclk_div2;
 
 //-------------------------------------------------------------
 // Select serial clock
@@ -443,17 +451,19 @@ if (Gen2Clk == 0)
 
 // If using  GEN2 clocks, use a clock mux to control the serial clock speed
 // (The main clock is controlled inside the PcieVhost component.)
+// openPCIE: begin/end round the else. Upstream's else took only its initial
+// block, so with Gen2Clk = 0 the clock mux drove serclk_main as well
 else
-
-initial
 begin
-  serclk_div2 <= 1'b0;
-end
 
-// Generate a half speed serial clock
-always @(posedge SerClk)
+// Generate a half speed serial clock. openPCIE: always_ff, reset on notReset
+// to upstream's start value, 0 (the clock mux holds the clock off in reset)
+always_ff @(posedge SerClk or negedge notReset)
 begin
-  serclk_div2 <= ~serclk_div2;
+  if (notReset == 1'b0)
+    serclk_div2 <= 1'b0;
+  else
+    serclk_div2 <= ~serclk_div2;
 end
 
   // Clock mux to select between GEN1 (divide by 2) or GEN2 serial clocks.
@@ -466,6 +476,7 @@ end
     .clkout           (serclk_main)
   );
 
+end
 endgenerate
 
   assign SerClkOut         = serclk_main;
@@ -489,10 +500,8 @@ endgenerate
     
     .ClkOut            (ClkOut),
     
-`ifdef VERILATOR
     .ElecIdleOut       (),
-    .ElecIdleIn        ({LinkWidth{1'b0}}),
-`endif
+    .ElecIdleIn        (SerIdle),               // openPCIE: the serialiser's idle, per lane
     .LinkIn0           (PLinkIn0),
     .LinkIn1           (PLinkIn1),
     .LinkIn2           (PLinkIn2),
@@ -533,6 +542,7 @@ endgenerate
 
   Serialiser serdes (
     .SerClk     (serclk_main),
+    .RxIdle     (SerIdle),
     .BitReverse (1'b0),
 
     .ParInVec   ({PLinkOut15, PLinkOut14, PLinkOut13, PLinkOut12, PLinkOut11, PLinkOut10, PLinkOut9, PLinkOut8,

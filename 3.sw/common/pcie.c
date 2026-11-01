@@ -49,8 +49,14 @@
 uint8_t tx_tag;
 #define TX_TAG() (tx_tag++ & 0x1F)
 
-void wait_cycles(int n) {
-    for (int i = 0; i < n; i++) __asm__("nop");
+void wait_cycles(uint32_t n) {
+#if defined(CPU_COUNTERS) && !defined(VPROC)
+    uint32_t t0 = rdcycle();
+    while (rdcycle() - t0 < n) {
+    }
+#else
+    for (uint32_t i = 0; i < n; i++) __asm__("nop");
+#endif
 }
 
 __attribute__((noreturn)) void halt(uint32_t marker) {
@@ -78,9 +84,15 @@ void send_tlp(uint32_t h0, uint32_t h1, uint32_t h2, uint32_t data) {
 // (CPL_STAT_*), or CPL_TIMEOUT. The payload is stored to *data only on SC, so
 // a genuine 0xFFFFFFFF read can no longer be mistaken for an error.
 uint32_t wait_for_completion(uint8_t tag, uint32_t *data) {
-    volatile int timeout = CPL_POLL_LIMIT;
+#if defined(CPU_COUNTERS) && !defined(VPROC)
+    uint32_t t0 = rdcycle();
+
+    while (rdcycle() - t0 < US2POLL(CPL_TIMEOUT_US)) {
+#else
+    volatile uint32_t timeout = US2POLL(CPL_TIMEOUT_US);
 
     while (timeout > 0) {
+#endif
         uint32_t raw_header = PCIE_RX_HEADER_INFO;
         uint16_t rx_req_id = RX_REQUESTER_ID(raw_header);
         uint8_t  rx_tag    = RX_TAG(raw_header);
@@ -93,7 +105,9 @@ uint32_t wait_for_completion(uint8_t tag, uint32_t *data) {
             }
             return rx_status;
         }
+#if !defined(CPU_COUNTERS) || defined(VPROC)
         timeout--;
+#endif
     }
     return CPL_TIMEOUT;
 }
@@ -119,7 +133,7 @@ uint32_t pcie_request(uint32_t type, uint32_t addr_or_id, uint32_t wdata, uint32
         if (status != CPL_STAT_CRS) {
             break;
         }
-        wait_cycles(1000);
+        wait_cycles(US2WAIT(CRS_WAIT_US));
     }
     return status;
 }

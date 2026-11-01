@@ -40,6 +40,7 @@ package edubos5_pkg;
   } opcode_t;
 
   typedef struct packed {
+    logic CNT;     //[11] a counter read (EN_COUNTERS): SYSTEM, but no halt
     logic ALUREG;  //[10]
     logic ALUIMM;  //[9]
 

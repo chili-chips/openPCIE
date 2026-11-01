@@ -69,7 +69,8 @@ module edubos5_mcp_miter
   end
 
   edubos5 #(
-      .EN_WAIT4REGS(EN_WAIT4REGS)
+      .EN_WAIT4REGS(EN_WAIT4REGS),
+      .EN_COUNTERS (1'b1)           // as the SOC builds it
   ) u_a (
       .clk        (clk),
       .arst_n     (arst_n),
@@ -87,7 +88,8 @@ module edubos5_mcp_miter
   );
 
   edubos5 #(
-      .EN_WAIT4REGS(EN_WAIT4REGS)
+      .EN_WAIT4REGS(EN_WAIT4REGS),
+      .EN_COUNTERS (1'b1)           // as the SOC builds it
   ) u_b (
       .clk        (clk),
       .arst_n     (arst_n),

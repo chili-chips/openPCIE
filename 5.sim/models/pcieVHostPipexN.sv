@@ -12,10 +12,14 @@
 //   8b/10b is off, so each lane carries {K, byte} symbols, as in the x1
 //   wrapper. Lane l is bits [l*DataWidth +: DataWidth] of RxData/TxData.
 //
-//   Differences from pcieVHostPipex1: Gen1 clocks only (Gen2Clk = 0, which
-//   is how the test bench uses the x1 wrapper too); under Verilator the
-//   electrical idle side-band is one bit for all lanes.
+//   Differences from pcieVHostPipex1: no clock switch inside (Gen2Clk = 0, as
+//   the test bench uses the x1 wrapper too): the test bench gives the symbol
+//   clock for the rate, 250 or 500 MHz. Electrical idle is NOSIG
+//   (the K flag and 0xFF: no 8b/10b code) per symbol, as there, and reaches
+//   the core on its ElecIdleIn, one bit per lane.
 //==========================================================================
+
+`include "pciexpress_header.v"
 
 module pcieVHostPipexN #(
     parameter int NodeNum   = 8,
@@ -23,19 +27,15 @@ module pcieVHostPipexN #(
     parameter int Lanes     = 4,   // 1 to 16
     parameter int DataWidth = 16   // 8, 16, 32 or 64, per lane
 ) (
-    input  logic                             pcieclk,  // 250 MHz symbol clock, Gen1
+    input  logic                             pcieclk,  // symbol clock: 250 MHz Gen1, 500 MHz Gen2
     input  logic                             pclk,     // pcieclk / (DataWidth/8), synchronous
     input  logic                             nreset,
     output logic                             Gen2ClkSel,
     output logic                             ClkOut,
-`ifdef VERILATOR
-    output logic                             ElecIdleOut,
-    input  logic                             ElecIdleIn,
-`endif
     input  logic [Lanes*DataWidth    -1:0]   RxData,
     input  logic [Lanes*DataWidth/8  -1:0]   RxDataK,
-    output logic [Lanes*DataWidth    -1:0]   TxData,
-    output logic [Lanes*DataWidth/8  -1:0]   TxDataK,
+    output bit   [Lanes*DataWidth    -1:0]   TxData,
+    output bit   [Lanes*DataWidth/8  -1:0]   TxDataK,
 
     // Transaction taps, on ClkOut: see pcieVHost.v
     output logic [31:0]                      TlpTxData,
@@ -50,26 +50,46 @@ module pcieVHostPipexN #(
 
   localparam int BYTES = DataWidth / 8;
 
-  // one 10-bit link symbol per lane, {0, K, byte}; lanes above Lanes float
-  wire [15:0][9:0] link_in, link_out;
+  // one 10-bit link symbol per lane, {0, K, byte}; lanes above Lanes are 0 and idle
+  logic [15:0][9:0] link_in, link_out;
 
-  logic [Lanes-1:0][DataWidth-1:0] rx_sample, tx_pipe;
-  logic [Lanes-1:0][   BYTES-1:0]  rxk_sample, txk_pipe;
+  bit   [Lanes-1:0][DataWidth-1:0] rx_sample, tx_pipe;
+  bit   [Lanes-1:0][   BYTES-1:0]  rxk_sample, txk_pipe;
   int                              rxcount;
+
+  // electrical idle is NOSIG per symbol, both ways: the core's idle (its
+  // ElecIdleOut) goes out as NOSIG, and a received NOSIG is the partner's
+  // idle, to the core's ElecIdleIn
+  localparam logic [8:0] NOSIG_SYM = {1'b1, `NOSIG};   // {K, byte}
+  logic [15:0]      link_out_idle;
+  bit   [15:0][7:0] link_out_q;     // the core's TX symbols, on the falling edge
+  bit   [15:0]      link_outk_q;
+  logic [15:0]      link_in_idle;
+  logic [Lanes-1:0] rx_idle;
 
   for (genvar l = 0; l < 16; l++) begin : g_link_in
     if (l < Lanes) begin : g_used
-      assign link_in[l] = {1'b0, rxk_sample[l][0], rx_sample[l][7:0]};
+      assign rx_idle[l]      = ({rxk_sample[l][0], rx_sample[l][7:0]} == NOSIG_SYM);
+      assign link_in_idle[l] = rx_idle[l];
+      assign link_in[l]      = {1'b0, rxk_sample[l][0], rx_sample[l][7:0]};
     end else begin : g_unused
-      assign link_in[l] = 'z;
+      assign link_in_idle[l] = 1'b1;
+      assign link_in[l]      = '0;
     end
   end
 
   // Sample each lane's RX word every BYTES symbol clocks and shift it out one
   // symbol per clock; shift the link's TX symbols into each lane's word
-  always @(posedge pcieclk or negedge nreset) begin
+  // RX on the falling edge: the core reads LinkIn and ElecIdleIn on the rising
+  // edge, in VProc's delta cycles, so a sample changing on that edge was seen
+  // before or after the read as the scheduler chose (pcieVHostPipex1).
+  // Every register resets on nreset, asynchronously: in reset the line is
+  // idle (NOSIG with the K flag), both ways
+  always_ff @(negedge pcieclk or negedge nreset) begin
     if (!nreset) begin
-      rxcount <= 0;
+      rxcount    <= 0;
+      rx_sample  <= {Lanes*BYTES{`NOSIG}};
+      rxk_sample <= '1;
     end else if (rxcount == 0) begin
       for (int l = 0; l < Lanes; l++) begin
         rx_sample[l]  <= RxData [l*DataWidth +: DataWidth];
@@ -83,32 +103,55 @@ module pcieVHostPipexN #(
       end
       rxcount <= rxcount - 1;
     end
+  end
 
-    for (int l = 0; l < Lanes; l++) begin
-      if (BYTES == 1) begin
-        tx_pipe[l]  <= DataWidth'(link_out[l][7:0]);
-        txk_pipe[l] <= BYTES'(link_out[l][8]);
-      end else begin
-        tx_pipe[l]  <= {link_out[l][7:0], tx_pipe[l][DataWidth-1:8]};
-        txk_pipe[l] <= {link_out[l][8], txk_pipe[l][BYTES-1:1]};
+  // the core's TX symbols on the falling edge: it writes them on the rising
+  // edge, in VProc's delta cycles, the edge the TX shift runs on (pcieVHostPipex1)
+  always_ff @(negedge pcieclk or negedge nreset) begin
+    if (!nreset) begin
+      link_out_q  <= {16{`NOSIG}};
+      link_outk_q <= '1;
+    end else for (int l = 0; l < 16; l++) begin
+      link_out_q[l]  <= link_out_idle[l] ? NOSIG_SYM[7:0] : link_out[l][7:0];
+      link_outk_q[l] <= link_out_idle[l] ? NOSIG_SYM[8]   : link_out[l][8];
+    end
+  end
+
+  if (BYTES == 1) begin : g_tx1
+    always_ff @(posedge pcieclk or negedge nreset) begin
+      if (!nreset) begin
+        tx_pipe  <= {Lanes*BYTES{`NOSIG}};
+        txk_pipe <= '1;
+      end else for (int l = 0; l < Lanes; l++) begin
+        tx_pipe[l]  <= DataWidth'(link_out_q[l]);
+        txk_pipe[l] <= BYTES'(link_outk_q[l]);
+      end
+    end
+  end else begin : g_txn
+    always_ff @(posedge pcieclk or negedge nreset) begin
+      if (!nreset) begin
+        tx_pipe  <= {Lanes*BYTES{`NOSIG}};
+        txk_pipe <= '1;
+      end else for (int l = 0; l < Lanes; l++) begin
+        tx_pipe[l]  <= {link_out_q[l], tx_pipe[l][DataWidth-1:8]};
+        txk_pipe[l] <= {link_outk_q[l], txk_pipe[l][BYTES-1:1]};
       end
     end
   end
 
   // At the PIPE clock rate, update the TX outputs (pcieclk when 8 bits wide)
-  wire tx_sample_clk = (BYTES == 1) ? pcieclk : pclk;
+  logic tx_sample_clk;
+  assign tx_sample_clk = (BYTES == 1) ? pcieclk : pclk;
 
-  always @(posedge tx_sample_clk) begin
-    for (int l = 0; l < Lanes; l++) begin
+  always_ff @(posedge tx_sample_clk or negedge nreset) begin
+    if (!nreset) begin
+      TxData  <= {Lanes*BYTES{`NOSIG}};
+      TxDataK <= '1;
+    end else for (int l = 0; l < Lanes; l++) begin
       TxData [l*DataWidth +: DataWidth] <= tx_pipe[l];
       TxDataK[l*BYTES     +: BYTES]     <= txk_pipe[l];
     end
   end
-
-`ifdef VERILATOR
-  logic [15:0] elec_idle_out;
-  assign ElecIdleOut = elec_idle_out[0];
-`endif
 
   PcieVhost #(
       .LinkWidth        (Lanes),
@@ -122,10 +165,8 @@ module pcieVHostPipexN #(
       .notReset   (nreset),
       .Gen2ClkSel (Gen2ClkSel),
       .ClkOut     (ClkOut),
-`ifdef VERILATOR
-      .ElecIdleOut(elec_idle_out),
-      .ElecIdleIn ({16{ElecIdleIn}}),
-`endif
+      .ElecIdleOut(link_out_idle),
+      .ElecIdleIn (link_in_idle),
       .LinkIn0    (link_in[0]),  .LinkIn1  (link_in[1]),  .LinkIn2  (link_in[2]),  .LinkIn3  (link_in[3]),
       .LinkIn4    (link_in[4]),  .LinkIn5  (link_in[5]),  .LinkIn6  (link_in[6]),  .LinkIn7  (link_in[7]),
       .LinkIn8    (link_in[8]),  .LinkIn9  (link_in[9]),  .LinkIn10 (link_in[10]), .LinkIn11 (link_in[11]),

@@ -53,6 +53,8 @@
 // Training sequence definitions
 #define TS1_ID                     0x4a
 #define TS2_ID                     0x45
+#define TS1_ID_INV                 0xb5 // openPCIE: D21.5, TS1_ID on a lane with its polarity inverted (4.2.4.4)
+#define TS2_ID_INV                 0xba // openPCIE: D26.5, TS2_ID the same
 #define INV_TS1_ID                 0xb5
 #define INV_TS2_ID                 0xba
 
@@ -265,7 +267,7 @@ typedef struct  __attribute__ ((__packed__)) {
 
 typedef union {
     cfg_spc_pcie_caps_struct_t pcie_caps_struct;
-    uint32_t                   words[0x0e];
+    uint32_t                   words[0x0f];   // openPCIE: 15 DWs, CFG_PCIE_CAPS_SIZE_BYTES (was 0x0e)
 } cfg_spc_pcie_caps_t;
 
 typedef struct  __attribute__ ((__packed__)) {

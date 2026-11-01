@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Chili.CHIPS
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# xsim source list for the Artix-7 RC model on the serial line (make RC=model
+# IFACE=serial, tb_rc_serial.sv): models only, no RTL.
+
+sv work models/cosim/mem_model.sv
+sv work models/cosim/f_VProc.v
+sv work models/pcievhost/verilog/lib/clkmux.v
+sv work models/pcievhost/verilog/lib/Serialiser.v
+sv work models/pcievhost/verilog/pcieVHost/pcieVHost.v
+sv work tb_rc_serial.sv

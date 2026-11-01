@@ -7,12 +7,13 @@
 # openXC7 v1.0.0 (source 4.build/set-env.sh first).
 #
 # usage: RISCV_FORMAL=<riscv-formal clone> [LEGAL=1] [ALIGNED=1] [LEGAL_STORES=1]
-#        [NO_SYSTEM=1] [STORE_WAIT=1] [EXTRA=1] [DEPTH=<n>] [MODE=cover] bash run-riscv-formal.sh [EN_WAIT4REGS] [jobs] [checks]
+#        [NO_SYSTEM=1] [STORE_WAIT=1] [COUNTERS=1] [EXTRA=1] [DEPTH=<n>] [MODE=cover] bash run-riscv-formal.sh [EN_WAIT4REGS] [jobs] [checks]
 #   LEGAL=1         assume legal, aligned code (rvfi_wrapper.sv): eduBOS5 has no traps
 #   ALIGNED=1       only the alignment half of LEGAL (natural alignment, word-aligned targets)
 #   LEGAL_STORES=1  only the store half of LEGAL (stores have a legal funct3)
 #   NO_SYSTEM=1     IMEM holds no SYSTEM or unknown opcode (both halt eduBOS5 without rvfi_halt)
 #   STORE_WAIT=1    STORE_WAITS_RDY=1: the bus may hold a store for any number of clocks
+#   COUNTERS=1      EN_COUNTERS=1: counter reads retire (the other checks see them)
 #   EXTRA=1         also run liveness, hang, causal_mem and causal_io
 #   DEPTH=<n>       bound of the standard checks (default 16 clocks, checks.cfg)
 #   MODE=cover      check that each check's cover statement is reachable, instead
@@ -34,7 +35,8 @@ mkdir -p "$W/cores/edubos5"
 cp "$C"/edubos5_pkg.sv "$C"/edubos5_rf.sv "$C"/edubos5_alu.sv "$C"/edubos5.sv \
    "$HERE/rvfi_wrapper.sv" "$W/cores/edubos5/"
 SW=0; [ "${STORE_WAIT:-0}" = 1 ] && SW=1
-sed "s/@slang_defs@/-G EN_WAIT4REGS=$EN -G STORE_WAITS_RDY=$SW/" "$HERE/checks.cfg" > "$W/cores/edubos5/checks.cfg"
+CN=0; [ "${COUNTERS:-0}" = 1 ] && CN=1
+sed "s/@slang_defs@/-G EN_WAIT4REGS=$EN -G STORE_WAITS_RDY=$SW -G EN_COUNTERS=$CN/" "$HERE/checks.cfg" > "$W/cores/edubos5/checks.cfg"
 for opt in LEGAL:EDUBOS5_LEGAL_CODE ALIGNED:EDUBOS5_ALIGNED \
            LEGAL_STORES:EDUBOS5_LEGAL_STORES NO_SYSTEM:EDUBOS5_NO_SYSTEM \
            STORE_WAIT:EDUBOS5_STORE_WAIT; do

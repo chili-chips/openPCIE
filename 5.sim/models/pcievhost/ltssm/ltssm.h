@@ -75,6 +75,28 @@ typedef struct
 // Link initialisation
 EXTERN void InitLink             (const int linkwidth,         const int node);
 EXTERN void InitLinkGen          (const int linkwidth,         const int gen,   const int node);
+
+// L0 and speed change (openPCIE)
+EXTERN void LinkIdle             (const int ticks,             const int node);
+EXTERN void ChangeLinkSpeed      (const int gen,               const int node);
+EXTERN void RetrainLink          (const int node);
+EXTERN void SetLtssmVary         (const int max,               const int node);   // TS counts, idle times: up to max more
+EXTERN void SetLaneReversal      (const int on,                const int node);   // may reverse its lanes (4.2.4.9.1)
+EXTERN int  GetLinkSpeed         (const int node);
+EXTERN uint64_t GetLinkTimeNs    (const int node);
+EXTERN uint64_t GetLinkRecoveryNs(const int node);
+EXTERN uint32_t GetLinkRecoveryTicks(const int node);
+EXTERN int  GetLtssmState        (const int node);
+EXTERN uint64_t GetLtssmL0Ns     (const int node);
+EXTERN int  GetLtssmRates        (const int node);   // the rates it advertises, TS_DATA_RATE_GEN1/2
+EXTERN uint64_t GetLtssmEiosNs   (const int node);   // its last EIOS in Recovery.Speed (GetLinkTimeNs())
+EXTERN uint64_t GetLtssmIdleNs   (const int node);   // Configuration.Idle/Recovery.Idle began, else 0
+
+// Link profile (openPCIE): the link partner this node plays
+#define LTSSM_PROFILE_EP          0
+#define LTSSM_PROFILE_ARTIX7_RC   1
+EXTERN void SetLinkProfile       (const int profile,           const int node);
+EXTERN int  GetLinkProfile       (const int node);
 EXTERN void ConfigLinkInit       (const ConfigLinkInit_t cfg,  const int node);
 EXTERN void ConfigurePcieLtssm   (const config_t         type, const int value, const int node);
 

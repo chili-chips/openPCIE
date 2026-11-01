@@ -123,7 +123,7 @@ int main() {
 
     tx_tag = 0;
 
-    wait_cycles(STARTUP_DELAY);
+    wait_cycles(US2WAIT(STARTUP_US));
 
     //----------------------------------------------------------------------
     // STEP 1: switch upstream port -- bus 1, device 0

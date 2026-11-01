@@ -88,12 +88,51 @@
 #define CPL_STAT_CA  4 // Completer Abort
 #define CPL_TIMEOUT  8 // not a PCIe status: no Completion arrived in time
 
-// Polls of rx.header_info before giving up. The simulation builds shorten it,
-// so a lost Completion ends as 0xBAD00002 within the run, not as a time-out.
-#ifndef CPL_POLL_LIMIT
-#define CPL_POLL_LIMIT 2000000
+// The waits, in us. The simulation builds shorten them (make SIM=1 in
+// 4.build/sw_build), so a run ends in time.
+//   CPL_TIMEOUT_US  no Completion: give up. 50 ms, the end of a Root Port's
+//                   default Completion Timeout range (PCIe Base, 2.8)
+//   CRS_WAIT_US     a request answered with CRS is re-issued up to CRS_RETRIES
+//                   times, this far apart: 100 x 10 ms, as a device may answer
+//                   CRS for up to 1 s after reset (6.6.1)
+//   STARTUP_US      idle at start-up, before the first Configuration Request:
+//                   100 ms after reset (6.6.1). The SOC leaves reset once the
+//                   data link is up (core_rst_n follows trn_link_up), and a
+//                   link drop resets it again; CRS covers a slow endpoint
+#ifndef CPL_TIMEOUT_US
+#define CPL_TIMEOUT_US 50000
 #endif
-#define CRS_RETRIES    100     // re-issues of a request answered with CRS
+#define CRS_RETRIES    100
+#ifndef CRS_WAIT_US
+#define CRS_WAIT_US    10000
+#endif
+#ifndef STARTUP_US
+#define STARTUP_US     100000
+#endif
+
+// How the waits are timed. CPU_COUNTERS (make COUNTERS=1, the default; the SOC
+// then has the CPU's cycle counter): rdcycle, in real time at any -O. CPU_KHZ
+// is the CPU clock, the build's PCIe user clock: 62.5 MHz at x1, 125 at x4
+// Gen1, 250 at x4 Gen2. Without it (COUNTERS=0, and the host build of
+// CPU=vproc): loops, calibrated on eduBOS5 at x1 without -O (a wait_cycles()
+// loop 374 ns, a poll 1.09 us), so an -O or a faster clock shortens them.
+// The us become cycles or loops at compile time (constants only: rv32i, no
+// libgcc multiply).
+#if defined(CPU_COUNTERS) && !defined(VPROC)
+#ifndef CPU_KHZ
+#define CPU_KHZ        62500
+#endif
+#define US2WAIT(us)    ((uint32_t)((uint64_t)(us) * CPU_KHZ / 1000))   // cycles
+#define US2POLL(us)    US2WAIT(us)
+static inline uint32_t rdcycle(void) {
+    uint32_t c;
+    __asm__ volatile("rdcycle %0" : "=r"(c));
+    return c;
+}
+#else
+#define US2WAIT(us)    ((uint32_t)((uint64_t)(us) * 1000 / 374))       // loops
+#define US2POLL(us)    ((uint32_t)((uint64_t)(us) * 1000 / 1090))      // polls
+#endif
 
 // Configuration space offsets
 #define CFG_ID           0x00 // Device ID / Vendor ID
@@ -108,18 +147,9 @@
 // Stops the firmware: any status other than SC on a checked config access
 #define RESULT_CFG_FAILED  0xBAD00002
 
-// Cycles to idle at start-up, waiting for the PCIe link to finish training.
-// On hardware that wait is unavoidable. In co-simulation the link is already up
-// by the time the SOC leaves reset, and this loop -- compiled without
-// optimisation -- costs about 37 ms of simulated time on eduBOS5, so the simulation build
-// shortens it:  make SIM=1  in 4.build/sw_build.
-#ifndef STARTUP_DELAY
-#define STARTUP_DELAY 100000
-#endif
-
 extern uint8_t tx_tag;
 
-void wait_cycles(int n);
+void wait_cycles(uint32_t n);  // n from US2WAIT()
 __attribute__((noreturn)) void halt(uint32_t marker);
 void send_tlp(uint32_t h0, uint32_t h1, uint32_t h2, uint32_t data);
 uint32_t wait_for_completion(uint8_t tag, uint32_t *data);

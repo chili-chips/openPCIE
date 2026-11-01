@@ -118,10 +118,21 @@ typedef struct {
     uint32_t eventQueue [MAX_QUEUED_VEC_IRQ];
 } vecIrqState_t;
 
+// openPCIE: the user code runs as a coroutine on the simulator's own thread,
+// on a stack of its own, and VSched()/VExch() switch between the two stacks
+// (VUser.c). Upstream ran it in a thread per node, handing over through two
+// semaphores: two system calls and a scheduler wake-up on each exchange.
+// x86-64 Linux; elsewhere, or with VPROC_THREADS defined, the thread version
+#if !defined(VPROC_THREADS) && defined(__x86_64__) && defined(__linux__)
+#define VPROC_COROUTINE
+#endif
+
 // Scheduler node state structure
 typedef struct {
     sem_t               snd;
     sem_t               rcv;
+    void               *co_sim_sp;      // openPCIE: the simulator's stack pointer, while the user code runs
+    void               *co_user_sp;     // openPCIE: the user code's stack pointer, while the simulator runs
     send_buf_t          send_buf;
     rcv_buf_t           rcv_buf;
     pVUserIrqCB_t       VUserIrqCB;
@@ -132,5 +143,11 @@ typedef struct {
 
 // Reference to node state array
 extern pSchedState_t ns[];
+
+#ifdef VPROC_COROUTINE
+// openPCIE: switch stacks: save the callee-saved registers on the current
+// stack, its pointer in *save, then continue on the stack 'load' (VUser.c)
+extern void VCoSwap (void **save, void *load) __attribute__((visibility("hidden")));
+#endif
 
 #endif

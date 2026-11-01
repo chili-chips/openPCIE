@@ -39,7 +39,8 @@ module edubos5_mcp_formal
   end
 
   edubos5 #(
-      .EN_WAIT4REGS(EN_WAIT4REGS)
+      .EN_WAIT4REGS(EN_WAIT4REGS),
+      .EN_COUNTERS (1'b1)           // as the SOC builds it
   ) u_cpu (
       .clk        (clk),
       .arst_n     (arst_n),

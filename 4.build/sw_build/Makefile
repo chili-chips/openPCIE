@@ -44,17 +44,35 @@ CSR_CFLAGS = -I$(CSR_DIR) -I../csr_build
 CSR_DEPS   = $(CSR_DIR)/csr.h $(CSR_DIR)/csr_top.h ../csr_build/csr_regs.h
 
 # ---- Simulation build -------------------------------------------------------
-# SIM=1 shortens the start-up delay in main.c and the Completion wait
-# (CPL_POLL_LIMIT, pcie.h). The start-up loop waits for the PCIe link
-# to train, which matters on hardware but not in co-simulation, where the link
-# is already up before the SOC leaves reset -- and where the loop, compiled
-# without optimisation, costs about 37 ms of simulated time on eduBOS5.
+# SIM=1 shortens the waits of pcie.h: the start-up (STARTUP_US, 100 ms on the
+# board), the Completion wait (CPL_TIMEOUT_US) and the CRS retry wait
+# (CRS_WAIT_US). The values are those of the earlier loop counts (200 loops,
+# 2000 polls, 1000 loops), so COUNTERS=0 runs as before.
 SIM ?= 0
 
 ifeq ($(SIM),1)
-    SIM_CFLAGS = -DSTARTUP_DELAY=200 -DCPL_POLL_LIMIT=2000
+    SIM_CFLAGS = -DSTARTUP_US=75 -DCPL_TIMEOUT_US=2180 -DCRS_WAIT_US=374 $(if $(filter 1,$(HM_PROBE)),-DHM_PROBE)
 else
     SIM_CFLAGS =
+endif
+
+# ---- Timing the waits -------------------------------------------------------
+# COUNTERS=1 (default): the SOC has the CPU's cycle counter (riscv_pcie_soc.sv),
+# the waits read it (rdcycle) and take real time at any -O; LINK gives the CPU
+# clock, the PCIe user clock. COUNTERS=0: the SOC has none (SOC_NO_COUNTERS),
+# the waits count loops. The hardware must match: 5.sim and hw_build.openXC7
+# pass the same COUNTERS and LINK.
+COUNTERS ?= 1
+LINK     ?= x1g2
+ifeq ($(filter 0 1,$(COUNTERS)),)
+    $(error COUNTERS must be 0 or 1, got "$(COUNTERS)")
+endif
+CPU_KHZ_x4g1 = 125000
+CPU_KHZ_x4g2 = 250000
+CPU_KHZ      = $(or $(CPU_KHZ_$(LINK)),62500)
+ifeq ($(COUNTERS),1)
+    CNT_CFLAGS = -DCPU_COUNTERS -DCPU_KHZ=$(CPU_KHZ)
+    CNT_ARCH   = _zicsr_zicntr
 endif
 
 # ---- Paths ------------------------------------------------------------------
@@ -75,6 +93,10 @@ CC       = $(CROSS)gcc
 OBJCOPY  = $(CROSS)objcopy
 
 PYTHON ?= python3
+# Vivado exports PYTHON as its own Python folder: take it only from the command line
+ifeq ($(origin PYTHON),environment)
+    PYTHON = python3
+endif
 
 # ---- Output folder ----------------------------------------------------------
 # Default: this folder, where the tracked firmware.hex (the board build) lives.
@@ -84,8 +106,11 @@ RM_OUT  = rm -f $(OUT)/firmware.elf $(OUT)/firmware.bin $(OUT)/firmware.hex
 # ---- Flags ------------------------------------------------------------------
 # rv32i only -- picorv32 is configured without M/C extensions.
 # -ffreestanding -nostdlib: no libc, no crt0; start.S provides the entry point.
-ARCH    = -march=rv32i -mabi=ilp32
-CFLAGS  = $(ARCH) -ffreestanding -nostdlib -I$(COMMON_DIR) $(CSR_CFLAGS) $(SIM_CFLAGS)
+ARCH    = -march=rv32i$(CNT_ARCH) -mabi=ilp32
+# FW_OPT: an optimisation level, for QA (5.sim: make run FW_OPT=-O2); default none,
+# as the tracked board build. The result must not depend on it
+FW_OPT ?=
+CFLAGS  = $(ARCH) -ffreestanding -nostdlib -I$(COMMON_DIR) $(CSR_CFLAGS) $(SIM_CFLAGS) $(CNT_CFLAGS) $(FW_OPT)
 LDFLAGS = -Wl,-Bstatic,-T,$(COMMON_DIR)/sections.lds,--strip-debug
 
 # start.S must come first -- it holds the reset vector.

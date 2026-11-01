@@ -14,6 +14,7 @@
 #--------
 # Sim
 #--------
+__pycache__/
 *.fst
 !5.sim/tb.*.fst
 5.sim/tb.*.*.*.fst

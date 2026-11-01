@@ -62,7 +62,7 @@ verilator ^%Warning-UNUSEDSIGNAL: csr\.sv:[0-9]+:[0-9]+: Signal is not used: '(d
 verilator ^%Warning-UNUSEDSIGNAL: src/pcie/axis_if\.sv:[0-9]+:[0-9]+: (Signal is not used: 'tkeep'|Bits of signal are not used: 'tkeep'\[6:0\]|Signal is not used: 'tuser')$
 
 # PIPE tx_ctrl.reset: not used by the RTL PHY, read by the co-sim PHY model
-# (5.sim/models/phy_top.PIPE.sv) (reviewed 2026-10-12)
+# (5.sim/models/phy_top.EP-PIPE-BFM.sv) (reviewed 2026-10-12)
 verilator ^%Warning-UNUSEDSIGNAL: src/pcie/pipe_if\.sv:[0-9]+:[0-9]+: Bits of signal are not used: 'tx_ctrl'\[5\]$
 
 # Descriptor signals (step 3): pcie_pkg header DWs and sideband, partial field

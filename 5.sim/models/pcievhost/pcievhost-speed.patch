@@ -1,0 +1,2455 @@
+--- a/src/codec.h
++++ b/src/codec.h
+@@ -113,6 +113,7 @@
+ 
+ extern unsigned int Encode    (const int      data, const int no_scramble, const int no_8b10b,  const int lane, const int linkwidth, const int node);
+ extern unsigned int Decode    (const int      data, const int no_scramble, const int no_8b10b,  const int lane, const int linkwidth, const int node);
++extern void         SwapLaneDisparity (const int linkwidth, const int node);   // openPCIE: lane reversal
+ extern uint32_t     PciCrc    (const uint32_t Data, const uint32_t CrcIn,  const uint32_t Bits, const uint32_t poly, const uint32_t crcsize);
+ extern void         InitCodec (const int node);
+ 
+--- a/src/codec.c
++++ b/src/codec.c
+@@ -278,6 +278,19 @@
+ //
+ // -------------------------------------------------------------------------
+ 
++// openPCIE: on a lane reversal, each lane's running disparity stays with its
++// physical line (SetLaneReverse() in pcie.c); the scrambler is one for all
++// lanes
++void SwapLaneDisparity (const int linkwidth, const int node)
++{
++    for (int l = 0; l < linkwidth / 2; l++)
++    {
++        int rd = this->rd[l];
++        this->rd[l] = this->rd[linkwidth-1-l];
++        this->rd[linkwidth-1-l] = rd;
++    }
++}
++
+ unsigned int Decode (const int data, const int no_scramble, const int no_8b10b, const int lane, const int linkwidth, const int node)
+ {
+     int Raw, Control;
+--- a/src/pcie.h
++++ b/src/pcie.h
+@@ -178,6 +178,20 @@
+ #define MAX_RAW_PKT_SIZE                  4125
+ #define NULLACK                           9999
+ 
++// openPCIE: one-shot Data Link faults (InjectFault()), for a model that tests
++// its link partner
++#define FAULT_RX_NAK_NEXT                 0x1   // Nak the next good TLP, and drop it
++#define FAULT_TX_BAD_LCRC                 0x2   // the next new TLP goes out with a bad LCRC (the replay is good)
++#define FAULT_TX_DUP                      0x4   // keep a copy of the next new TLP: SendDuplicate() sends it again
++#define FAULT_TX_BAD_DLLP                 0x8   // the next DLLP goes out with a bad CRC
++
++// openPCIE: the replay timer, in symbol times: the Max_Payload_Size 128
++// values of 3.5.2.1, x1 and x4 (Tables 3-4/3-5)
++#define REPLAY_TIMER_GEN1                 711
++#define REPLAY_TIMER_GEN2                 864
++#define REPLAY_TIMER_GEN1_X4              219
++#define REPLAY_TIMER_GEN2_X4              372
++
+ #define FC_POST                           0
+ #define FC_NONPOST                        1
+ #define FC_CMPL                           2
+@@ -396,6 +410,11 @@
+ typedef void (*callback_t)(pPkt_t, int, void *);
+ typedef void (*os_callback_t)(int, int, pTS_t, void *);
+ 
++// openPCIE: packet monitor, SetPktMonitor(). rx: 1 received (before any
++// processing, CRCs as on the wire), 0 sent (its last symbol out). edb: a
++// received TLP ended with EDB. The packet belongs to the model: read only.
++typedef void (*mon_callback_t)(const pPkt_t pkt, const int rx, const int edb, void *usrptr);
++
+ enum config_e {
+     CONFIG_FC_HDR_RATE                         = 0,
+     CONFIG_FC_DATA_RATE,
+@@ -556,6 +575,10 @@
+ EXTERN void       WaitForCompletionN      (const uint32_t count,          const int node);
+ EXTERN void       InitialisePcie          (const callback_t    cb_func, void *usrptr, const int node);
+ EXTERN void       RegisterOsCallback      (const os_callback_t cb_func, const int node);
++EXTERN void       SetPktMonitor           (const mon_callback_t cb_func, void *usrptr, const int node);
++// openPCIE: an endpoint sets 'bit' of config DW 'reg' (Device Status, UR
++// Detected) on each Unsupported Request it detects (7.8.5)
++EXTERN void       SetUrDetectedReg        (const uint32_t reg, const uint32_t bit, const int node);
+ EXTERN uint32_t   GetCycleCount           (const int node);
+ EXTERN void       ConfigurePcie           (const config_t type, const int value, const int node);
+ 
+@@ -569,6 +592,14 @@
+ EXTERN void       PcieSeed                (const uint32_t seed, const int node);
+ EXTERN void       SetTxEnabled            (const int      node);
+ EXTERN void       SetTxDisabled           (const int      node);
++EXTERN void       SetLaneReverse          (const bool     reverse, const int node);   // openPCIE: lanes reversed (4.2.4.9.1)
++EXTERN bool       GetLaneReverse          (const int      node);
++EXTERN void       InjectFault             (const int      fault, const int node);
++EXTERN void       ClearFaults             (const int      node);
++EXTERN void       SetOsMonitor            (const os_callback_t cb_func, void *usrptr, const int node);
++EXTERN void       HoldFc                  (const int      ticks, const int node);
++EXTERN void       SendDuplicate           (const int      node);
++EXTERN uint32_t   GetCompleterId          (const int      node);
+ EXTERN void       getPcieVersionString    (char*          sbuf, const int bufsize);
+ EXTERN void       SelectGen1Clock         (const int      node);
+ EXTERN void       SelectGen2Clock         (const int      node);
+--- a/src/pcie_utils.h
++++ b/src/pcie_utils.h
+@@ -224,6 +224,8 @@
+ 
+     // AckNak state
+     pPkt_t           ack_to_send_p;
++    bool             nak_wait;            // openPCIE: a Nak received, its replay held (Artix-7 RC profile), since
++    uint32_t         nak_seen;
+     pPkt_t           nak_to_send_p;
+     int              curr_ack;
+     int              curr_nak;
+@@ -248,6 +250,22 @@
+ 
+     // Input OS State
+     os_callback_t    vuser_os_cb;
++    os_callback_t    os_mon;              // openPCIE: SetOsMonitor(), beside the model's own processing
++    void            *os_mon_usrptr;
++    bool             rx_invert[MAX_LINK_WIDTH];   // openPCIE: the lane's polarity inverted (4.2.4.4)
++    bool             lane_reverse;                // openPCIE: lanes reversed: logical lane l is physical LinkWidth-1-l (4.2.4.9.1)
++
++    // openPCIE: packet monitor (SetPktMonitor)
++    mon_callback_t   mon_cb;
++    void             *mon_usrptr;
++
++    // openPCIE: the config space DW and bit of UR Detected (SetUrDetectedReg)
++    uint32_t         ur_reg;
++    uint32_t         ur_bit;
++
++    // openPCIE: the request being answered: its TC (header byte 1) and Attr
++    // (byte 2, << 8), copied into the Completions made meanwhile (2.2.9)
++    uint32_t         cpl_tc_attr;
+ 
+     // Ordered set and Training sequence reception state
+     LinkEventCount_t linkevent;
+@@ -261,6 +279,26 @@
+     bool             draining_queue;
+     bool             tx_disabled;
+ 
++    // openPCIE: the Data Link receive state (3.5.3.1): the next sequence
++    // number expected, and a Nak sent since the last good TLP
++    int              next_rcv_seq;
++    bool             nak_scheduled;
++
++    // openPCIE: the replay timer and REPLAY_NUM (3.5.2.1)
++    bool             replay_running;
++    uint32_t         replay_start;
++    int              replay_num;
++    uint32_t         replay_rec_ticks; // GetLinkRecoveryTicks() when last looked: the timer holds in Recovery
++
++    // openPCIE: one-shot faults (InjectFault()), and the packet being sent
++    // with its CRC inverted on the wire
++    int              fault;
++    pPkt_t           corrupt_p;
++    pPkt_t           dup_copy;         // FAULT_TX_DUP: a copy of a TLP sent, for SendDuplicate()
++
++    // openPCIE: no UpdateFC before this cycle (HoldFc())
++    uint32_t         fc_hold_until;
++
+ } PcieModelState_t, *pPcieModelState_t;
+ 
+ // -------------------------------------------------------------------------
+@@ -287,6 +325,7 @@
+ void        AddPktToQueue        (const pPcieModelState_t const state, const pPkt_t const packet);
+ void        AddPktToQueueDelay   (const pPcieModelState_t const state, const pPkt_t const packet);
+ void        ExtractPhyInput      (const pPcieModelState_t const state, const uint32_t* const rawlinkin);
++void        CorrectableDetected  (const pPcieModelState_t const state);
+ 
+ uint32_t    CalcNewRand          (const uint32_t Seed);
+ void        CheckFree            (void *ptr);
+--- a/src/mem.h
++++ b/src/mem.h
+@@ -88,6 +88,7 @@
+ extern void     ReadConfigSpaceBuf        (const uint32_t addr, PktData_t* const data, const int length, const uint32_t node);
+ extern void     WriteConfigSpaceMask      (const uint32_t addr, const uint32_t data, const uint32_t node);
+ extern uint32_t ReadConfigSpaceMask       (const uint32_t addr, const uint32_t node);
++extern void     WriteConfigSpaceW1c       (const uint32_t addr, const uint32_t data, const uint32_t node);  // openPCIE: RW1C bits
+ extern void     WriteConfigSpaceMaskBuf   (const uint32_t addr, const PktData_t* const data, const int length, const uint32_t node);
+ extern void     ReadConfigSpaceMaskBuf    (const uint32_t addr, PktData_t* const data, const int length, const uint32_t node);
+ 
+--- a/src/pci_express.h
++++ b/src/pci_express.h
+@@ -53,6 +53,8 @@
+ // Training sequence definitions
+ #define TS1_ID                     0x4a
+ #define TS2_ID                     0x45
++#define TS1_ID_INV                 0xb5 // openPCIE: D21.5, TS1_ID on a lane with its polarity inverted (4.2.4.4)
++#define TS2_ID_INV                 0xba // openPCIE: D26.5, TS2_ID the same
+ #define INV_TS1_ID                 0xb5
+ #define INV_TS2_ID                 0xba
+ 
+@@ -265,7 +267,7 @@
+ 
+ typedef union {
+     cfg_spc_pcie_caps_struct_t pcie_caps_struct;
+-    uint32_t                   words[0x0e];
++    uint32_t                   words[0x0f];   // openPCIE: 15 DWs, CFG_PCIE_CAPS_SIZE_BYTES (was 0x0e)
+ } cfg_spc_pcie_caps_t;
+ 
+ typedef struct  __attribute__ ((__packed__)) {
+--- a/src/pcie.c
++++ b/src/pcie.c
+@@ -37,6 +37,9 @@
+ #include "ltssm.h"
+ #include "displink.h"
+ 
++// openPCIE: the physical lane of logical lane l (SetLaneReverse())
++#define PHYS_LANE(s, l) ((s)->lane_reverse ? (s)->LinkWidth-1-(l) : (l))
++
+ // -------------------------------------------------------------------------
+ // GLOBALS
+ // -------------------------------------------------------------------------
+@@ -50,6 +53,14 @@
+ 
+ #define this pms[node]
+ 
++// openPCIE: the Artix-7 RC profile (ltssm.c) keeps its SKP interval in training
++#if !defined(EXCLUDE_LTSSM) && !defined(OSVVM)
++#define TS_SKP_A7RC(_node) (GetLinkProfile(_node) == LTSSM_PROFILE_ARTIX7_RC)
++#else
++#define TS_SKP_A7RC(_node) false
++#endif
++#define A7RC_NAK_REPLAY_TICKS 170 // openPCIE: with the link, the hard macro's 364 ns from a Nak to its replay, at Gen2
++
+ // -------------------------------------------------------------------------
+ // SendPacket()
+ //
+@@ -59,6 +70,8 @@
+ //
+ // -------------------------------------------------------------------------
+ 
++static void Replay (const int node);
++
+ void SendPacket(const int node)
+ {
+     int lanes = 0, idx = 0;
+@@ -84,6 +97,22 @@
+ 
+     this->draining_queue = true;
+ 
++    // openPCIE: while the transmitter is disabled (SetTxDisabled), send one
++    // stripe of logical idle and keep the queue, Acks and Naks for later
++    if (this->tx_disabled)
++    {
++        for (lanes = 0; lanes < this->LinkWidth; lanes++)
++        {
++            LinkOut[lanes] = 0;
++            code           = Encode(LinkOut[lanes], usrconf->DisableScrambling, usrconf->Disable8b10b, lanes, this->LinkWidth, node);
++            LinkIn[lanes]  = (uint32_t)VWrite(LINKADDR0+PHYS_LANE(this, lanes), code, lanes != this->LinkWidth-1, node);
++        }
++        DispRaw(this, LinkOut, false);
++        ExtractPhyInput(this, LinkIn);
++        this->draining_queue = false;
++        return;
++    }
++
+     // If we have outstanding Acks, clear the head of the queue for the
+     // acknowledged packets
+     if (!usrconf->DisableAck)
+@@ -93,9 +122,14 @@
+         if (this->curr_ack != NULLACK)
+         {
+             while ((this->head_p != NULL && this->head_p != this->send_p) &&
+-                   ((this->head_p->seq != DLLP_SEQ_ID && this->head_p->seq <= this->curr_ack) ||
++                   ((this->head_p->seq != DLLP_SEQ_ID && ((this->curr_ack - this->head_p->seq) & 0xfff) < 2048) ||
+                     (this->head_p->seq == DLLP_SEQ_ID)))
+             {
++                if (this->head_p->seq != DLLP_SEQ_ID)
++                {
++                    this->replay_start = GetCycleCount(node);   // openPCIE: an Ack that purges restarts the timer
++                    this->replay_num   = 0;
++                }
+                 tmp_p = this->head_p;
+                 this->head_p = this->head_p->NextPkt;
+                 CheckFree(tmp_p->data);
+@@ -108,15 +142,100 @@
+             this->curr_ack = NULLACK;
+         }
+ 
+-        // If we have received a NAK, reset the send pointer to the NAK'ed packet
+-        if (this->curr_nak != NULLACK)
++        // openPCIE: both purges compare sequence numbers modulo 4096 (12 bits);
++        // upstream compared the unwrapped count, wrong after 4096 TLPs
++
++        // If we have received a NAK, reset the send pointer to the NAK'ed packet.
++        // openPCIE: the Nak acknowledges the TLPs up to its sequence number, so
++        // free those, then send again from the first one after it (upstream
++        // skipped while seq > Nak, and ran off the end of the queue)
++        // openPCIE: the Artix-7 RC profile at Gen2 x1 replays like the hard
++        // macro (make HM_PROBE=1): A7RC_NAK_REPLAY_TICKS after the Nak; TLPs
++        // already queued go out meanwhile, and again in the replay
++        if (this->curr_nak != NULLACK && TS_SKP_A7RC(node) && this->LinkWidth == 1 && GetLinkSpeed(node) == 2 &&
++            !this->nak_wait)
+         {
+-            this->send_p = this->head_p;
+-            while (this->send_p->seq > this->curr_nak)
++            this->nak_wait = true;
++            this->nak_seen = GetCycleCount(node);
++        }
++        if (this->curr_nak != NULLACK &&
++            !(this->nak_wait && (int32_t)(GetCycleCount(node) - this->nak_seen) < A7RC_NAK_REPLAY_TICKS))
++        {
++            this->nak_wait = false;
++            while ((this->head_p != NULL && this->head_p != this->send_p) &&
++                   ((this->head_p->seq != DLLP_SEQ_ID && ((this->curr_nak - this->head_p->seq) & 0xfff) < 2048) ||
++                    (this->head_p->seq == DLLP_SEQ_ID)))
++            {
++                if (this->head_p->seq != DLLP_SEQ_ID)
++                {
++                    this->replay_num = 0;           // openPCIE: forward progress
++                }
++                tmp_p = this->head_p;
++                this->head_p = this->head_p->NextPkt;
++                CheckFree(tmp_p->data);
++                CheckFree(tmp_p);
++            }
++            if (this->head_p == NULL)
+             {
+-                this->send_p = this->send_p->NextPkt;
++                this->head_p = this->end_p = this->send_p;
+             }
++            Replay(node);
+             this->curr_nak = NULLACK;
++            if (this->send_p != NULL)               // openPCIE: a replay counts (3.5.2.1)
++            {
++                if (++this->replay_num == 4)
++                {
++                    VPrint("SendPacket: Info --- REPLAY_NUM rolled over at node %d\n", node);
++                    CorrectableDetected(this);      // REPLAY_NUM Rollover
++                    this->replay_num = 0;
++                }
++                this->replay_start = GetCycleCount(node);
++            }
++        }
++
++        // openPCIE: the replay timer (3.5.2.1) runs while a TLP sent is not
++        // Acked, from its start or the last Ack that purged; on expiry the
++        // unAcked TLPs go again, and REPLAY_NUM counts up (Recovery at 4 is
++        // the LTSSM's, logged here). Upstream had none: it replayed on a Nak only
++        {
++            bool unacked = false;
++            for (tmp_p = this->head_p; tmp_p != NULL && tmp_p != this->send_p; tmp_p = tmp_p->NextPkt)
++            {
++                unacked |= tmp_p->seq != DLLP_SEQ_ID;
++            }
++            // the Artix-7 RC profile at x1: the hard macro's timer, measured
++            // at Gen2 (make HM_PROBE=1): about 2.84 us, close to the Gen1
++            // value (legal at Gen2 x1: +100%; not at x4, whose table is lower)
++            bool     a7x1  = TS_SKP_A7RC(node) && this->LinkWidth == 1;
++            bool     x4    = this->LinkWidth == 4;   // the wrapper's width: the link's, here
++            uint32_t timer = (GetLinkSpeed(node) == 2) ? (a7x1 ? 2 * REPLAY_TIMER_GEN1 : x4 ? REPLAY_TIMER_GEN2_X4 : REPLAY_TIMER_GEN2)
++                                                       : (x4 ? REPLAY_TIMER_GEN1_X4 : REPLAY_TIMER_GEN1);
++            uint32_t rec   = GetLinkRecoveryTicks(node);
++            if (this->replay_running)
++            {
++                this->replay_start += rec - this->replay_rec_ticks;   // held in Recovery (3.5.2.1)
++            }
++            this->replay_rec_ticks = rec;
++            if (!unacked)
++            {
++                this->replay_running = false;
++            }
++            else if (!this->replay_running)
++            {
++                this->replay_running = true;
++                this->replay_start   = GetCycleCount(node);
++            }
++            else if ((int32_t)(GetCycleCount(node) - this->replay_start) >= (int32_t)timer && !this->nak_wait)
++            {
++                CorrectableDetected(this);          // Replay Timer Timeout (and Rollover)
++                if (++this->replay_num == 4)
++                {
++                    VPrint("SendPacket: Info --- REPLAY_NUM rolled over at node %d\n", node);
++                    this->replay_num = 0;
++                }
++                Replay(node);
++                this->replay_start = GetCycleCount(node);
++            }
+         }
+ 
+         // If we've ACk/NAKs to send, insert to front of send list
+@@ -165,6 +284,18 @@
+     // Main output packet loop
+     do
+     {
++        // openPCIE: a SKP Ordered Set scheduled meanwhile goes at the next packet
++        // boundary (4.2.7.1; a packet starts on lane 0 up to x4, 4.2.2). Upstream sent
++        // them only once the queue had drained: traffic that kept it full
++        // (Completions to a stream of reads) held them back for 11000 Symbol Times
++        if (idx == 0 && this->send_p != NULL)
++        {
++            while (this->SkipScheduled && !usrconf->DisableSkips)
++            {
++                SendOs(SKP, node);
++            }
++        }
++
+         // Loop through lanes
+         for (lanes = 0; lanes < this->LinkWidth; lanes++)
+         {
+@@ -186,14 +317,40 @@
+             }
+             else
+             {
++                // openPCIE: a one-shot fault picks the packet as it starts
++                if (idx == 0 && this->fault && this->corrupt_p == NULL)
++                {
++                    bool tlp = this->send_p->data[0] == STP && this->send_p->Retry == 0;
++                    bool dll = this->send_p->data[0] == SDP;
++                    if ((tlp && (this->fault & FAULT_TX_BAD_LCRC)) || (dll && (this->fault & FAULT_TX_BAD_DLLP)))
++                    {
++                        this->fault    &= tlp ? ~FAULT_TX_BAD_LCRC : ~FAULT_TX_BAD_DLLP;
++                        this->corrupt_p = this->send_p;
++                    }
++                }
+                 LinkOut[lanes] = this->send_p->data[idx++];
++
++                // openPCIE: the CRC inverted on the wire, the stored packet good
++                if (this->send_p == this->corrupt_p && this->send_p->data[idx] != PKT_TERMINATION)
++                {
++                    int end = idx;
++                    while (this->send_p->data[end] != PKT_TERMINATION)
++                    {
++                        end++;
++                    }
++                    int crc = (this->send_p->data[0] == STP) ? 4 : 2;      // LCRC or DLLP CRC, before END
++                    if (idx - 1 >= end - 1 - crc && idx - 1 < end - 1)
++                    {
++                        LinkOut[lanes] ^= 0xff;
++                    }
++                }
+             }
+ 
+             // Encode the data
+             code = Encode(LinkOut[lanes], usrconf->DisableScrambling, usrconf->Disable8b10b, lanes, this->LinkWidth, node);
+ 
+             // Output codes to current lanes and read input
+-            LinkIn[lanes]  = (uint32_t)VWrite(LINKADDR0+lanes, code, lanes != this->LinkWidth-1, node);
++            LinkIn[lanes]  = (uint32_t)VWrite(LINKADDR0+PHYS_LANE(this, lanes), code, lanes != this->LinkWidth-1, node);
+ 
+             // Last lane
+             if (lanes == (this->LinkWidth-1))
+@@ -233,10 +390,84 @@
+                     {
+                         DispTl(this, this->send_p, false);
+                     }
++                    if (this->mon_cb != NULL)
++                    {
++                        (this->mon_cb)(this->send_p, 0, 0, this->mon_usrptr);
++                    }
+ 
+                     this->send_p->Retry += 1;
++                    // openPCIE: the replay timer starts at the end of a TLP sent
++                    // while it is stopped, and restarts at the end of the
++                    // first TLP of a replay (3.5.2.1)
++                    if (this->send_p->data[0] == STP)
++                    {
++                        if (this->send_p->Retry == 1 && !this->replay_running)
++                        {
++                            this->replay_running = true;
++                            this->replay_start   = GetCycleCount(node);
++                        }
++                        else if (this->send_p->Retry > 1 && this->send_p == this->head_p)
++                        {
++                            this->replay_start = GetCycleCount(node);
++                        }
++                    }
++                    if (this->send_p == this->corrupt_p)
++                    {
++                        this->corrupt_p = NULL;
++                    }
++                    // openPCIE: FAULT_TX_DUP: a copy of a new TLP, for SendDuplicate()
++                    if (this->send_p->data[0] == STP && this->send_p->Retry == 1 && (this->fault & FAULT_TX_DUP))
++                    {
++                        int n = 0;
++                        while (this->send_p->data[n++] != PKT_TERMINATION)
++                        {
++                        }
++                        this->fault          &= ~FAULT_TX_DUP;
++                        this->dup_copy        = malloc(sizeof(sPkt_t));
++                        *(this->dup_copy)     = *(this->send_p);
++                        this->dup_copy->data  = malloc(n * sizeof(PktData_t));
++                        memcpy(this->dup_copy->data, this->send_p->data, n * sizeof(PktData_t));
++                        this->dup_copy->NextPkt = NULL;
++                    }
+                     this->send_p = this->send_p->NextPkt;
+                     idx = 0;
++
++                    // openPCIE: a Nak or Ack whose time has come goes before the
++                    // next TLP (3.5.3.1). Upstream looked only on entry, so a
++                    // queue of TLPs held the Ack back to its end
++                    if (!usrconf->DisableAck && this->nak_to_send_p != NULL &&
++                        this->send_p != &(this->AckHolder) && this->send_p != &(this->NakHolder) &&
++                        ((GetCycleCount(node) - this->nak_to_send_p->TimeStamp) > usrconf->AckRate))
++                    {
++                        this->NakHolder = *(this->nak_to_send_p);
++                        this->NakHolder.data = NakDataHolder;
++                        for (i = 0; i < MAX_DLLP_BYTES; i++)
++                        {
++                            NakDataHolder[i] = this->nak_to_send_p->data[i];
++                        }
++                        this->NakHolder.NextPkt = this->send_p;
++                        this->send_p = &(this->NakHolder);
++                        CheckFree(this->nak_to_send_p->data);
++                        CheckFree(this->nak_to_send_p);
++                        this->nak_to_send_p = NULL;
++                    }
++                    if (!usrconf->DisableAck && this->ack_to_send_p != NULL &&
++                        this->send_p != &(this->AckHolder) && this->send_p != &(this->NakHolder) &&
++                        ((GetCycleCount(node) - this->ack_to_send_p->TimeStamp) > usrconf->AckRate))
++                    {
++                        this->AckHolder = *(this->ack_to_send_p);
++                        this->AckHolder.data = AckDataHolder;
++                        for (i = 0; i < MAX_DLLP_BYTES; i++)
++                        {
++                            AckDataHolder[i] = this->ack_to_send_p->data[i];
++                        }
++                        this->AckHolder.NextPkt = this->send_p;
++                        this->send_p = &(this->AckHolder);
++                        CheckFree(this->ack_to_send_p->data);
++                        CheckFree(this->ack_to_send_p);
++                        this->ack_to_send_p = NULL;
++                    }
++
+                     padding = (this->send_p == NULL);
+                 }
+             }
+@@ -628,6 +859,8 @@
+     SET_CPL_CID(cid, pkt_p);
+     SET_CPL_RID(rid, pkt_p);
+     SET_CPL_STATUS(status, pkt_p);
++    pkt_p[TLP_TYPE_BYTE_OFFSET + 1] |= this->cpl_tc_attr & 0x70;           // openPCIE: the request's TC
++    pkt_p[TLP_TYPE_BYTE_OFFSET + 2] |= (this->cpl_tc_attr >> 8) & 0x30;    // ... and Attr (2.2.9)
+     SET_CPL_BYTE_COUNT(status ? 4 : CalcByteCount(rlength, fbe, lbe), pkt_p);
+     SET_CPL_LOW_ADDR(status ? 0 : (addr | CalcLoAddr(fbe)) & 0x7f, pkt_p);
+     SET_DLLP_SEQ(this->seq, pkt_p);
+@@ -1374,7 +1607,7 @@
+ 
+     // If no Ack pending, or requested Ack is higher than current sequence, generate
+     // a new packet and set Ack pointer to it
+-    if (this->ack_to_send_p == NULL || sequence > GET_DLLP_SEQ(this->ack_to_send_p->data))
++    if (this->ack_to_send_p == NULL || (((sequence - GET_DLLP_SEQ(this->ack_to_send_p->data)) & 0xfff) - 1) < 2047)
+     {
+ 
+         // Free up space for superseded Ack
+@@ -1458,12 +1691,14 @@
+ 
+     // If no Nak pending, or requested Nak is lowest sequence, generate
+     // a new packet and set NAK pointer to it
+-    if (this->nak_to_send_p == NULL || sequence < GET_DLLP_SEQ(this->nak_to_send_p->data))
++    // openPCIE: older modulo 4096, and the pending Nak's own timestamp
++    // (upstream: unwrapped, and the Ack's, NULL without one)
++    if (this->nak_to_send_p == NULL || (unsigned)(((GET_DLLP_SEQ(this->nak_to_send_p->data) - sequence) & 0xfff) - 1) < 2047u)
+     {
+         // Free up space for superseded Nak
+         if (this->nak_to_send_p != NULL)
+         {
+-            OldTimeStamp = this->ack_to_send_p->TimeStamp;
++            OldTimeStamp = this->nak_to_send_p->TimeStamp;
+             CheckFree(this->nak_to_send_p->data);
+             CheckFree(this->nak_to_send_p);
+         }
+@@ -1571,7 +1806,53 @@
+     packet->Retry = 0;
+     packet->ByteCount = 8;
+ 
+-    AddPktToQueue(this, packet);
++    // openPCIE: an UpdateFC raised while the queue drains goes right after the
++    // packet on the wire, before the TLPs still queued (3.5.2.1, its
++    // transmission priority; 2.6.1.2). Upstream appended it, so a backlog of
++    // Completions held it back. When the packet on the wire is an Ack/Nak
++    // holder (not in the list), in front of the list packet it leads to
++    pPkt_t cur = this->send_p;
++    bool   upd = (type == DL_UPDATEFC_P || type == DL_UPDATEFC_NP || type == DL_UPDATEFC_CPL) && this->draining_queue;
++    bool   hld = (cur == &(this->AckHolder) || cur == &(this->NakHolder));
++    if (upd && cur != NULL && !hld)
++    {
++        packet->NextPkt = cur->NextPkt;
++        cur->NextPkt    = packet;
++        if (this->end_p == cur)
++        {
++            this->end_p = packet;
++        }
++    }
++    else if (upd && cur != NULL && cur->NextPkt != NULL &&
++             cur->NextPkt != &(this->AckHolder) && cur->NextPkt != &(this->NakHolder))
++    {
++        pPkt_t nxt = cur->NextPkt, pred = NULL, q;
++        for (q = this->head_p; q != NULL && q != nxt; q = q->NextPkt)
++        {
++            pred = q;
++        }
++        if (q == NULL)
++        {
++            AddPktToQueue(this, packet);        // not in the list: as upstream
++        }
++        else
++        {
++            packet->NextPkt = nxt;
++            if (pred == NULL)
++            {
++                this->head_p = packet;
++            }
++            else
++            {
++                pred->NextPkt = packet;
++            }
++            cur->NextPkt = packet;
++        }
++    }
++    else
++    {
++        AddPktToQueue(this, packet);
++    }
+ 
+     if (!queue)
+     {
+@@ -1734,7 +2015,7 @@
+         for (lanes = 0; lanes < this->LinkWidth; lanes++)
+         {
+             LinkOut[sequence][lanes] = (sequence == 0) ? COM : Type;
+-            LinkIn[lanes]  = VWrite(LINKADDR0+lanes, Encode(LinkOut[sequence][lanes], this->usrconf.DisableScrambling, this->usrconf.Disable8b10b,
++            LinkIn[lanes]  = VWrite(LINKADDR0+PHYS_LANE(this, lanes), Encode(LinkOut[sequence][lanes], this->usrconf.DisableScrambling, this->usrconf.Disable8b10b,
+                                     lanes, this->LinkWidth, node), lanes != this->LinkWidth-1, node);
+ 
+             // When the last OS symbol is being output, display the OS
+@@ -1836,7 +2117,9 @@
+             }
+             else if (sequence == TS_DATA_RATE_SEQ)
+             {
+-                LinkOut[sequence][lanes] = is_gen2 ? TS_DATA_RATE_GEN2 : TS_DATA_RATE_GEN1;
++                // openPCIE: keep the speed_change and autonomous change bits of gen
++                LinkOut[sequence][lanes] = (is_gen2 ? TS_DATA_RATE_GEN2 : TS_DATA_RATE_GEN1) |
++                                           (gen & (TS_DATA_RATE_CHANGE_SPEED | TS_DATA_RATE_CHANGE_AUTO));
+             }
+             else if (sequence == TS_CONTROL_SEQ)
+             {
+@@ -1847,7 +2130,7 @@
+                 LinkOut[sequence][lanes] = identifier;
+             }
+ 
+-            LinkIn[lanes] = VWrite(LINKADDR0+lanes, Encode(LinkOut[sequence][lanes], true, this->usrconf.Disable8b10b,
++            LinkIn[lanes] = VWrite(LINKADDR0+PHYS_LANE(this, lanes), Encode(LinkOut[sequence][lanes], true, this->usrconf.Disable8b10b,
+                                                            lanes, this->LinkWidth, node), lanes != this->LinkWidth-1, node);
+ 
+             // When the last TS symbol is being output, display the TS
+@@ -1869,6 +2152,14 @@
+     }
+ 
+     this->draining_queue = old_draining_state;
++
++    // openPCIE: a SKP that fell due during the TS goes right after it, at the
++    // next Ordered Set boundary (4.2.7.1). Upstream kept them for SendPacket(),
++    // and sent them all on L0
++    while (this->SkipScheduled && !this->usrconf.DisableSkips)
++    {
++        SendOs(SKP, node);
++    }
+ }
+ 
+ void SendTs (const int identifier, const int lane_num, const int link_num, const int n_fts, const int control, const bool is_gen2, const int node)
+@@ -2050,6 +2341,28 @@
+ }
+ 
+ // -------------------------------------------------------------------------
++// SetPktMonitor() (openPCIE)
++//
++// Registers a callback that sees every TLP and DLLP, received and sent
++// (mon_callback_t, pcie.h). Call after InitialisePcie(); NULL removes it.
++// -------------------------------------------------------------------------
++
++void SetPktMonitor (const mon_callback_t cb_func, void *usrptr, const int node)
++{
++    this->mon_cb     = cb_func;
++    this->mon_usrptr = usrptr;
++}
++
++// openPCIE: where UR Detected lives in the endpoint's config space: the
++// Device Control/Status DW and the UR Detected bit (UrDetected() adds the
++// severity bit)
++void SetUrDetectedReg (const uint32_t reg, const uint32_t bit, const int node)
++{
++    this->ur_reg = reg;
++    this->ur_bit = bit;
++}
++
++// -------------------------------------------------------------------------
+ // ResetEventCount()
+ //
+ // Clear count for each lane for give OS/TS type. Returns
+@@ -2491,6 +2804,37 @@
+ }
+ 
+ // -------------------------------------------------------------------------
++// SetLaneReverse() / GetLaneReverse()
++//
++// openPCIE: lane reversal (4.2.4.9.1), for both the transmitter and the
++// receiver: logical lane l goes out and comes in on physical lane
++// LinkWidth-1-l (the wrapper's width: reversal of the full width only). A
++// lane's polarity belongs to its physical lane, so it moves
++// with it. Upstream had the core's ReverseIn/ReverseOut only, across all 16
++// lanes, which nothing set
++// -------------------------------------------------------------------------
++
++void SetLaneReverse (const bool reverse, const int node)
++{
++    if (this->lane_reverse != reverse)
++    {
++        for (int l = 0; l < this->LinkWidth / 2; l++)
++        {
++            bool inv = this->rx_invert[l];
++            this->rx_invert[l] = this->rx_invert[this->LinkWidth-1-l];
++            this->rx_invert[this->LinkWidth-1-l] = inv;
++        }
++        SwapLaneDisparity(this->LinkWidth, node);   // 8b/10b running disparity, likewise
++        this->lane_reverse = reverse;
++    }
++}
++
++bool GetLaneReverse (const int node)
++{
++    return this->lane_reverse;
++}
++
++// -------------------------------------------------------------------------
+ // SetTxDisabled()
+ //
+ // -------------------------------------------------------------------------
+@@ -2511,6 +2855,113 @@
+ }
+ 
+ // -------------------------------------------------------------------------
++// InjectFault()
++//
++// openPCIE: arms one-shot Data Link faults (FAULT_*), for a model testing its
++// link partner
++// -------------------------------------------------------------------------
++
++void InjectFault (const int fault, const int node)
++{
++    this->fault |= fault;
++}
++
++// openPCIE: a monitor of the ordered sets received (TS1_ID, TS2_ID: with
++// their fields; SKP, IDL, FTS), called beside the model's own processing
++// (RegisterOsCallback() replaces that)
++void SetOsMonitor (const os_callback_t cb_func, void *usrptr, const int node)
++{
++    this->os_mon        = cb_func;
++    this->os_mon_usrptr = usrptr;
++}
++
++// openPCIE: disarms the faults InjectFault() armed that have not fired
++void ClearFaults (const int node)
++{
++    this->fault = 0;
++}
++
++// -------------------------------------------------------------------------
++// HoldFc()
++//
++// openPCIE: no UpdateFC for 'ticks' symbol times: the link partner runs out
++// of credits and must wait (2.6.1), for a model testing it
++// -------------------------------------------------------------------------
++
++void HoldFc (const int ticks, const int node)
++{
++    this->fc_hold_until = GetCycleCount(node) + ticks;
++}
++
++// -------------------------------------------------------------------------
++// SendDuplicate()
++//
++// openPCIE: sends the TLP FAULT_TX_DUP kept, as it went out: its sequence
++// number again, after it was Acked (a duplicate, 3.5.3.1), for a model
++// testing its link partner
++// -------------------------------------------------------------------------
++
++void SendDuplicate (const int node)
++{
++    if (this->dup_copy != NULL)
++    {
++        this->dup_copy->Retry = 1;
++        AddPktToQueue(this, this->dup_copy);
++        this->dup_copy = NULL;
++        SendPacket(node);
++    }
++}
++
++// -------------------------------------------------------------------------
++// GetCompleterId()
++//
++// openPCIE: the bus and device numbers captured from Type 0 Configuration
++// Writes (2.2.6.2), the node's Requester ID for its own requests
++// -------------------------------------------------------------------------
++
++uint32_t GetCompleterId (const int node)
++{
++    return this->CplId;
++}
++
++// -------------------------------------------------------------------------
++// Replay()
++//
++// openPCIE: send the unAcked TLPs again, from the queue's head, without the
++// DLLPs already sent between them: an old UpdateFC could move the partner's
++// credit limit back (upstream sent them again)
++// -------------------------------------------------------------------------
++
++static void Replay (const int node)
++{
++    pPkt_t *pp = &(this->head_p), tmp_p;
++
++    while (*pp != NULL && *pp != this->send_p)
++    {
++        if ((*pp)->seq == DLLP_SEQ_ID)
++        {
++            tmp_p = *pp;
++            *pp   = tmp_p->NextPkt;
++            CheckFree(tmp_p->data);
++            CheckFree(tmp_p);
++        }
++        else
++        {
++            pp = &((*pp)->NextPkt);
++        }
++    }
++    if (this->send_p == NULL)
++    {
++        this->end_p = NULL;
++        for (tmp_p = this->head_p; tmp_p != NULL; tmp_p = tmp_p->NextPkt)
++        {
++            this->end_p = tmp_p;
++        }
++    }
++    this->send_p = this->head_p;
++}
++
++// -------------------------------------------------------------------------
+ // getPcieVersionString()
+ // -------------------------------------------------------------------------
+ 
+--- a/src/mem.c
++++ b/src/mem.c
+@@ -37,6 +37,7 @@
+ static pPrimaryTbl_t PrimaryTable[VP_MAX_NODES];
+ static uint8_t       **pCfgSpace       = NULL;
+ static uint8_t       **pCfgSpaceMask   = NULL;
++static uint8_t       **pCfgSpaceW1c    = NULL;   // openPCIE: RW1C bits (write 1 to clear)
+ 
+ // -------------------------------------------------------------------------
+ // InitialiseMem()
+@@ -234,7 +235,9 @@
+     sidx = (addr >> 12) & TABLEMASK;
+     offset = addr & TABLEMASK;
+ 
+-    if ((addr & ~TABLEMASK) != ((addr + length) & ~TABLEMASK))
++    // openPCIE: the last byte is addr + length - 1, as in WriteRamByteBlock();
++    // upstream refused a read that ends at a 4K boundary
++    if ((addr & ~TABLEMASK) != ((addr + length - 1) & ~TABLEMASK))
+     {
+         VPrint("ReadRamByteBlock: %s***Error --- block read crosses 4K boundary%s\n", FMT_RED, FMT_NORMAL);
+         VWrite(PVH_FATAL, 0, 0, node);
+@@ -510,7 +513,7 @@
+         }
+         for (idx = 0; idx < VP_MAX_NODES; idx++)
+         {
+-            pCfgSpace[node] = NULL;
++            pCfgSpace[idx] = NULL;       // openPCIE: upstream cleared [node] each time
+         }
+     }
+ 
+@@ -541,6 +544,12 @@
+              (idx >= 4 && idx < (length-4)))
+         {
+             pCfgSpace[node][addr + idx] = (pCfgSpace[node][addr + idx] & ~mask) | ((data[idx] & 0xff) & mask);
++
++            // openPCIE: RW1C bits, read-only in the mask, cleared by a 1 (7.4)
++            if (use_mask && pCfgSpaceW1c != NULL && pCfgSpaceW1c[node] != NULL)
++            {
++                pCfgSpace[node][addr + idx] &= ~(data[idx] & pCfgSpaceW1c[node][addr + idx]);
++            }
+             DebugVPrint("*****WriteConfigSpaceBuf: %02x\n", pCfgSpace[node][addr + idx]);
+         }
+     }
+@@ -658,7 +667,7 @@
+         }
+         for (idx = 0; idx < VP_MAX_NODES; idx++)
+         {
+-            pCfgSpaceMask[node] = NULL;
++            pCfgSpaceMask[idx] = NULL;   // openPCIE: upstream cleared [node] each time
+         }
+     }
+ 
+@@ -680,6 +689,46 @@
+     }
+ }
+ 
++// -------------------------------------------------------------------------
++// WriteConfigSpaceW1c()
++//
++// openPCIE: marks the RW1C bits of a word of the 4K config space: a
++// Configuration write of 1 clears such a bit, 0 leaves it. Mark them
++// read-only in the mask too, so that a write never sets them
++// -------------------------------------------------------------------------
++
++void WriteConfigSpaceW1c(const uint32_t addr, const uint32_t data, const uint32_t node)
++{
++    int idx;
++
++    if (pCfgSpaceW1c == NULL)
++    {
++        if ((pCfgSpaceW1c = malloc(sizeof(char*) * VP_MAX_NODES)) == NULL)
++        {
++            VPrint("WriteConfigSpaceW1c: %s***Error --- failed to allocate config space memory%s\n", FMT_RED, FMT_NORMAL);
++            VWrite(PVH_FATAL, 0, 0, node);
++        }
++        for (idx = 0; idx < VP_MAX_NODES; idx++)
++        {
++            pCfgSpaceW1c[idx] = NULL;
++        }
++    }
++
++    if (pCfgSpaceW1c[node] == NULL)
++    {
++        if ((pCfgSpaceW1c[node] = calloc(TABLESIZE, 1)) == NULL)
++        {
++            VPrint("WriteConfigSpaceW1c: %s***Error --- failed to allocate config space memory%s\n", FMT_RED, FMT_NORMAL);
++            VWrite(PVH_FATAL, 0, 0, node);
++        }
++    }
++
++    for (idx = 0; idx < 4; idx++)
++    {
++        pCfgSpaceW1c[node][(addr & 0xffc) + idx] = (data >> (8 * idx)) & 0xff;
++    }
++}
++
+ // -------------------------------------------------------------------------
+ // ReadConfigSpaceMask()
+ //
+--- a/src/displink.c
++++ b/src/displink.c
+@@ -79,7 +79,7 @@
+ 
+     for (idx = 3; idx + 3 <= last; idx += 4)
+     {
+-        uint32_t dw = ((pkt->data[idx]   & 0xff) << 24) | ((pkt->data[idx+1] & 0xff) << 16) |
++        uint32_t dw = ((uint32_t)(pkt->data[idx]   & 0xff) << 24) | ((pkt->data[idx+1] & 0xff) << 16) |
+                       ((pkt->data[idx+2] & 0xff) <<  8) |  (pkt->data[idx+3] & 0xff);
+         int      addr = (idx == 3)        ? (rx ? TAP_TLP_RX_SOP : TAP_TLP_TX_SOP) :
+                         (idx + 3 == last) ? (rx ? TAP_TLP_RX_EOP : TAP_TLP_TX_EOP) :
+@@ -91,7 +91,7 @@
+ 
+ static void TapDll(const pPcieModelState_t const state, const pPkt_t const pkt, const bool rx)
+ {
+-    uint32_t dw = ((pkt->data[1] & 0xff) << 24) | ((pkt->data[2] & 0xff) << 16) |
++    uint32_t dw = ((uint32_t)(pkt->data[1] & 0xff) << 24) | ((pkt->data[2] & 0xff) << 16) |
+                   ((pkt->data[3] & 0xff) <<  8) |  (pkt->data[4] & 0xff);
+ 
+     VWrite(rx ? TAP_DLLP_RX : TAP_DLLP_TX, dw, 1, state->thisnode);
+@@ -261,7 +261,7 @@
+ 
+     for (idx = 0; idx < (4 * tl_length); idx += 4)
+     {
+-        uint32_t wdata = (pkt->data[data_offset+ idx] << 24) | (pkt->data[data_offset+ idx + 1] << 16)  | (pkt->data[data_offset+ idx + 2] << 8)  | (pkt->data[data_offset+ idx + 3]);
++        uint32_t wdata = ((uint32_t)pkt->data[data_offset+ idx] << 24) | (pkt->data[data_offset+ idx + 1] << 16)  | (pkt->data[data_offset+ idx + 2] << 8)  | (pkt->data[data_offset+ idx + 3]);
+ 
+         if (!((idx / 4) % 8))
+             VPrint("%s: %s%s", prefixstr, tloffstr, fmtdatastr);
+@@ -608,8 +608,8 @@
+         uint32_t dllp_word   =  (pkt->data[1]  << 24) | (pkt->data[2]  << 16) | (pkt->data[3]  << 8) | (pkt->data[4]);
+         uint32_t tl_word0    =  (pkt->data[3]  << 24) | (pkt->data[4]  << 16) | (pkt->data[5]  << 8) | (pkt->data[6]);
+         uint32_t tl_word1    =  (pkt->data[7]  << 24) | (pkt->data[8]  << 16) | (pkt->data[9]  << 8) | (pkt->data[10]);
+-        uint32_t tl_word2    =  (pkt->data[11] << 24) | (pkt->data[12] << 16) | (pkt->data[13] << 8) | (pkt->data[14]);
+-        uint32_t tl_word3    =  (pkt->data[15] << 24) | (pkt->data[16] << 16) | (pkt->data[17] << 8) | (pkt->data[18]);
++        uint32_t tl_word2    =  ((uint32_t)pkt->data[11] << 24) | (pkt->data[12] << 16) | (pkt->data[13] << 8) | (pkt->data[14]);
++        uint32_t tl_word3    =  ((uint32_t)pkt->data[15] << 24) | (pkt->data[16] << 16) | (pkt->data[17] << 8) | (pkt->data[18]);
+ 
+         // Word 0 header decode
+         uint32_t tl_fmt      = (tl_word0 >> 29) & 0x3;
+--- a/src/ltssm.h
++++ b/src/ltssm.h
+@@ -75,6 +75,28 @@
+ // Link initialisation
+ EXTERN void InitLink             (const int linkwidth,         const int node);
+ EXTERN void InitLinkGen          (const int linkwidth,         const int gen,   const int node);
++
++// L0 and speed change (openPCIE)
++EXTERN void LinkIdle             (const int ticks,             const int node);
++EXTERN void ChangeLinkSpeed      (const int gen,               const int node);
++EXTERN void RetrainLink          (const int node);
++EXTERN void SetLtssmVary         (const int max,               const int node);   // TS counts, idle times: up to max more
++EXTERN void SetLaneReversal      (const int on,                const int node);   // may reverse its lanes (4.2.4.9.1)
++EXTERN int  GetLinkSpeed         (const int node);
++EXTERN uint64_t GetLinkTimeNs    (const int node);
++EXTERN uint64_t GetLinkRecoveryNs(const int node);
++EXTERN uint32_t GetLinkRecoveryTicks(const int node);
++EXTERN int  GetLtssmState        (const int node);
++EXTERN uint64_t GetLtssmL0Ns     (const int node);
++EXTERN int  GetLtssmRates        (const int node);   // the rates it advertises, TS_DATA_RATE_GEN1/2
++EXTERN uint64_t GetLtssmEiosNs   (const int node);   // its last EIOS in Recovery.Speed (GetLinkTimeNs())
++EXTERN uint64_t GetLtssmIdleNs   (const int node);   // Configuration.Idle/Recovery.Idle began, else 0
++
++// Link profile (openPCIE): the link partner this node plays
++#define LTSSM_PROFILE_EP          0
++#define LTSSM_PROFILE_ARTIX7_RC   1
++EXTERN void SetLinkProfile       (const int profile,           const int node);
++EXTERN int  GetLinkProfile       (const int node);
+ EXTERN void ConfigLinkInit       (const ConfigLinkInit_t cfg,  const int node);
+ EXTERN void ConfigurePcieLtssm   (const config_t         type, const int value, const int node);
+ 
+--- a/src/pcie_utils.c
++++ b/src/pcie_utils.c
+@@ -34,6 +34,34 @@
+ #include "displink.h"
+ #include "codec.h"
+ 
++// openPCIE: between InitFC rounds, follow the partner into Recovery. The
++// Artix-7 RC profile (ltssm.c) paces InitFC and UpdateFC as that root port does
++#if !defined(EXCLUDE_LTSSM) && !defined(OSVVM)
++#include "ltssm.h"
++#define FC_INIT_WAIT(_ticks, _node) LinkIdle(_ticks, _node)
++#define FC_INIT_A7RC(_node)         (GetLinkProfile(_node) == LTSSM_PROFILE_ARTIX7_RC)
++#define A7RC_FC_STEP(_node)         (3 - GetLinkSpeed(_node))
++#else
++#define FC_INIT_WAIT(_ticks, _node) SendIdle(_ticks, _node)
++#define FC_INIT_A7RC(_node)         false
++#define A7RC_FC_STEP(_node)         0
++#endif
++
++// openPCIE: the Artix-7 RC's idle symbols after each InitFC DLLP: one DLLP
++// every 64 ns at Gen1, 192 ns a round
++#define A7RC_INITFC_GAP 8
++
++// openPCIE: the Artix-7 RC's UpdateFC timer is a time, 32.77 us at Gen1 and
++// Gen2, from the end of InitFC. LastSentFcTime then counts 2 ns steps since
++// the last UpdateFC: A7RC_FC_STEP() a symbol, 2 at Gen1, 1 at Gen2
++#define A7RC_FC_TIME 16384
++
++// openPCIE: the Artix-7 RC's FC_INIT2 completes on the partner's first InitFC2
++// or UpdateFC (FI2). Upstream waits for all three InitFC types again after FI1,
++// so it never gets there with a partner that sends one InitFC1 set and one
++// InitFC2 set, the first InitFC2 having moved us to FI1
++#define A7RC_FC_FI2(_flw, _node) { if (FC_INIT_A7RC(_node) && (_flw)->fc_state[0] == INITFC_FI1) (_flw)->fc_state[0] = INITFC_FI2; }
++
+ // -------------------------------------------------------------------------
+ // CalcNewRxDataCredits()
+ //
+@@ -207,6 +235,7 @@
+ 
+ static void UpdateConsumedFC(const pPcieModelState_t const state)
+ {
++    const bool a7rc = FC_INIT_A7RC(state->thisnode);
+     uint32_t current_cycle, i;
+     bool no_change = true;
+     pFlowControl_t flw = &(state->flwcntl);
+@@ -217,6 +246,12 @@
+         return;
+     }
+ 
++    // openPCIE: HoldFc(): no UpdateFC yet, the partner starves of credits
++    if ((int32_t)(GetCycleCount(state->thisnode) - state->fc_hold_until) < 0)
++    {
++        return;
++    }
++
+     current_cycle = GetCycleCount(state->thisnode);
+ 
+     DebugVPrint ("CONSUMED --- NPOSTED: hdr %x data %x, POSTED: hdr %x data %x, CPL: hdr %x data %x\n",
+@@ -259,7 +294,17 @@
+     for (i = 0; i < FC_NUMTYPES; i++)
+     {
+         // If a timeout, pretend there's been a change to force sending of flow control
+-        if (fc_timeout[i] = ((GetCycleCount(state->thisnode) - flw->LastSentFcTime[0][i]) > DEFAULT_FC_TIME))
++        if (a7rc)
++        {
++            flw->LastSentFcTime[0][i] += A7RC_FC_STEP(state->thisnode);
++            fc_timeout[i] = (flw->LastSentFcTime[0][i] >= A7RC_FC_TIME);
++        }
++        else
++        {
++            fc_timeout[i] = ((GetCycleCount(state->thisnode) - flw->LastSentFcTime[0][i]) > DEFAULT_FC_TIME);
++        }
++
++        if (fc_timeout[i])
+         {
+             no_change = false;
+         }
+@@ -267,20 +312,21 @@
+ 
+     // We need to send an update if not both header and data infinite, if there's been
+     // a change in consumed credits and if no header space left or data space
+-    // less than max payload size (or equal 0 for non-posted).
++    // less than max payload size (or equal 0 for non-posted). openPCIE: the
++    // Artix-7 RC does not send one just because it has nothing else to send.
+ 
+     // Non-posted
+     if (flw->ConsumedHdrCredits[0][FC_NONPOST] || flw->ConsumedDataCredits[0][FC_NONPOST])
+     {
+         if ((flw->ConsumedHdrUpdated[0][FC_NONPOST]  && ((flw->AdvertisedHdrCredits[0][FC_NONPOST]  - flw->RxHdrCredits[0][FC_NONPOST]) == 0)) ||
+             (flw->ConsumedDataUpdated[0][FC_NONPOST] && ((flw->AdvertisedDataCredits[0][FC_NONPOST] - flw->RxDataCredits[0][FC_NONPOST]) == 0)) ||
+-            ((flw->ConsumedHdrUpdated[0][FC_NONPOST] || flw->ConsumedDataUpdated[0][FC_NONPOST]) && (state->send_p == NULL)) ||
++            (!a7rc && (flw->ConsumedHdrUpdated[0][FC_NONPOST] || flw->ConsumedDataUpdated[0][FC_NONPOST]) && (state->send_p == NULL)) ||
+             fc_timeout[FC_NONPOST])
+         {
+             SendFC (DL_UPDATEFC_NP, 0, flw->ConsumedHdrCredits[0][FC_NONPOST]%(DL_MAX_HDRFC+1), flw->ConsumedDataCredits[0][FC_NONPOST]%(DL_MAX_DATAFC+1), state->draining_queue, state->thisnode);
+             flw->AdvertisedHdrCredits[0][FC_NONPOST] = flw->ConsumedHdrCredits[0][FC_NONPOST];
+             flw->AdvertisedDataCredits[0][FC_NONPOST] = flw->ConsumedDataCredits[0][FC_NONPOST];
+-            flw->LastSentFcTime[0][FC_NONPOST] = GetCycleCount(state->thisnode);
++            flw->LastSentFcTime[0][FC_NONPOST] = a7rc ? 0 : GetCycleCount(state->thisnode);
+             flw->ConsumedHdrUpdated[0][FC_NONPOST]  = 0;
+             flw->ConsumedDataUpdated[0][FC_NONPOST] = 0;
+         }
+@@ -291,13 +337,13 @@
+     {
+         if ((flw->ConsumedHdrUpdated[0][FC_CMPL]  && ((flw->AdvertisedHdrCredits[0][FC_CMPL]  - flw->RxHdrCredits[0][FC_CMPL]) == 0)) ||
+             (flw->ConsumedDataUpdated[0][FC_CMPL] && ((flw->AdvertisedDataCredits[0][FC_CMPL] - flw->RxDataCredits[0][FC_CMPL]) < DEFAULT_MAX_PAYLOAD_SIZE)) ||
+-            ((flw->ConsumedHdrUpdated[0][FC_CMPL] || flw->ConsumedDataUpdated[0][FC_CMPL]) && (state->send_p == NULL)) ||
++            (!a7rc && (flw->ConsumedHdrUpdated[0][FC_CMPL] || flw->ConsumedDataUpdated[0][FC_CMPL]) && (state->send_p == NULL)) ||
+             fc_timeout[FC_CMPL])
+         {
+             SendFC (DL_UPDATEFC_CPL, 0, flw->ConsumedHdrCredits[0][FC_CMPL]%(DL_MAX_HDRFC+1), flw->ConsumedDataCredits[0][FC_CMPL]%(DL_MAX_DATAFC+1), state->draining_queue, state->thisnode);
+             flw->AdvertisedHdrCredits[0][FC_CMPL] = flw->ConsumedHdrCredits[0][FC_CMPL];
+             flw->AdvertisedDataCredits[0][FC_CMPL] = flw->ConsumedDataCredits[0][FC_CMPL];
+-            flw->LastSentFcTime[0][FC_CMPL] = GetCycleCount(state->thisnode);
++            flw->LastSentFcTime[0][FC_CMPL] = a7rc ? 0 : GetCycleCount(state->thisnode);
+             flw->ConsumedHdrUpdated[0][FC_CMPL]  = 0;
+             flw->ConsumedDataUpdated[0][FC_CMPL] = 0;
+         }
+@@ -308,14 +354,14 @@
+     {
+         if ((flw->ConsumedHdrUpdated[0][FC_POST]  && ((flw->AdvertisedHdrCredits[0][FC_POST]  - flw->RxHdrCredits[0][FC_POST]) == 0)) ||
+             (flw->ConsumedDataUpdated[0][FC_POST] && ((flw->AdvertisedDataCredits[0][FC_POST] - flw->RxDataCredits[0][FC_POST]) < DEFAULT_MAX_PAYLOAD_SIZE)) ||
+-            ((flw->ConsumedHdrUpdated[0][FC_POST] || flw->ConsumedDataUpdated[0][FC_POST]) && (state->send_p == NULL)) ||
++            (!a7rc && (flw->ConsumedHdrUpdated[0][FC_POST] || flw->ConsumedDataUpdated[0][FC_POST]) && (state->send_p == NULL)) ||
+             fc_timeout[FC_POST])
+         {
+ 
+             SendFC (DL_UPDATEFC_P, 0, flw->ConsumedHdrCredits[0][FC_POST]%(DL_MAX_HDRFC+1), flw->ConsumedDataCredits[0][FC_POST]%(DL_MAX_DATAFC+1), state->draining_queue, state->thisnode);
+             flw->AdvertisedHdrCredits[0][FC_POST] = flw->ConsumedHdrCredits[0][FC_POST];
+             flw->AdvertisedDataCredits[0][FC_POST] = flw->ConsumedDataCredits[0][FC_POST];
+-            flw->LastSentFcTime[0][FC_POST] = GetCycleCount(state->thisnode);
++            flw->LastSentFcTime[0][FC_POST] = a7rc ? 0 : GetCycleCount(state->thisnode);
+             flw->ConsumedHdrUpdated[0][FC_POST]  = 0;
+             flw->ConsumedDataUpdated[0][FC_POST] = 0;
+         }
+@@ -350,9 +396,17 @@
+ //
+ // -------------------------------------------------------------------------
+ 
++// openPCIE: a after b, modulo 4096 (upstream compared the unwrapped values)
++static bool SeqAfter(const int a, const int b)
++{
++    int diff = (a - b) & 0xfff;
++    return diff != 0 && diff < 2048;
++}
++
+ static void AckPkt(const pPcieModelState_t const state, const int sequence)
+ {
+-    if (sequence < state->curr_nak && (sequence > state->curr_ack || state->curr_ack == NULLACK))
++    if ((state->curr_nak == NULLACK || SeqAfter(state->curr_nak, sequence)) &&
++        (state->curr_ack == NULLACK || SeqAfter(sequence, state->curr_ack)))
+     {
+         state->curr_ack = sequence;
+     }
+@@ -369,7 +423,7 @@
+ 
+ static void NakPkt(const pPcieModelState_t const state, const int sequence)
+ {
+-    if (sequence < state->curr_nak)
++    if (state->curr_nak == NULLACK || SeqAfter(state->curr_nak, sequence))
+     {
+         state->curr_nak = sequence;
+     }
+@@ -402,6 +456,56 @@
+ //
+ // -------------------------------------------------------------------------
+ 
++// openPCIE: an Unsupported Request detected: set UR Detected in Device Status
++// (7.8.5), when the user code said where it is (SetUrDetectedReg()), and the
++// error's severity bit (6.2.5, Figure 6-2, no AER): Non-Fatal Error Detected;
++// none for an Advisory Non-Fatal Error, a non-posted request's UR with
++// Role-Based Error Reporting (Device Capabilities bit 15, the DW before;
++// 6.2.3.2.4.1), which a function without AER does not signal
++static void UrDetected(const pPcieModelState_t const state, const bool non_posted)
++{
++    if (state->ur_bit)
++    {
++        bool     rber = (ReadConfigSpace(state->ur_reg - 4, state->thisnode) >> 15) & 1;
++        uint32_t sev  = (non_posted && rber) ? 0 : 0x00020000;
++        WriteConfigSpace(state->ur_reg, ReadConfigSpace(state->ur_reg, state->thisnode) | state->ur_bit | sev, state->thisnode);
++    }
++}
++
++// openPCIE: a poisoned TLP received by an endpoint: Status Detected Parity
++// Error (7.5.1.2), always; logged (dev) as Poisoned TLP Received in the Device
++// Status DW of SetUrDetectedReg(): with Role-Based Error Reporting an Advisory
++// Non-Fatal Error, Correctable Error Detected, as the endpoint carries on (the
++// data is dropped, 6.2.3.2.4.3); else Non-Fatal. Not logged when the TLP is an
++// Unsupported Request, which takes precedence (6.2)
++static void PoisonDetected(const pPcieModelState_t const state, const bool dev)
++{
++    if (!state->Endpoint)
++    {
++        return;
++    }
++    WriteConfigSpace(0x04, ReadConfigSpace(0x04, state->thisnode) | 0x80000000, state->thisnode);
++    if (dev && state->ur_bit)
++    {
++        bool rber = (ReadConfigSpace(state->ur_reg - 4, state->thisnode) >> 15) & 1;
++        if (!rber)                          // with it Advisory (6.2.3.2.4.3): no bit without AER
++        {
++            WriteConfigSpace(state->ur_reg, ReadConfigSpace(state->ur_reg, state->thisnode) | 0x00020000, state->thisnode);
++        }
++    }
++}
++
++// openPCIE: a Correctable error (Bad TLP, Bad DLLP, Replay Timer Timeout,
++// REPLAY_NUM Rollover; 6.2.7): Correctable Error Detected in Device Status,
++// with or without AER (6.2.5, Figure 6-2)
++void CorrectableDetected(const pPcieModelState_t const state)
++{
++    if (state->ur_bit)
++    {
++        WriteConfigSpace(state->ur_reg, ReadConfigSpace(state->ur_reg, state->thisnode) | 0x00010000, state->thisnode);
++    }
++}
++
+ static bool checkBars(const uint64_t addr, const uint32_t bytelen, const unsigned node)
+ {
+     uint64_t BAR;
+@@ -467,7 +571,9 @@
+         uint64_t endaddr = addr + bytelen;
+ 
+         // Check if all addresses are within the BAR's range
+-        if (addr >= BAR && addr < (BAR + length) && endaddr >= BAR && endaddr < (BAR + length))
++        // openPCIE: endaddr is one past the last byte, so it may equal the
++        // BAR's end; upstream refused an access that ends at the BAR's end
++        if (addr >= BAR && addr < (BAR + length) && endaddr > BAR && endaddr <= (BAR + length))
+         {
+             // OK to access if it is.
+             ok_to_access = true;
+@@ -485,6 +591,10 @@
+ // input link. Processes Acks/Naks and flow control DLLPs,
+ // and manages local memory reads and writes, generating
+ // completions for reads (by calling Completion() ).
++//
++// openPCIE: an endpoint's memory read Completions, at most this many bytes
++// each (Device Control's default Max_Payload_Size)
++#define CPL_MPS_BYTES 128
+ // Returned completions get passed up to user registered
+ // callback function.
+ //
+@@ -502,6 +612,13 @@
+ 
+     // Set an optimistic packet status
+     status = PKT_STATUS_GOOD;
++    state->cpl_tc_attr = 0;
++
++    // openPCIE: the packet monitor sees it first, as it came in
++    if (state->mon_cb != NULL)
++    {
++        (state->mon_cb)(pkt, 1, Edb, state->mon_usrptr);
++    }
+ 
+     // DLLP
+     if (pkt->seq == DLLP_SEQ_ID)
+@@ -554,6 +671,7 @@
+                 }
+                 break;
+             case DL_UPDATEFC_P:
++                A7RC_FC_FI2(flw, state->thisnode);
+                 if (state->usrconf.DisableFc)
+                 {
+                     if (state->vuser_cb != NULL)
+@@ -570,6 +688,7 @@
+                 }
+                 break;
+             case DL_UPDATEFC_NP:
++                A7RC_FC_FI2(flw, state->thisnode);
+                 if (state->usrconf.DisableFc)
+                 {
+                     if (state->vuser_cb != NULL)
+@@ -586,6 +705,7 @@
+                 }
+                 break;
+             case DL_UPDATEFC_CPL:
++                A7RC_FC_FI2(flw, state->thisnode);
+                 if (state->usrconf.DisableFc)
+                 {
+                     if (state->vuser_cb != NULL)
+@@ -647,6 +767,7 @@
+         {
+             DebugVPrint( "ProcessInput: Warning --- received bad DLLP on node %d\n", state->thisnode);
+             status = PKT_STATUS_BAD_DLLP_CRC;
++            CorrectableDetected(state);         // openPCIE: Bad DLLP
+ 
+             // Return bad packet to user process, if one registered. Otherwise discard.
+             if (state->vuser_cb != NULL)
+@@ -666,6 +787,10 @@
+         bool ecrc_present  = TLP_HAS_DIGEST(pkt->data);
+         bool gen_cmpl_ecrc = ecrc_present && !state->usrconf.DisableEcrcCmpl;
+ 
++        // openPCIE: a Completion carries its request's TC and Attr (2.2.9);
++        // upstream sent TC 0 and Attr 0 whatever the request had
++        state->cpl_tc_attr = (pkt->data[TLP_TYPE_BYTE_OFFSET + 1] & 0x70) | ((pkt->data[TLP_TYPE_BYTE_OFFSET + 2] & 0x30) << 8);
++
+         // Check LCRC
+         lcrc_offset = 15 + 4 * ((has_data ? GET_TLP_LENGTH(pkt->data) : 0) + (ecrc_present ? 1 : 0) + TLP_HDR_4DW(pkt->data));
+         crc[0] = pkt->data[lcrc_offset+0];
+@@ -703,10 +828,14 @@
+             else
+             {
+                 VPrint("ProcessInput: Info --- %sTlp LCRC failure%s. Sending NAK from node %d\n", fmterrstr, fmtnormstr, state->thisnode);
+-                if (!state->usrconf.DisableAck)
++                // openPCIE: the Nak carries the last good sequence number, once
++                // until a good TLP (3.5.3.1); upstream sent the bad TLP's own
++                if (!state->usrconf.DisableAck && !state->nak_scheduled)
+                 {
+-                    SendNak (pkt->seq, state->thisnode);
++                    SendNak ((state->next_rcv_seq - 1) & 0xfff, state->thisnode);
++                    state->nak_scheduled = true;
+                 }
++                CorrectableDetected(state);     // Bad TLP
+                 status |= PKT_STATUS_BAD_LCRC;
+             }
+ 
+@@ -723,6 +852,42 @@
+             return;
+         }
+ 
++        // openPCIE: the receive rules (3.5.3.1). The expected TLP is Acked and
++        // taken; a duplicate is Acked and dropped; one after a lost TLP is
++        // dropped, with one Nak. FAULT_RX_NAK_NEXT treats the expected one as
++        // bad. Upstream had no NEXT_RCV_SEQ: it took every TLP, also twice
++        if (!state->usrconf.DisableAck)
++        {
++            int ahead = (pkt->seq - state->next_rcv_seq) & 0xfff;
++            if (ahead == 0 && (state->fault & FAULT_RX_NAK_NEXT))
++            {
++                state->fault &= ~FAULT_RX_NAK_NEXT;
++                ahead         = 1;               // as if lost: Nak, drop
++            }
++            if (ahead != 0)
++            {
++                if (ahead >= 2048)
++                {
++                    SendAck ((state->next_rcv_seq - 1) & 0xfff, state->thisnode);
++                }
++                else
++                {
++                    CorrectableDetected(state);     // Bad TLP: one after a lost one
++                    if (!state->nak_scheduled)
++                    {
++                        SendNak ((state->next_rcv_seq - 1) & 0xfff, state->thisnode);
++                        state->nak_scheduled = true;
++                    }
++                }
++                CheckFree(pkt->data);
++                CheckFree(pkt);
++                return;
++            }
++            state->next_rcv_seq  = (state->next_rcv_seq + 1) & 0xfff;
++            state->nak_scheduled = false;
++            SendAck (pkt->seq, state->thisnode);
++        }
++
+         // Check ECRC, if present
+         if (!state->usrconf.DisableCrcChk &&
+             (ecrc_present && (ecrc[0] != pkt->data[ecrc_offset+0] || ecrc[1] != pkt->data[ecrc_offset+1] ||
+@@ -742,11 +907,7 @@
+             return;
+         }
+ 
+-        // Good CRC, so send an Ack
+-        if (!state->usrconf.DisableAck)
+-        {
+-            SendAck (pkt->seq, state->thisnode);
+-        }
++        // Good CRC: Acked above, with the sequence number (openPCIE)
+ 
+         // If mem write ...
+         if (!state->usrconf.DisableMem && (type == TL_MWR32 || type == TL_MWR64))
+@@ -768,7 +929,22 @@
+             length     = GET_TLP_LENGTH(pkt->data);
+ 
+             // Check if address is ok to to use
+-            if (checkBars(addr, length*4, state->thisnode))
++            if (!checkBars(addr, length*4, state->thisnode))
++            {
++                if (pkt->data[TLP_TYPE_BYTE_OFFSET + 2] & 0x40)
++                {
++                    PoisonDetected(state, false);   // openPCIE: Detected Parity Error, the UR logged
++                }
++                UrDetected(state, false);       // openPCIE: a posted UR is dropped, but detected
++            }
++            // openPCIE: a poisoned write: its data is not used (2.7.2.2), the
++            // error is logged (a UR outranks it, above). Upstream wrote the
++            // data and logged nothing
++            else if (pkt->data[TLP_TYPE_BYTE_OFFSET + 2] & 0x40)
++            {
++                PoisonDetected(state, true);
++            }
++            else
+             {
+                 pdata  = (type == TL_MWR32) ? &(pkt->data[TLP_DATA_OFFSET32]) : &(pkt->data[TLP_DATA_OFFSET64]);
+                 fbe    = GET_TLP_FBE(pkt->data);
+@@ -808,7 +984,14 @@
+             tag        = GET_TLP_TAG(pkt->data);
+ 
+             // Check address is good for an access
+-            if (checkBars(addr, length*4, state->thisnode))
++            // openPCIE: a PCI Express Endpoint does not support locked reads:
++            // MRdLk is an Unsupported Request (6.5); upstream completed it
++            if (is_locked && state->Endpoint)
++            {
++                UrDetected(state, true);
++                PartCompletionLockDelay(0, NULL, CPL_UNSUPPORTED, 0x0, 0x0, 0, 0, tag, cid, rid, is_locked, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
++            }
++            else if (checkBars(addr, length*4, state->thisnode))
+             {
+                 if (ReadRamByteBlock (addr, buff, length*4, state->thisnode))
+                 {
+@@ -817,10 +1000,29 @@
+                 }
+ 
+                 int rlen = (length ? length : MAX_PAYLOAD_BYTES/4);
+-                PartCompletionLockDelay(addr, buff, CPL_SUCCESS, fbe, lbe, rlen, rlen, tag, cid, rid, is_locked, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
++
++                // openPCIE: one Completion per Max_Payload_Size at most (2.2.2),
++                // split at aligned boundaries, so each ends on the RCB (2.3.1.1).
++                // Upstream sent the whole read in one TLP. Device Control's
++                // default Max_Payload_Size, 128 bytes: the RC never raises it
++                uint64_t a   = addr & ~3ULL;
++                int      off = 0;
++                while (rlen > 0)
++                {
++                    int n = (int)((CPL_MPS_BYTES - (a & (CPL_MPS_BYTES - 1))) / 4);
++                    n     = (n < rlen) ? n : rlen;
++                    int f = off ? 0xf : fbe;                                // first DW: whole after the first TLP
++                    int l = (rlen == 1 && off) ? 0 : lbe;
++                    f     = (rlen == 1 && off) ? lbe : f;                   // one DW left: the request's last
++                    PartCompletionLockDelay(a, &buff[off], CPL_SUCCESS, f, l, rlen, n, tag, cid, rid, is_locked, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
++                    a    += n * 4;
++                    off  += n * 4;
++                    rlen -= n;
++                }
+             }
+             else
+             {
++                UrDetected(state, true);
+                 PartCompletionLockDelay(0, NULL, CPL_UNSUPPORTED, 0x0, 0x0, 0, 0, tag, cid, rid, is_locked, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
+             }
+ 
+@@ -852,7 +1054,10 @@
+ 
+         // Config reads and writes (for Endpoints only)
+         }
+-        else if (!state->usrconf.DisableMem && state->Endpoint && (type == TL_CFGWR0 || type == TL_CFGRD0))
++        // (openPCIE: function 0 only; another function of this single-function
++        // device takes the branch below, a UR Completion)
++        else if (!state->usrconf.DisableMem && state->Endpoint && (type == TL_CFGWR0 || type == TL_CFGRD0) &&
++                 !(pkt->data[TLP_ADDR_OFFSET+1] & 0x07))
+         {
+             addr   = (uint64_t)(pkt->data[TLP_ADDR_OFFSET]   << 24) | (uint64_t)(pkt->data[TLP_ADDR_OFFSET+1] << 16) |
+                      (uint64_t)(pkt->data[TLP_ADDR_OFFSET+2] << 8)  | (uint64_t)(pkt->data[TLP_ADDR_OFFSET+3] << 0) ;
+@@ -870,6 +1075,14 @@
+ 
+                 PartCompletionDelay(0, buff, CPL_SUCCESS, 0xf, 0x0, 1, 1, tag, cid, rid, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
+             }
++            // openPCIE: a poisoned Configuration Write is discarded and gets UR
++            // (2.7.2.2); upstream wrote it and answered SC
++            else if (pkt->data[TLP_TYPE_BYTE_OFFSET + 2] & 0x40)
++            {
++                PoisonDetected(state, false);
++                UrDetected(state, true);
++                PartCompletionDelay(0, NULL, CPL_UNSUPPORTED, 0x0, 0x0, 0, 0, tag, cid, rid, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
++            }
+             else
+             {
+                 // The device completer ID is always updated on config writes
+@@ -893,6 +1106,27 @@
+             cid = state->CplId;
+             tag = GET_TLP_TAG(pkt->data);
+ 
++            // openPCIE: UR Detected, but not for messages an endpoint accepts or
++            // ignores: Vendor-Defined Type 1 (dropped silently, 2.2.8.6),
++            // Set_Slot_Power_Limit (2.2.8.5), PME_Turn_Off (5.3.3.2.1), Unlock
++            // (no locks), the Ignored Messages (2.2.8.7: the hot-plug
++            // indicator and button codes 40h, 41h, 43h-45h, 47h, 48h). With its
++            // memory disabled, the user code decides
++            {
++                bool msg  = (type & DL_ROUTE_MASK) == TL_MSG || (type & DL_ROUTE_MASK) == TL_MSGD;
++                int  code = pkt->data[TLP_TYPE_BYTE_OFFSET + 7] & 0xff;
++                bool ign  = code == 0x40 || code == 0x41 || (code >= 0x43 && code <= 0x45) || code == 0x47 || code == 0x48;
++                bool ur   = !(msg && (code == 0x7f || code == 0x50 || code == 0x19 || code == 0x00 || ign));
++                if (!state->usrconf.DisableMem && (pkt->data[TLP_TYPE_BYTE_OFFSET + 2] & 0x40))
++                {
++                    PoisonDetected(state, !ur);     // Detected Parity Error; logged as poison if not a UR
++                }
++                if (!state->usrconf.DisableMem && ur)
++                {
++                    UrDetected(state, !msg);
++                }
++            }
++
+             // Accesses, other than messages and memory write accesses, require a completion of some sort,
+             // unless specifically disabled or internal memory disabled where all packets get sent to
+             // any registered user callback function
+@@ -935,6 +1169,10 @@
+                       const pLinkEventCount_t const linkevent, const int lane, const int type, const pTS_t const ts_data,
+                       const os_callback_t cb, void* usrptr, const int node)
+ {
++    if (type != 0 && state->os_mon != NULL)    // openPCIE: an ordered set received, to the monitor
++    {
++        state->os_mon(type, lane, ts_data, state->os_mon_usrptr);
++    }
+     if (cb != NULL)
+     {
+         cb(type, lane, ts_data, usrptr);
+@@ -1050,8 +1288,10 @@
+ {
+     pPkt_t pkt1, pkt2;
+ 
+-    pkt1 = (pPkt_t)p1;
+-    pkt2 = (pPkt_t)p2;
++    // openPCIE: qsort passes pointers to the array elements; upstream cast
++    // them to packets, so it compared whatever lay there
++    pkt1 = *(const pPkt_t *)p1;
++    pkt2 = *(const pPkt_t *)p2;
+ 
+     if (pkt1->TimeStamp > pkt2->TimeStamp)
+     {
+@@ -1062,7 +1302,8 @@
+         return (-1);
+     }
+ 
+-    return (0);
++    // openPCIE: equal times keep their creation order (qsort is not stable)
++    return (pkt1->seq > pkt2->seq) - (pkt1->seq < pkt2->seq);
+ }
+ 
+ // -------------------------------------------------------------------------
+@@ -1527,7 +1768,8 @@
+         // Header 3
+         pmem[idx++] = 0;
+         pmem[idx++] = 0;
+-        pmem[idx++] = (addr >> 8);
++        pmem[idx++] = (addr >> 8) & 0x0f;   // openPCIE: Extended Register Number only (unmasked, a
++                                             // non-zero device/function put a K symbol in the TLP)
+         pmem[idx++] = (addr & ADDR_LO_BYTE_MASK);
+ 
+         // Jump over payload and tail
+@@ -1716,7 +1958,24 @@
+     state->head_p        = state->send_p        = state->end_p = NULL;
+     state->ack_to_send_p = state->nak_to_send_p = NULL;
+     state->curr_ack      = state->curr_nak      = NULLACK;
++    state->nak_wait      = false;
++    state->nak_seen      = 0;
++    state->os_mon        = NULL;
++    for (int l = 0; l < MAX_LINK_WIDTH; l++)
++    {
++        state->rx_invert[l] = false;
++    }
++    state->lane_reverse  = false;
+     state->seq           = 0;
++    state->next_rcv_seq  = 0;
++    state->nak_scheduled = false;
++    state->replay_running = false;
++    state->replay_num    = 0;
++    state->replay_rec_ticks = 0;
++    state->dup_copy      = NULL;
++    state->fault         = 0;
++    state->corrupt_p     = NULL;
++    state->fc_hold_until = 0;
+ 
+     for (fc_vc = 0; fc_vc < NUM_VIRTUAL_CHANNELS; fc_vc++)
+     {
+@@ -1821,8 +2080,20 @@
+     // Remove any previous linkage
+     packet->NextPkt = NULL;
+ 
+-    // Queue is empty, so all pointers set to the end packet
+-    if (state->head_p == NULL)
++    // Queue is empty, so all pointers set to the end packet. openPCIE: unless
++    // an Ack/Nak holder is on the wire: it finishes, then the packet follows
++    // (upstream made the packet the one being sent, mid-DLLP)
++    if (state->head_p == NULL && (state->send_p == &(state->AckHolder) || state->send_p == &(state->NakHolder)))
++    {
++        pPkt_t h = state->send_p;
++        while (h->NextPkt == &(state->AckHolder) || h->NextPkt == &(state->NakHolder))
++        {
++            h = h->NextPkt;
++        }
++        h->NextPkt   = packet;              // with the list empty, any other NextPkt is stale
++        state->end_p = state->head_p = packet;
++    }
++    else if (state->head_p == NULL)
+     {
+         state->end_p = state->send_p = state->head_p = packet;
+     // Queue has at least one packet
+@@ -1844,6 +2115,7 @@
+             state->NakHolder.NextPkt = packet;
+         }
+ 
++
+         // Point current end of queue NextPkt pointer to
+         // the new packet, and then update end_p to the
+         // added packet.
+@@ -1910,7 +2182,9 @@
+ 
+     for (idx = 0; idx < state->LinkWidth; idx++)
+     {
+-        linkin[idx] = Decode (rawlinkin[idx], state->usrconf.DisableScrambling, state->usrconf.Disable8b10b, idx, state->LinkWidth, state->thisnode);
++        // openPCIE: a lane with its polarity inverted is received inverted (4.2.4.4)
++        linkin[idx] = Decode (rawlinkin[idx] ^ (state->rx_invert[idx] ? 0x3ff : 0), state->usrconf.DisableScrambling,
++                              state->usrconf.Disable8b10b, idx, state->LinkWidth, state->thisnode);
+ 
+         // ----- Extracting Ordered Sets/Training Sequences for each lane -----
+ 
+@@ -1986,6 +2260,19 @@
+                 case  5: linkevent->Tseq[idx].control  = linkin[idx];
+                     break;
+                 case  6: linkevent->Tseq[idx].id       = linkin[idx];
++                    // openPCIE: a TS identifier inverted, D21.5 for TS1, D26.5 for TS2:
++                    // the lane's polarity is inverted, so receive it inverted from
++                    // now on (4.2.4.4); this TS is dropped. Upstream had no automatic
++                    // per-lane inversion (only InvertIn, for the whole link, unset):
++                    // such a lane never trained
++                    if (!state->usrconf.Disable8b10b && (linkin[idx] == TS1_ID_INV || linkin[idx] == TS2_ID_INV))
++                    {
++                        state->rx_invert[idx] = !state->rx_invert[idx];
++                        VPrint("ExtractPhyInput: lane %d polarity %s at node %d\n", idx,
++                               state->rx_invert[idx] ? "inverted" : "restored", state->thisnode);
++                        linkevent->OsState [idx] = 0;
++                        linkevent->OsCount [idx] = 0;
++                    }
+                     break;
+                 case  7: case  8: case  9: case 10:
+                 case 11: case 12: case 13: case 14: case 15:
+@@ -2069,12 +2356,18 @@
+                 pkt->data = state->pRxPktData;
+                 pkt->seq  = (pkt->data[0] == SDP) ? DLLP_SEQ_ID : ((((pkt->data[1] & 0xff) << 8) | (pkt->data[2] & 0xff)) & 0xfff);
+                 pkt->Retry = 0;
+-                pkt->ByteCount = (pkt->data[0] == SDP) ? 8 : (4 * ((pkt->data[5] & 0x3) | (pkt->data[6] & 0xff)));
++                // openPCIE: Length bits 9:8 shifted, 0 is 1024 DW (2.2.2); upstream ORed them in
++                {
++                    int  dw   = ((pkt->data[5] & 0x3) << 8) | (pkt->data[6] & 0xff);
++                    bool data = pkt->data[3] & 0x40;   // Fmt: with data; Length 0 is 1024 DW only then
++                    pkt->ByteCount = (pkt->data[0] == SDP) ? 8 : 4 * (data && !dw ? 1024 : dw);
++                }
+                 pkt->TimeStamp = GetCycleCount(state->thisnode);
+ 
+                 state->RxActive = false;
+ 
+                 ProcessInput(state, pkt, (linkin[idx] == EDB));
++                state->cpl_tc_attr = 0;         // openPCIE: TC 0 / Attr 0 outside an answer
+             }
+         }
+     }
+@@ -2107,29 +2400,65 @@
+ 
+ void TxFcInitInt (const pFlowControl_t const flw, const pUserConfig_t const usrcfg, const int node)
+ {
++    const bool a7rc = FC_INIT_A7RC(node);
++
+     while (flw->fc_state[0] == INITFC_IDLE)
+     {
+-        SendFC(DL_INITFC1_P,   0, usrcfg->InitFcHdrCr[0][FC_POST],    usrcfg->InitFcDataCr[0][FC_POST],    QUEUE, node);
+-        SendFC(DL_INITFC1_NP,  0, usrcfg->InitFcHdrCr[0][FC_NONPOST], usrcfg->InitFcDataCr[0][FC_NONPOST], QUEUE, node);
++        SendFC(DL_INITFC1_P,   0, usrcfg->InitFcHdrCr[0][FC_POST],    usrcfg->InitFcDataCr[0][FC_POST],    !a7rc, node);
++        if (a7rc)
++        {
++            FC_INIT_WAIT(A7RC_INITFC_GAP, node);
++        }
++        SendFC(DL_INITFC1_NP,  0, usrcfg->InitFcHdrCr[0][FC_NONPOST], usrcfg->InitFcDataCr[0][FC_NONPOST], !a7rc, node);
++        if (a7rc)
++        {
++            FC_INIT_WAIT(A7RC_INITFC_GAP, node);
++        }
+         SendFC(DL_INITFC1_CPL, 0, usrcfg->InitFcHdrCr[0][FC_CMPL],    usrcfg->InitFcDataCr[0][FC_CMPL],    SEND,  node);
+-        if (INITFC_DELAY != 0)
++        if (a7rc || INITFC_DELAY != 0)
+         {
+-            SendIdle(INITFC_DELAY, node);
++            FC_INIT_WAIT(a7rc ? A7RC_INITFC_GAP : INITFC_DELAY, node);
+         }
+         flw->fc_init_count[0]++;
+     }
+ 
++    // openPCIE: the Artix-7 RC counts InitFC2 rounds from the first. Upstream
++    // counts the InitFC1 round in which FI1 came in, too
++    if (a7rc)
++    {
++        flw->fc_init_count[0] = 0;
++    }
++
+     while (flw->fc_state[0] == INITFC_FI1 || flw->fc_state[0] == INITFC_FI2)
+     {
+-        SendFC(DL_INITFC2_P,   0, usrcfg->InitFcHdrCr[0][FC_POST],    usrcfg->InitFcDataCr[0][FC_POST],    QUEUE, node);
+-        SendFC(DL_INITFC2_NP,  0, usrcfg->InitFcHdrCr[0][FC_NONPOST], usrcfg->InitFcDataCr[0][FC_NONPOST], QUEUE, node);
++        SendFC(DL_INITFC2_P,   0, usrcfg->InitFcHdrCr[0][FC_POST],    usrcfg->InitFcDataCr[0][FC_POST],    !a7rc, node);
++        if (a7rc)
++        {
++            FC_INIT_WAIT(A7RC_INITFC_GAP, node);
++        }
++        SendFC(DL_INITFC2_NP,  0, usrcfg->InitFcHdrCr[0][FC_NONPOST], usrcfg->InitFcDataCr[0][FC_NONPOST], !a7rc, node);
++        if (a7rc)
++        {
++            FC_INIT_WAIT(A7RC_INITFC_GAP, node);
++        }
+         SendFC(DL_INITFC2_CPL, 0, usrcfg->InitFcHdrCr[0][FC_CMPL],    usrcfg->InitFcDataCr[0][FC_CMPL],    SEND,  node);
+-        if (INITFC_DELAY != 0)
++        if (a7rc || INITFC_DELAY != 0)
+         {
+-            SendIdle(INITFC_DELAY, node);
++            FC_INIT_WAIT(a7rc ? A7RC_INITFC_GAP : INITFC_DELAY, node);
+         }
+         flw->fc_init_count[0]++;
+ 
++        // openPCIE: the Artix-7 RC is done after 4 InitFC2 rounds, once it has
++        // the partner's InitFC2 set. TLPs wait for the count (SendPacket)
++        if (a7rc && flw->fc_init_count[0] >= FC_INIT_SENT_MIN &&
++            (flw->fc_state[0] == INITFC_FI2 || flw->rx_fc_state[0] == RCVD_ALL))
++        {
++            flw->fc_state[0]      = INITFC_FI2;
++            flw->rx_fc_state[0]   = 0;
++            flw->fc_init_count[0] = FC_INIT_SENT_MIN;
++            break;
++        }
++
+         // Ensure that at least one InitFC2 set is transmitted, even if at INITFC_FI2 already
+         if (flw->fc_state[0] == INITFC_FI2 && flw->fc_init_count[0] >= FC_INIT_SENT_MIN)
+         {
+@@ -2148,6 +2477,11 @@
+     DebugVPrint("** Received InitFC type %d hdrval=%d dataval=%d rx_fc_state=%d fc_state=%d @ node %d\n",
+             type, hdrval, dataval, flw->rx_fc_state[0], flw->fc_state[0], node);
+ 
++    if (type == DL_INITFC2_P || type == DL_INITFC2_NP || type == DL_INITFC2_CPL)
++    {
++        A7RC_FC_FI2(flw, node);
++    }
++
+     if (type == DL_INITFC1_P || type == DL_INITFC2_P)
+     {
+         flw->rx_fc_state[0] |= RCVD_P;
+--- a/verilog/headers/pciexpress_header.v
++++ b/verilog/headers/pciexpress_header.v
+@@ -44,6 +44,9 @@
+ `define EIE                         8'hfc       // K28.7
+ `define RV2                         8'h9c       // K28.4
+ `define RV3                         8'hdc       // K28.6
++// openPCIE: electrical idle on the PIPE, this byte with the K flag. It has no
++// 8b/10b code, so PCIe never sends it
++`define NOSIG                       8'hff       // K + 0xFF: no symbol
+ 
+ // Training sequence IDs
+ `define TS1_ID                      8'h4a       // D10.2
+--- a/verilog/lib/Serialiser.v
++++ b/verilog/lib/Serialiser.v
+@@ -29,7 +29,7 @@
+ 
+ // With BitReverse = 1'b0, serialisation/deserialisation is lsb.
+ 
+-module Serialiser (SerClk, BitReverse, ParInVec, SerOut, SerIn, ParOut);
++module Serialiser (SerClk, BitReverse, ParInVec, SerOut, SerIn, ParOut, RxIdle);
+ 
+ parameter Width = 16;
+ 
+@@ -40,16 +40,17 @@
+ 
+ output [Width*10-1:0] ParOut;
+ output [Width-1:0]    SerOut;
++output [Width-1:0]    RxIdle;   // openPCIE: per lane, not synced, so the partner is idle
+ 
+-reg    [9:0]          SerialShift   [0:Width-1];
+-reg    [9:0]          DeserialShift [0:Width-1];
+-reg    [9:0]          DeserialReg   [0:Width-1];
+-
+-reg                   Synced;
+-
+-integer               SerialCount;
+-integer               DeserialCount;
+-integer               idx;
++bit    [9:0]          SerialShift   [0:Width-1];
++bit    [9:0]          DeserialShift [0:Width-1];
++bit    [9:0]          DeserialReg   [0:Width-1];
++
++bit                   Synced        [0:Width-1];   // openPCIE: per lane
++
++int                   SerialCount;
++int                   DeserialCount [0:Width-1];
++int                   idx;
+ 
+ wire [9:0] ParIn [0:Width-1];
+ 
+@@ -66,16 +67,24 @@
+     for (i = 0; i < Width; i = i +1)
+     begin : io
+         assign ParIn [i]           = BitReverse ? BitRev10(ParInVec[i*10+9:i*10]) : ParInVec[i*10+9:i*10];
+-        assign ParOut[i*10+9:i*10] = Synced     ? (BitReverse ? BitRev10(DeserialReg[i]) : DeserialReg[i]) : 10'bzzz;
++        assign ParOut[i*10+9:i*10] = Synced[i]  ? (BitReverse ? BitRev10(DeserialReg[i]) : DeserialReg[i]) : 10'b0000000000;
++        assign RxIdle[i]           = !Synced[i];
+         assign SerOut[i]           = SerialShift[i][0];
+     end
+ endgenerate
+ 
++// openPCIE: the one model register block left on initial + always: upstream's
++// Serialiser has no reset port, and it runs on the bit clock from time 0
+ initial 
+ begin
+-    Synced        = 0;
++    for (idx = 0; idx < Width; idx = idx + 1)
++        SerialShift[idx] = 10'b0000000000;   // openPCIE: the line starts idle, not X
++    for (idx = 0; idx < Width; idx = idx + 1)
++    begin
++        Synced[idx]        = 0;
++        DeserialCount[idx] = 0;
++    end
+     SerialCount   = 9;
+-    DeserialCount = 0;
+ end
+ 
+ always @(posedge SerClk) 
+@@ -93,34 +102,36 @@
+             SerialShift[idx] <= {1'b0, SerialShift[idx][9:1]};
+     end
+ 
++    // Maintain sync, each lane on its own (openPCIE; upstream: lane 0 for all).
++    // openPCIE: lose it with the first idle symbol, ten equal bits (an idle
++    // line is constant; no 8b/10b symbol runs past five), so the last symbol
++    // before electrical idle stays on ParOut for its symbol time. The same on
++    // every simulator. Upstream dropped it at the first X or Z bit, 4-state
++    // simulators only: the model missed that symbol (the last IDL of an EIOS),
++    // and under Verilator sync was never lost. Re-synced at a comma, the symbol
++    // is counted from it; upstream kept the count from before the electrical
++    // idle, so after a re-sync every symbol was cut at the old bit offset
+     for (idx = 0; idx < Width; idx = idx + 1)
++    begin
+         DeserialShift[idx] <= {SerIn[idx], DeserialShift[idx][9:1]};
+ 
+-    // Maintain sync
+-    if (Synced)
+-    begin
+-`ifdef VERILATOR
+-        if (SerIn[0] === 1'bx)
+-            Synced <= 1'b0;
+-`else
+-        if (SerIn[0] === 1'bz || SerIn[0] === 1'bx)
+-            Synced <= 1'b0;
+-`endif
+-    end
+-    else
+-    begin
+-        if (DeserialShift[0] == `NCOMMA || DeserialShift[0] == `PCOMMA)
+-            Synced <= 1'b1;
+-    end
++        if (Synced[idx])
++        begin
++            if ((DeserialShift[idx] == 10'b0000000000 || DeserialShift[idx] == 10'b1111111111) && DeserialCount[idx] == 9)
++                Synced[idx] <= 1'b0;
++        end
++        else if (DeserialShift[idx] == `NCOMMA || DeserialShift[idx] == `PCOMMA)
++        begin
++            Synced[idx]        <= 1'b1;
++            DeserialCount[idx] <= 0;
++        end
+ 
+-    if (Synced)
+-    begin
+-        DeserialCount <=  (DeserialCount + 1) % 10;
+-    end
++        if (Synced[idx])
++        begin
++            DeserialCount[idx] <= (DeserialCount[idx] + 1) % 10;
++        end
+ 
+-    if (DeserialCount == 9 || (!Synced && (DeserialShift[0] == `NCOMMA || DeserialShift[0] == `PCOMMA)))
+-    begin
+-        for (idx = 0; idx < Width; idx = idx + 1)
++        if (DeserialCount[idx] == 9 || (!Synced[idx] && (DeserialShift[idx] == `NCOMMA || DeserialShift[idx] == `PCOMMA)))
+         begin
+             DeserialReg[idx] <= DeserialShift[idx];
+         end
+--- a/verilog/lib/clkmux.v
++++ b/verilog/lib/clkmux.v
+@@ -38,17 +38,18 @@
+ wire clkagated;
+ wire clkbgated;
+ 
+-reg selclka;
+-reg selclkb;
+-reg selclka_p1;
+-reg selclkb_p1;
++// openPCIE: model state is bit (never X), always_ff, reset on aresetn
++bit selclka;
++bit selclkb;
++bit selclka_p1;
++bit selclkb_p1;
+ 
+ assign clkagated = clka & selclka;
+ assign clkbgated = clkb & selclkb;
+ 
+ assign clkout    = clkagated | clkbgated;
+ 
+-always @(posedge clka or negedge aresetn)
++always_ff @(posedge clka or negedge aresetn)
+ begin
+   if (aresetn == 1'b0)
+     selclka_p1 <= 1'b0;
+@@ -56,7 +57,7 @@
+     selclka_p1 <=  sel & ~selclkb; 
+ end
+ 
+-always @(negedge clka or negedge aresetn)
++always_ff @(negedge clka or negedge aresetn)
+ begin
+     if (aresetn == 1'b0)
+       selclka  <= 1'b0;
+@@ -64,7 +65,7 @@
+       selclka    <= selclka_p1;
+ end
+ 
+-always @(posedge clkb or negedge aresetn)
++always_ff @(posedge clkb or negedge aresetn)
+ begin
+   if (aresetn == 1'b0)
+     selclkb_p1 <= 1'b0;
+@@ -72,7 +73,7 @@
+     selclkb_p1 <= ~sel & ~selclka;
+ end
+ 
+-always @(negedge clkb or negedge aresetn)
++always_ff @(negedge clkb or negedge aresetn)
+ begin
+   if (aresetn == 1'b0)
+     selclkb    <= 1'b0;
+--- a/verilog/pcieVHost/pcieVHost.v
++++ b/verilog/pcieVHost/pcieVHost.v
+@@ -43,14 +43,15 @@
+ (
+   input             Clk,
+   input             notReset,
+-  output reg        Gen2ClkSel,
++  output bit        Gen2ClkSel,
+ 
+   output            ClkOut,
+ 
+-`ifdef VERILATOR
+-  output reg [15:0] ElecIdleOut,
+-  input             ElecIdleIn,
+-`endif
++  // openPCIE: electrical idle per lane on ports, on every simulator; an idle
++  // lane's line is constant 0. Upstream had the ports under Verilator only,
++  // and Z on the line elsewhere
++  output bit [15:0] ElecIdleOut,
++  input      [15:0] ElecIdleIn,
+ 
+   input       [9:0] LinkIn0,   LinkIn1,   LinkIn2,   LinkIn3,
+   input       [9:0] LinkIn4,   LinkIn5,   LinkIn6,   LinkIn7,
+@@ -64,41 +65,38 @@
+   // Transaction taps (openPCIE): each TLP this node sends (Tx) or
+   // receives (Rx), one DW per ClkOut with start/end flags, byte 0 in
+   // [31:24]; each DLLP as one word. They follow the link, a few clocks late.
+-  output reg [31:0] TlpTxData,
+-  output reg        TlpTxSop,  TlpTxEop,  TlpTxValid,
+-  output reg [31:0] TlpRxData,
+-  output reg        TlpRxSop,  TlpRxEop,  TlpRxValid,
+-  output reg [31:0] DllpTxData,
+-  output reg        DllpTxValid,
+-  output reg [31:0] DllpRxData,
+-  output reg        DllpRxValid
++  output bit [31:0] TlpTxData,
++  output bit        TlpTxSop,  TlpTxEop,  TlpTxValid,
++  output bit [31:0] TlpRxData,
++  output bit        TlpRxSop,  TlpRxEop,  TlpRxValid,
++  output bit [31:0] DllpTxData,
++  output bit        DllpTxValid,
++  output bit [31:0] DllpRxData,
++  output bit        DllpRxValid
+ );
+ 
+ 
+-`ifdef VERILATOR
++// openPCIE: an idle lane sends constant 0, which no 8b/10b symbol is. The
++// model's state is bit/int: 0 at time 0 on every simulator, never X
+ `define ELECIDLE 10'b0000000000
+-`else
+-reg   [15:0] ElecIdleOut;
+-`define ELECIDLE 10'bzzzzzzzzzz
+-`endif
+-
+-reg    [9:0] Out [0:15];
+-reg   [31:0] DataIn;
+-reg          notResetLast;
+-reg          InvertIn;
+-reg          InvertOut;
+-reg          ReverseIn;
+-reg          ReverseOut;
+-reg          UpdateResponse;
+-integer      ClkCount;
+-integer      i;
++
++bit    [9:0] Out [0:15];
++bit   [31:0] DataIn;
++bit          notResetLast;
++bit          InvertIn;
++bit          InvertOut;
++bit          ReverseIn;
++bit          ReverseOut;
++bit          UpdateResponse;
++int          ClkCount;
++int          i;
+ 
+ // Transaction tap queues (openPCIE): {sop, eop, data}, pushed by
+ // the C model in zero time, popped one entry per clock
+-reg   [33:0] TlpTxQ  [$];
+-reg   [33:0] TlpRxQ  [$];
+-reg   [31:0] DllpTxQ [$];
+-reg   [31:0] DllpRxQ [$];
++bit   [33:0] TlpTxQ  [$];
++bit   [33:0] TlpRxQ  [$];
++bit   [31:0] DllpTxQ [$];
++bit   [31:0] DllpRxQ [$];
+ 
+ // VP Interface wires
+ wire  [31:0] Addr;
+@@ -116,7 +114,7 @@
+ wire   [9:0] In [0:15];
+ 
+ wire clk_main;
+-reg  clk_div2;
++bit  clk_div2;
+ 
+ // --------------------------------
+ // Internal clocks
+@@ -130,9 +128,14 @@
+   else
+   begin
+     // When using a GEN2 clock, create a half speed clock
+-    always @(posedge Clk)
++    // openPCIE: reset on notReset to upstream's start value, 1. The model's
++    // clock then stops in reset, as pcieVHostPipex1's does at Gen2Clk = 1
++    always_ff @(posedge Clk or negedge notReset)
+     begin
+-        clk_div2           <= ~clk_div2;
++        if (notReset == 1'b0)
++            clk_div2       <= 1'b1;
++        else
++            clk_div2       <= ~clk_div2;
+     end
+ 
+     // Clock MUX to select between GEN1 and GEN2 clock sources
+@@ -170,18 +173,8 @@
+ // Combinatorial logic
+ // --------------------------------
+ 
+-// Generate flags for electrical idle stat on input links
+-`ifndef VERILATOR
+-wire [15:0] ElecIdleIn = {LinkIn15 === 10'bzzzzzzzzzz, LinkIn14 === 10'bzzzzzzzzzz, LinkIn13 === 10'bzzzzzzzzzz, LinkIn12 === 10'bzzzzzzzzzz,
+-                          LinkIn11 === 10'bzzzzzzzzzz, LinkIn10 === 10'bzzzzzzzzzz, LinkIn9  === 10'bzzzzzzzzzz, LinkIn8  === 10'bzzzzzzzzzz,
+-                          LinkIn7  === 10'bzzzzzzzzzz, LinkIn6  === 10'bzzzzzzzzzz, LinkIn5  === 10'bzzzzzzzzzz, LinkIn4  === 10'bzzzzzzzzzz,
+-                          LinkIn3  === 10'bzzzzzzzzzz, LinkIn2  === 10'bzzzzzzzzzz, LinkIn1  === 10'bzzzzzzzzzz, LinkIn0  === 10'bzzzzzzzzzz};
+-`endif
+-// Generate flags for not valid data on links
+-wire [15:0] RxDetect   = {^LinkOut15 === 1'bx, ^LinkOut14 === 1'bx, ^LinkOut13 === 1'bx, ^LinkOut12 === 1'bx,
+-                          ^LinkOut11 === 1'bx, ^LinkOut10 === 1'bx, ^LinkOut9  === 1'bx, ^LinkOut8  === 1'bx,
+-                          ^LinkOut7  === 1'bx, ^LinkOut6  === 1'bx, ^LinkOut5  === 1'bx, ^LinkOut4  === 1'bx,
+-                          ^LinkOut3  === 1'bx, ^LinkOut2  === 1'bx, ^LinkOut1  === 1'bx, ^LinkOut0  === 1'bx};
++// openPCIE: no flags from Z or X here (upstream: idle from Z on LinkIn, and a
++// receiver detect from X on LinkOut nothing read, 4-state simulators only)
+ 
+ 
+ // --------------------------------
+@@ -200,31 +193,44 @@
+     ReverseIn              = 1'b0;
+     ReverseOut             = 1'b0;
+     ElecIdleOut            = 16'hffff;
+-    notResetLast           = 1'b0;
+     UpdateResponse         = 1'b1;
+-    ClkCount               = 0;
+     Gen2ClkSel             = 1'b0;
+-    clk_div2               = 1'b1;
+-
+-    {TlpTxData,  TlpTxSop, TlpTxEop, TlpTxValid} = 35'h0;
+-    {TlpRxData,  TlpRxSop, TlpRxEop, TlpRxValid} = 35'h0;
+-    {DllpTxData, DllpTxValid}                    = 33'h0;
+-    {DllpRxData, DllpRxValid}                    = 33'h0;
+ end
+ 
+ // --------------------------------
+ // Synchronous processes
+ // --------------------------------
+ 
+-always @(posedge clk_main)
++// openPCIE: the registers are always_ff, reset on notReset, asynchronously.
++// The ones above, which VProc writes, start in the initial block; ClkCount,
++// the C model's time, has no reset (0 at time 0)
++always_ff @(posedge clk_main or negedge notReset)
++begin
++    if (notReset == 1'b0)
++        notResetLast       <= #`RegDel 1'b0;
++    else
++        notResetLast       <= #`RegDel notReset;
++end
++
++always_ff @(posedge clk_main)
+ begin
+-    notResetLast           <= #`RegDel notReset;
+     ClkCount               <= #`RegDel ClkCount + 1;
+ end
+ 
+-// Transaction taps: one queued entry per clock, per stream
+-always @(posedge clk_main)
++// Transaction taps: one queued entry per clock, per stream. openPCIE: plain
++// always, reset on notReset: the queues are popped here and pushed by VProc,
++// which always_ff forbids (one process per variable)
++always @(posedge clk_main or negedge notReset)
+ begin
++    if (notReset == 1'b0)
++    begin
++        {TlpTxData,  TlpTxSop, TlpTxEop, TlpTxValid} <= #`RegDel 35'h0;
++        {TlpRxData,  TlpRxSop, TlpRxEop, TlpRxValid} <= #`RegDel 35'h0;
++        {DllpTxData, DllpTxValid}                    <= #`RegDel 33'h0;
++        {DllpRxData, DllpRxValid}                    <= #`RegDel 33'h0;
++    end
++    else
++    begin
+     if (TlpTxQ.size() != 0)
+     begin
+         {TlpTxSop, TlpTxEop, TlpTxData} <= #`RegDel TlpTxQ.pop_front();
+@@ -256,6 +262,7 @@
+     end
+     else
+         DllpRxValid        <= #`RegDel 1'b0;
++    end
+ end
+ 
+ always @(Update)
+@@ -291,7 +298,7 @@
+             begin
+                 ElecIdleOut[LinkWidth-1:0] = DataOut[LinkWidth-1:0] ;
+             end
+-            DataIn     = {RxDetect, ElecIdleIn};
++            DataIn     = {16'h0000, ElecIdleIn};
+         end
+ 
+         `GEN2_CLK:
+@@ -420,8 +427,9 @@
+ 
+ wire       Gen2ClkSel;
+ wire       serclk_main;
++logic [15:0] SerIdle;   // openPCIE: per lane; a lane never synced (unused) is idle
+ 
+-reg        serclk_div2;
++bit        serclk_div2;
+ 
+ //-------------------------------------------------------------
+ // Select serial clock
+@@ -435,17 +443,19 @@
+ 
+ // If using  GEN2 clocks, use a clock mux to control the serial clock speed
+ // (The main clock is controlled inside the PcieVhost component.)
++// openPCIE: begin/end round the else. Upstream's else took only its initial
++// block, so with Gen2Clk = 0 the clock mux drove serclk_main as well
+ else
+-
+-initial
+ begin
+-  serclk_div2 <= 1'b0;
+-end
+ 
+-// Generate a half speed serial clock
+-always @(posedge SerClk)
++// Generate a half speed serial clock. openPCIE: always_ff, reset on notReset
++// to upstream's start value, 0 (the clock mux holds the clock off in reset)
++always_ff @(posedge SerClk or negedge notReset)
+ begin
+-  serclk_div2 <= ~serclk_div2;
++  if (notReset == 1'b0)
++    serclk_div2 <= 1'b0;
++  else
++    serclk_div2 <= ~serclk_div2;
+ end
+ 
+   // Clock mux to select between GEN1 (divide by 2) or GEN2 serial clocks.
+@@ -458,6 +468,7 @@
+     .clkout           (serclk_main)
+   );
+ 
++end
+ endgenerate
+ 
+   assign SerClkOut         = serclk_main;
+@@ -481,10 +492,8 @@
+     
+     .ClkOut            (ClkOut),
+     
+-`ifdef VERILATOR
+     .ElecIdleOut       (),
+-    .ElecIdleIn        ({LinkWidth{1'b0}}),
+-`endif
++    .ElecIdleIn        (SerIdle),               // openPCIE: the serialiser's idle, per lane
+     .LinkIn0           (PLinkIn0),
+     .LinkIn1           (PLinkIn1),
+     .LinkIn2           (PLinkIn2),
+@@ -525,6 +534,7 @@
+ 
+   Serialiser serdes (
+     .SerClk     (serclk_main),
++    .RxIdle     (SerIdle),
+     .BitReverse (1'b0),
+ 
+     .ParInVec   ({PLinkOut15, PLinkOut14, PLinkOut13, PLinkOut12, PLinkOut11, PLinkOut10, PLinkOut9, PLinkOut8,
+--- a/verilog/pcieVHost/pcieVHostPipex1.v
++++ b/verilog/pcieVHost/pcieVHostPipex1.v
+@@ -45,16 +45,15 @@
+   output                         Gen2ClkSel,
+   output                         ClkOut,
+ 
+-`ifdef VERILATOR
+-  output                         ElecIdleOut,
+-  input                          ElecIdleIn,
+-`endif
+-
++  // openPCIE: electrical idle is NOSIG (the K flag and 0xFF: no 8b/10b code)
++  // on the PIPE data, per symbol, on every simulator. Upstream had Z on a
++  // 4-state simulator and a side-band under Verilator (ElecIdleOut/ElecIdleIn),
++  // which reached the partner ahead of the data
+   input  [DataWidth-1:0]         RxData,
+   input  [(DataWidth/8)-1:0]     RxDataK,
+ 
+-  output reg [DataWidth-1:0]     TxData,
+-  output reg [(DataWidth/8)-1:0] TxDataK,
++  output bit [DataWidth-1:0]     TxData,
++  output bit [(DataWidth/8)-1:0] TxDataK,
+ 
+   // Transaction taps (openPCIE), on ClkOut: see pcieVHost.v
+   output [31:0]                  TlpTxData,
+@@ -89,20 +88,52 @@
+ wire                         pclk_main;
+ wire                         pcieclk_main;
+ 
+-reg                          pcieclk_div2;
+-reg                          pclk_div2;
++bit                          pcieclk_div2;
++bit                          pclk_div2;
++
++bit   [DataWidth-1:0]        RxDataSample;
++bit   [DataWidth/8-1:0]      RxDataKSample;
++bit   [DataWidth-1:0]        TxDataPipe;
++bit   [DataWidth/8-1:0]      TxDataKPipe;
++
++int                          rxcount;
++
++// openPCIE: the core's electrical idle (its ElecIdleOut) goes out as NOSIG; a
++// received NOSIG is the partner's idle, to the core's ElecIdleIn
++localparam [8:0]             NOSIG_SYM   = {1'b1, `NOSIG};   // {K, byte}
++logic [15:0]                 ElecIdleOutInt;
++logic                        LinkOutIdle;
++logic [7:0]                  LinkOutData;
++logic                        LinkOutK;
++logic                        RxIdle;
++
++assign LinkOutIdle           = ElecIdleOutInt[0];
++assign LinkOutData           = LinkOutIdle ? NOSIG_SYM[7:0] : LinkOut[7:0];
++assign LinkOutK              = LinkOutIdle ? NOSIG_SYM[8]   : LinkOut[8];
++assign RxIdle                = ({RxDataKSample[0], RxDataSample[7:0]} == NOSIG_SYM);
++
++// openPCIE: the core's TX symbol and idle, taken on the falling edge. The core
++// writes them on the rising edge, in VProc's delta cycles, the edge the TX
++// shift runs on, so which one the shift saw was the scheduler's choice (the TX
++// side of issue 56). Half a symbol later both have settled.
++// openPCIE: every register resets on nreset, asynchronously: in reset the line
++// is idle (NOSIG with the K flag), both ways
++bit   [7:0]                  LinkOutDataQ;
++bit                          LinkOutKQ;
+ 
+-reg   [DataWidth-1:0]        RxDataSample;
+-reg   [DataWidth/8-1:0]      RxDataKSample;
+-reg   [DataWidth-1:0]        TxDataPipe;
+-reg   [DataWidth/8-1:0]      TxDataKPipe;
+-
+-integer                      rxcount;
+-
+-`ifdef VERILATOR
+-wire [15:0] ElecIdleOutInt;
+-assign ElecIdleOut            = ElecIdleOutInt[0];
+-`endif
++always_ff @(negedge pcieclk_main or negedge nreset)
++begin
++  if (nreset == 1'b0)
++  begin
++    LinkOutDataQ             <= `NOSIG;
++    LinkOutKQ                <= 1'b1;
++  end
++  else
++  begin
++    LinkOutDataQ             <= LinkOutData;
++    LinkOutKQ                <= LinkOutK;
++  end
++end
+ 
+ //-------------------------------------------------------------
+ // Select local clocks
+@@ -117,20 +148,22 @@
+   else
+   begin
+ 
+-    initial
+-    begin
+-      pclk_div2         <= 1'b0;
+-      pcieclk_div2      <= 1'b0;
+-    end
+-
+-    always @(posedge pclk)
++    // openPCIE: always_ff, reset on nreset to upstream's start value, 0 (the
++    // clock muxes hold both clocks off in reset)
++    always_ff @(posedge pclk or negedge nreset)
+     begin
+-      pclk_div2         <= ~pclk_div2;
++      if (nreset == 1'b0)
++        pclk_div2       <= 1'b0;
++      else
++        pclk_div2       <= ~pclk_div2;
+     end
+ 
+-    always @(posedge pcieclk)
++    always_ff @(posedge pcieclk or negedge nreset)
+     begin
+-      pcieclk_div2      <= ~pcieclk_div2;
++      if (nreset == 1'b0)
++        pcieclk_div2    <= 1'b0;
++      else
++        pcieclk_div2    <= ~pcieclk_div2;
+     end
+ 
+     clkmux clkmux_pclk
+@@ -164,32 +197,60 @@
+     assign TxSampleClk        = pcieclk_main;
+     assign RxDataSampleShift  = RxData;
+     assign RxDataKSampleShift = RxDataK;
+-    assign TxDataPipeShift    = LinkOut[7:0];
+-    assign TxDataKPipeShift   = LinkOut[8];
++    assign TxDataPipeShift    = LinkOutDataQ;
++    assign TxDataKPipeShift   = LinkOutKQ;
+   end
+   else
+   begin
+     assign TxSampleClk        = pclk_main;
+     assign RxDataSampleShift  = {8'h00, RxDataSample[DataWidth-1:8]};
+     assign RxDataKSampleShift = {1'b0,  RxDataKSample[DataWidth/8-1: 1]};
+-    assign TxDataPipeShift    = {LinkOut[7:0], TxDataPipe[DataWidth-1:8]};
+-    assign TxDataKPipeShift   = {LinkOut[8], TxDataKPipe[DataWidth/8-1:1]};
++    assign TxDataPipeShift    = {LinkOutDataQ, TxDataPipe[DataWidth-1:8]};
++    assign TxDataKPipeShift   = {LinkOutKQ, TxDataKPipe[DataWidth/8-1:1]};
+   end
+ endgenerate
+ 
+ // Link input is the lower bits of the sampled RX input
++// openPCIE: the partner's electrical idle reaches the core on its ElecIdleIn
+ assign LinkIn                = {1'b0, RxDataKSample[0], RxDataSample[7:0]};
+ 
+ //-------------------------------------------------------------
+ // Process PIPE interface signals
+ //-------------------------------------------------------------
+ 
+-always @(posedge pcieclk_main or negedge nreset)
++always_ff @(posedge pcieclk_main or negedge nreset)
++begin
++
++  if (nreset == 1'b0)
++  begin
++    // openPCIE: in reset the line is idle (NOSIG with the K flag). The TX
++    // shift ran in reset too, and at time 0 this edge read LinkOutData before
++    // its assign had settled: a Z symbol on the line under Icarus, and the
++    // partner left Detect at once
++    TxDataPipe               <= {(DataWidth/8){`NOSIG}};
++    TxDataKPipe              <= {(DataWidth/8){1'b1}};
++  end
++  else
++  begin
++    // At each cycle, shift right TX PIPE registers, adding link output to top
++    TxDataPipe               <= TxDataPipeShift;
++    TxDataKPipe              <= TxDataKPipeShift;
++  end
++
++end
++
++// openPCIE: the RX side on the falling edge. The core reads LinkIn and
++// ElecIdleIn on the rising edge, in VProc's delta cycles; a sample changing on
++// that same edge was seen before or after the read as the scheduler chose: one
++// symbol apart between simulators, and between XSIM's own scheduling modes
++always_ff @(negedge pcieclk_main or negedge nreset)
+ begin
+ 
+   if (nreset == 1'b0)
+   begin
+     rxcount                  <= 0;
++    RxDataSample             <= {(DataWidth/8){`NOSIG}};
++    RxDataKSample            <= {(DataWidth/8){1'b1}};
+   end
+   else
+   begin
+@@ -212,17 +273,21 @@
+     end
+   end
+ 
+-  // At each cycle, shift right TX PIPE registers, adding link output to top
+-  TxDataPipe                 <= TxDataPipeShift;
+-  TxDataKPipe                <= TxDataKPipeShift;
+-
+ end
+ 
+ // At the PIPE clock rate, update TX outputs with TX PIPE data
+-always @(posedge TxSampleClk)
++always_ff @(posedge TxSampleClk or negedge nreset)
+ begin
+-  TxData                     <= TxDataPipe;
+-  TxDataK                    <= TxDataKPipe;
++  if (nreset == 1'b0)
++  begin
++    TxData                   <= {(DataWidth/8){`NOSIG}};
++    TxDataK                  <= {(DataWidth/8){1'b1}};
++  end
++  else
++  begin
++    TxData                   <= TxDataPipe;
++    TxDataK                  <= TxDataKPipe;
++  end
+ end
+ 
+ //-------------------------------------------------------------
+@@ -244,20 +309,18 @@
+ 
+     .ClkOut                (ClkOut),
+ 
+-`ifdef VERILATOR
+-    .ElecIdleOut           (ElecIdleOutInt),
+-    .ElecIdleIn            ({15'h0000, ElecIdleIn}),
+-`endif
++    .ElecIdleOut           (ElecIdleOutInt),    // openPCIE: on every simulator
++    .ElecIdleIn            ({15'h7fff, RxIdle}),
+ 
+      // Link lane input
+     .LinkIn0               (LinkIn),
+ 
+-    // Unused inputs
+-    .LinkIn1               ({10{1'bZ}}), .LinkIn2  ({10{1'bZ}}), .LinkIn3  ({10{1'bZ}}),
+-    .LinkIn4               ({10{1'bZ}}), .LinkIn5  ({10{1'bZ}}), .LinkIn6  ({10{1'bZ}}),
+-    .LinkIn7               ({10{1'bZ}}), .LinkIn8  ({10{1'bZ}}), .LinkIn9  ({10{1'bZ}}),
+-    .LinkIn10              ({10{1'bZ}}), .LinkIn11 ({10{1'bZ}}), .LinkIn12 ({10{1'bZ}}),
+-    .LinkIn13              ({10{1'bZ}}), .LinkIn14 ({10{1'bZ}}), .LinkIn15 ({10{1'bZ}}),
++    // Unused inputs (openPCIE: 0, idle on ElecIdleIn; upstream Z)
++    .LinkIn1               (10'h000), .LinkIn2  (10'h000), .LinkIn3  (10'h000),
++    .LinkIn4               (10'h000), .LinkIn5  (10'h000), .LinkIn6  (10'h000),
++    .LinkIn7               (10'h000), .LinkIn8  (10'h000), .LinkIn9  (10'h000),
++    .LinkIn10              (10'h000), .LinkIn11 (10'h000), .LinkIn12 (10'h000),
++    .LinkIn13              (10'h000), .LinkIn14 (10'h000), .LinkIn15 (10'h000),
+ 
+     // Link lane output
+     .LinkOut0              (LinkOut),

@@ -48,6 +48,8 @@
 
 `timescale 1ps/1ps
 
+`include "pciexpress_header.v"
+
 module phy_top
   import link_pkg::*;
 (
@@ -98,8 +100,8 @@ module phy_top
   localparam int SYMCLK_HALF_GEN1_PS = 2000;  // 250 MHz
   localparam int SYMCLK_HALF_GEN2_PS = 1000;  // 500 MHz
 
-  logic txoutclk = 1'b0;
-  logic symclk   = 1'b0;
+  bit   txoutclk;
+  bit   symclk;
 
   always #(TXOUTCLK_HALF_PS * 1ps) txoutclk = ~txoutclk;
 
@@ -107,20 +109,38 @@ module phy_top
   // It has to be resolved to a hard 0/1 first: PIPETXRATE is X before the hard
   // macro comes out of reset, and an X delay expression is a zero delay, which
   // hangs the simulator at time 0.
-  logic rate_sel = 1'b0;
+  bit   rate_sel;
+
+  initial begin
+    txoutclk = 1'b0;
+    symclk   = 1'b0;
+    rate_sel = 1'b0;
+  end
 
   always @(pipe_mac.tx_ctrl.rate) rate_sel = (pipe_mac.tx_ctrl.rate === 1'b1);
 
+  // Two symbol clocks per PCLK, started from each PCLK rising edge, with the
+  // edges a quarter symbol away from it (Gen1: 1 ns, Gen2: 0.5 ns). An edge
+  // in the same time step as PCLK races the PIPE word against the symbol
+  // shift register, and the link then drops or doubles symbols. Across a rate
+  // switch one PCLK may get no symbol clocks: harmless, both sides are idle.
   always begin
-    #((rate_sel ? SYMCLK_HALF_GEN2_PS : SYMCLK_HALF_GEN1_PS) * 1ps);
-    symclk = ~symclk;
+    automatic int half;
+
+    @(posedge pipe_clk_in);
+    half = rate_sel ? SYMCLK_HALF_GEN2_PS : SYMCLK_HALF_GEN1_PS;
+    #((half / 2) * 1ps) symclk = 1'b0;
+    #(half       * 1ps) symclk = 1'b1;
+    #(half       * 1ps) symclk = 1'b0;
+    #(half       * 1ps) symclk = 1'b1;
   end
 
   assign pipe_txoutclk_out = txoutclk;
 
   // PCLK, USERCLK1 and USERCLK2 come straight back from clk_rst_gen, exactly as
   // gtp_wrapper passes them through in the synthesis build
-  wire   pipe_clk  = pipe_clk_in;
+  logic  pipe_clk;
+  assign pipe_clk = pipe_clk_in;
 
   // Tell clk_rst_gen which PCLK to select. Gen3 does not exist on this device.
   assign pipe_clk_sel_out = pipe_mac.tx_ctrl.rate;
@@ -153,23 +173,46 @@ module phy_top
   //------------------------------------------------------------------
   // What we transmit is what the model receives, and vice versa. Lane l is
   // bits [16*l +: 16] (data) and [2*l +: 2] (K flags).
-  logic [16*PCIE_LANES-1:0] ep_rx_data;      // -> model
-  logic [ 2*PCIE_LANES-1:0] ep_rx_datak;
-  wire  [16*PCIE_LANES-1:0] ep_tx_data;      // <- model
-  wire  [ 2*PCIE_LANES-1:0] ep_tx_datak;
+  bit   [16*PCIE_LANES-1:0] ep_rx_data;      // -> model
+  bit   [ 2*PCIE_LANES-1:0] ep_rx_datak;
+  logic [16*PCIE_LANES-1:0] ep_tx_data;      // <- model
+  logic [ 2*PCIE_LANES-1:0] ep_tx_datak;
 
-  // Register the outgoing symbols on PCLK so the model sees a clean bus
+  // Register the outgoing symbols on PCLK so the model sees a clean bus. While
+  // the MAC holds TxElecIdle the lane is electrically idle: NOSIG (the K flag
+  // and 0xFF: no 8b/10b code), which the model sees as idle
+  // (pcievhost-speed.patch); the data under it never reaches a line
+  localparam logic [8:0] NOSIG_SYM = {1'b1, `NOSIG};   // {K, byte}
+
   always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
     if (!pipe_rst_n) begin
-      ep_rx_data  <= '0;
-      ep_rx_datak <= '0;
+      ep_rx_data  <= {2*PCIE_LANES{`NOSIG}};   // idle in reset
+      ep_rx_datak <= '1;
     end
     else begin
       for (int l = 0; l < PCIE_LANES; l++) begin
-        ep_rx_data [16*l +: 16] <= pipe_mac.tx[l].data;
-        ep_rx_datak[ 2*l +:  2] <= pipe_mac.tx[l].char_is_k;
+        ep_rx_data [16*l +: 16] <= pipe_mac.tx[l].elec_idle ? {2{NOSIG_SYM[7:0]}} : pipe_mac.tx[l].data;
+        ep_rx_datak[ 2*l +:  2] <= pipe_mac.tx[l].elec_idle ? {2{NOSIG_SYM[8]}}   : pipe_mac.tx[l].char_is_k;
       end
     end
+  end
+
+  // make SIM_LANE_REVERSE=1: lane l of the hard macro goes to lane
+  // PCIE_LANES-1-l of the endpoint, both ways (4.2.4.9.1). The dumps keep the
+  // hard macro's lane order
+  logic [16*PCIE_LANES-1:0] ep_rx_data_m, ep_tx_data_m;   // the model's lanes
+  logic [ 2*PCIE_LANES-1:0] ep_rx_datak_m, ep_tx_datak_m;
+
+  for (genvar l = 0; l < PCIE_LANES; l++) begin : g_rev
+`ifdef SIM_LANE_REVERSE
+    localparam int M = PCIE_LANES-1-l;
+`else
+    localparam int M = l;
+`endif
+    assign ep_rx_data_m [16*M +: 16] = ep_rx_data [16*l +: 16];
+    assign ep_rx_datak_m[ 2*M +:  2] = ep_rx_datak[ 2*l +:  2];
+    assign ep_tx_data   [16*l +: 16] = ep_tx_data_m [16*M +: 16];
+    assign ep_tx_datak  [ 2*l +:  2] = ep_tx_datak_m[ 2*M +:  2];
   end
 
   // The model in our wrapper: the same link, plus its TLPs and DLLPs at the
@@ -183,12 +226,13 @@ module phy_top
     .pcieclk   (symclk),
     .pclk      (pipe_clk),
     .nreset    (pipe_rst_n),
+    .Gen2ClkSel(),       // the hard macro sets the rate (PIPETXRATE)
 
-    .RxData    (ep_rx_data),
-    .RxDataK   (ep_rx_datak),
+    .RxData    (ep_rx_data_m),
+    .RxDataK   (ep_rx_datak_m),
 
-    .TxData    (ep_tx_data),
-    .TxDataK   (ep_tx_datak),
+    .TxData    (ep_tx_data_m),
+    .TxDataK   (ep_tx_datak_m),
 
     .dll_clk   (pipe_clk),
 
@@ -248,10 +292,11 @@ module phy_top
   logic       phy_status_r;
   logic [2:0] rx_status_r;
 
-  wire pipe_reset_fall = pipe_reset_q & ~pipe_mac.tx_ctrl.reset;
-  wire powerdown_chg   = (powerdown_q != pipe_mac.tx[0].powerdown);
-  wire rate_chg        = (rate_q      != pipe_mac.tx_ctrl.rate);
-  wire rcvr_det_rise   = ~rcvr_det_q  &  pipe_mac.tx_ctrl.rcvr_det;
+  logic pipe_reset_fall, powerdown_chg, rate_chg, rcvr_det_rise;
+  assign pipe_reset_fall = pipe_reset_q & ~pipe_mac.tx_ctrl.reset;
+  assign powerdown_chg   = (powerdown_q != pipe_mac.tx[0].powerdown);
+  assign rate_chg        = (rate_q      != pipe_mac.tx_ctrl.rate);
+  assign rcvr_det_rise   = ~rcvr_det_q  &  pipe_mac.tx_ctrl.rcvr_det;
 
   always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
     if (!pipe_rst_n) begin
@@ -298,30 +343,48 @@ module phy_top
   //------------------------------------------------------------------
   // Receive side
   //------------------------------------------------------------------
-  // The partner is considered to be driving from the first K character it
-  // sends -- link training always opens with COM (K28.5), so this is a safe
-  // and simple stand-in for a real squelch detector.
-  logic rx_active;
-
-  always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
-    if (!pipe_rst_n) begin
-      rx_active <= 1'b0;
-    end
-    else if (|ep_tx_datak) begin
-      rx_active <= 1'b1;
-    end
-  end
+  // A lane is considered to be driving from the first K character the partner
+  // sends on it -- link training always opens with COM (K28.5) -- until the
+  // partner goes electrically idle again, which the model shows as NOSIG on
+  // both symbols of the lane (Recovery.Speed, L0s, Disabled). A stand-in for a
+  // squelch detector.
+  logic [PCIE_LANES-1:0] rx_active;
+  logic [PCIE_LANES-1:0] ep_tx_idle;
 
   genvar i;
   generate
     for (i = 0; i < PCIE_LANES; i = i + 1) begin : g_lane
-        assign pipe_mac.rx[i].data          = ep_tx_data [16*i +: 16];
-        assign pipe_mac.rx[i].char_is_k     = ep_tx_datak[ 2*i +:  2];
-        assign pipe_mac.rx[i].valid         = rx_active;
-        assign pipe_mac.rx[i].chanisaligned = rx_active;
+        // NOSIG only: an X from the model is a bug, and must reach the RC
+        assign ep_tx_idle[i] = ({ep_tx_datak[2*i+1], ep_tx_data[16*i+8 +: 8]} === NOSIG_SYM) &&
+                               ({ep_tx_datak[2*i],   ep_tx_data[16*i   +: 8]} === NOSIG_SYM);
+
+        always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
+          if (!pipe_rst_n) begin
+            rx_active[i] <= 1'b0;
+          end
+          else if (ep_tx_idle[i]) begin
+            rx_active[i] <= 1'b0;
+          end
+          else if (|ep_tx_datak[2*i +: 2]) begin
+            rx_active[i] <= 1'b1;
+          end
+        end
+
+        // each NOSIG symbol goes to the hard macro as 0, so a word half idle
+        // (the endpoint leaving idle on its second symbol) carries no K + 0xFF
+        logic [1:0] nosig_b;
+        assign nosig_b = {({ep_tx_datak[2*i+1], ep_tx_data[16*i+8 +: 8]} === NOSIG_SYM),
+                          ({ep_tx_datak[2*i],   ep_tx_data[16*i   +: 8]} === NOSIG_SYM)};
+
+        assign pipe_mac.rx[i].data          = {nosig_b[1] ? 8'h00 : ep_tx_data[16*i+8 +: 8],
+                                               nosig_b[0] ? 8'h00 : ep_tx_data[16*i   +: 8]};
+        assign pipe_mac.rx[i].char_is_k     = {nosig_b[1] ? 1'b0  : ep_tx_datak[2*i+1],
+                                               nosig_b[0] ? 1'b0  : ep_tx_datak[2*i]};
+        assign pipe_mac.rx[i].valid         = rx_active[i];
+        assign pipe_mac.rx[i].chanisaligned = rx_active[i];
         assign pipe_mac.rx[i].status        = rx_status_r;
         assign pipe_mac.rx[i].phy_status    = phy_status_r;
-        assign pipe_mac.rx[i].elec_idle     = ~rx_active;
+        assign pipe_mac.rx[i].elec_idle     = ~rx_active[i];
     end
   endgenerate
 
@@ -352,18 +415,18 @@ module phy_top
   endfunction
 
   // TX side (RC -> EP)
-  integer tx_pos;
-  logic [7:0] tx_last_id;
+  int       tx_pos;
+  bit [7:0] tx_last_id;
   // RX side (EP -> RC)
-  integer rx_pos;
-  logic [7:0] rx_last_id;
+  int       rx_pos;
+  bit [7:0] rx_last_id;
 
   initial begin
     tx_pos = -1; tx_last_id = 8'hFF;
     rx_pos = -1; rx_last_id = 8'hFF;
   end
 
-  logic [7:0] tx_link, tx_lane, tx_last_link, tx_last_lane;
+  bit [7:0] tx_link, tx_lane, tx_last_link, tx_last_lane;
 
   task automatic feed_tx(input logic [7:0] sym, input logic is_k);
     if (is_k && sym == SYM_COM) tx_pos = 0;
@@ -384,7 +447,7 @@ module phy_top
     end
   endtask
 
-  logic [7:0] rx_link, rx_lane, rx_last_link, rx_last_lane;
+  bit [7:0] rx_link, rx_lane, rx_last_link, rx_last_lane;
 
   task automatic feed_rx(input logic [7:0] sym, input logic is_k);
     if (is_k && sym == SYM_COM) rx_pos = 0;
@@ -405,14 +468,23 @@ module phy_top
     end
   endtask
 
-  // Raw symbol dump: the first PIPE_DUMP_N words in each direction once the
-  // partner starts driving. Ground truth for alignment problems.
+  always @(posedge pipe_clk) if (pipe_rst_n) begin
+    feed_tx(pipe_mac.tx[0].data[7:0],   pipe_mac.tx[0].char_is_k[0]);
+    feed_tx(pipe_mac.tx[0].data[15:8],  pipe_mac.tx[0].char_is_k[1]);
+    feed_rx(ep_tx_data[7:0],        ep_tx_datak[0]);
+    feed_rx(ep_tx_data[15:8],       ep_tx_datak[1]);
+  end
+`endif
+
+  // Raw symbol dump (+define+PIPE_RAW_DUMP): lane 0's first 40 words in each
+  // direction once the partner drives, from PIPE_DUMP_FROM (ps). Ground truth
+  // for alignment problems.
 `ifdef PIPE_RAW_DUMP
 `ifndef PIPE_DUMP_FROM
   `define PIPE_DUMP_FROM 0
 `endif
-  integer dump_n = 0;
-  always @(posedge pipe_clk) if (pipe_rst_n && rx_active && dump_n < 40 && $time > `PIPE_DUMP_FROM) begin
+  int     dump_n;     // 0 at time 0
+  always @(posedge pipe_clk) if (pipe_rst_n && rx_active[0] && dump_n < 40 && $time > `PIPE_DUMP_FROM) begin
     $display("%t  RAW  tx=%02h%s %02h%s   rx=%02h%s %02h%s", $time,
              pipe_mac.tx[0].data[7:0],  pipe_mac.tx[0].char_is_k[0] ? "K" : "d",
              pipe_mac.tx[0].data[15:8], pipe_mac.tx[0].char_is_k[1] ? "K" : "d",
@@ -422,26 +494,19 @@ module phy_top
   end
 `endif
 
-  always @(posedge pipe_clk) if (pipe_rst_n) begin
-    feed_tx(pipe_mac.tx[0].data[7:0],   pipe_mac.tx[0].char_is_k[0]);
-    feed_tx(pipe_mac.tx[0].data[15:8],  pipe_mac.tx[0].char_is_k[1]);
-    feed_rx(ep_tx_data[7:0],        ep_tx_datak[0]);
-    feed_rx(ep_tx_data[15:8],       ep_tx_datak[1]);
-  end
-`endif
-
   //------------------------------------------------------------------
   // Progress reporting
   //------------------------------------------------------------------
   // The LTSSM state is the single most useful thing to watch when the link
   // does not come up, so every transition is printed.
 `ifndef NO_LTSSM_TRACE
-  logic [5:0] ltssm_q;
+  logic [5:0] ltssm_q;   // logic: the hard macro's state is X before its reset
 
-  always_ff @(posedge pipe_clk) begin
+  // in reset it follows the state, unprinted
+  always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
     ltssm_q <= pl_ltssm_state;
 
-    if (ltssm_q !== pl_ltssm_state) begin
+    if (pipe_rst_n && ltssm_q !== pl_ltssm_state) begin
       $display("%t  LTSSM  0x%02h -> 0x%02h %s", $time, ltssm_q, pl_ltssm_state,
                ltssm_name(pl_ltssm_state));
     end

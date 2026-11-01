@@ -56,11 +56,8 @@ package link_pkg;
 
   // Link speed: 1 = Gen1, 2 = Gen2.
   //
-  // SIM_GEN1_ONLY pins it to Gen1 for co-simulation. The pcievhost endpoint VIP
-  // advertises Gen1 in its training sequences and its LTSSM helper hands control
-  // back to the user program once L0 is reached, so it cannot follow the RC into
-  // Recovery.Speed for a Gen1 -> Gen2 change: the RC would sit in Recovery until
-  // it times out. Only the simulation file list defines it.
+  // SIM_GEN1_ONLY pins it to Gen1 for co-simulation (5.sim: make SIM_GEN=1).
+  // Only the simulation file list defines it.
 `ifdef SIM_GEN1_ONLY
   localparam int PCIE_GEN = 1;
 `else

@@ -178,6 +178,20 @@
 #define MAX_RAW_PKT_SIZE                  4125
 #define NULLACK                           9999
 
+// openPCIE: one-shot Data Link faults (InjectFault()), for a model that tests
+// its link partner
+#define FAULT_RX_NAK_NEXT                 0x1   // Nak the next good TLP, and drop it
+#define FAULT_TX_BAD_LCRC                 0x2   // the next new TLP goes out with a bad LCRC (the replay is good)
+#define FAULT_TX_DUP                      0x4   // keep a copy of the next new TLP: SendDuplicate() sends it again
+#define FAULT_TX_BAD_DLLP                 0x8   // the next DLLP goes out with a bad CRC
+
+// openPCIE: the replay timer, in symbol times: the Max_Payload_Size 128
+// values of 3.5.2.1, x1 and x4 (Tables 3-4/3-5)
+#define REPLAY_TIMER_GEN1                 711
+#define REPLAY_TIMER_GEN2                 864
+#define REPLAY_TIMER_GEN1_X4              219
+#define REPLAY_TIMER_GEN2_X4              372
+
 #define FC_POST                           0
 #define FC_NONPOST                        1
 #define FC_CMPL                           2
@@ -396,6 +410,11 @@ typedef struct {
 typedef void (*callback_t)(pPkt_t, int, void *);
 typedef void (*os_callback_t)(int, int, pTS_t, void *);
 
+// openPCIE: packet monitor, SetPktMonitor(). rx: 1 received (before any
+// processing, CRCs as on the wire), 0 sent (its last symbol out). edb: a
+// received TLP ended with EDB. The packet belongs to the model: read only.
+typedef void (*mon_callback_t)(const pPkt_t pkt, const int rx, const int edb, void *usrptr);
+
 enum config_e {
     CONFIG_FC_HDR_RATE                         = 0,
     CONFIG_FC_DATA_RATE,
@@ -556,6 +575,10 @@ EXTERN void       WaitForCompletion       (const int node);
 EXTERN void       WaitForCompletionN      (const uint32_t count,          const int node);
 EXTERN void       InitialisePcie          (const callback_t    cb_func, void *usrptr, const int node);
 EXTERN void       RegisterOsCallback      (const os_callback_t cb_func, const int node);
+EXTERN void       SetPktMonitor           (const mon_callback_t cb_func, void *usrptr, const int node);
+// openPCIE: an endpoint sets 'bit' of config DW 'reg' (Device Status, UR
+// Detected) on each Unsupported Request it detects (7.8.5)
+EXTERN void       SetUrDetectedReg        (const uint32_t reg, const uint32_t bit, const int node);
 EXTERN uint32_t   GetCycleCount           (const int node);
 EXTERN void       ConfigurePcie           (const config_t type, const int value, const int node);
 
@@ -569,6 +592,14 @@ EXTERN uint32_t   PcieRand                (const int node);
 EXTERN void       PcieSeed                (const uint32_t seed, const int node);
 EXTERN void       SetTxEnabled            (const int      node);
 EXTERN void       SetTxDisabled           (const int      node);
+EXTERN void       SetLaneReverse          (const bool     reverse, const int node);   // openPCIE: lanes reversed (4.2.4.9.1)
+EXTERN bool       GetLaneReverse          (const int      node);
+EXTERN void       InjectFault             (const int      fault, const int node);
+EXTERN void       ClearFaults             (const int      node);
+EXTERN void       SetOsMonitor            (const os_callback_t cb_func, void *usrptr, const int node);
+EXTERN void       HoldFc                  (const int      ticks, const int node);
+EXTERN void       SendDuplicate           (const int      node);
+EXTERN uint32_t   GetCompleterId          (const int      node);
 EXTERN void       getPcieVersionString    (char*          sbuf, const int bufsize);
 EXTERN void       SelectGen1Clock         (const int      node);
 EXTERN void       SelectGen2Clock         (const int      node);

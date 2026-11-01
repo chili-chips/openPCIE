@@ -1,15 +1,12 @@
 # RISC-V Bare-Metal PCIE Driver
 
-This directory contains the C source code, startup assembly, and linker scripts required to build the **open-source driver** for the RISC-V Root Complex. This driver performs enumeration and memory transactions to act as the PCIE Host for the system.
+The **open-source driver** of the RISC-V Root Complex: C sources, startup assembly and linker script. It enumerates the link and runs memory transactions as the PCIE host. Build it in [`4.build/sw_build`](../4.build/sw_build) (`make`, or `make VARIANT=switched`).
 
 <p align="center"><img src="../0.doc/3.sw/sw-structure.drawio.png" width="100%" alt="Firmware layers: application, PCIE driver, HAL, register map and startup, talking to the CSR block over the CPU memory bus, then through pcie_top to a direct endpoint or a switch with up to 4 endpoints"></p>
 
-The diagram source is [`0.doc/3.sw/sw-structure.drawio`](../0.doc/3.sw/sw-structure.drawio).
+Diagram source: [`0.doc/3.sw/sw-structure.drawio`](../0.doc/3.sw/sw-structure.drawio).
 
 ## File Structure
-
-What both Root Complex variants share is in [`common/`](common); each variant
-folder holds only its own `main.c`:
 
 | Directory | Contents |
 | :--- | :--- |
@@ -17,123 +14,56 @@ folder holds only its own `main.c`:
 | [`RC-direct/`](RC-direct) | `main.c` for one Endpoint, straight RC-to-EP link |
 | [`RC-switched/`](RC-switched) | `main.c` for the ASM1184e switch with up to 4 Endpoints behind it - see the [RC-switched README](../2.rtl/3.Bonus--RC-switched.opensource/README.md#2-firmware-the-bring-up-sequence) |
 
-Both are built in [`4.build/sw_build`](../4.build/sw_build) (`make`, or `make VARIANT=switched`). The API and register map below are common to both; the enumeration sequence described further down is that of `RC-direct`.
+| File | Does |
+| :--- | :--- |
+| `common/pcie.c`, `common/pcie.h` | HAL and driver: register access, TLP send, Completion wait (with Completion Status and CRS retry), config read/write helpers, BAR sizing |
+| `main.c` | **enumeration** (discovery, BAR placement, Command Register; `RC-switched` also the switch's bus numbers and windows) and the **app**: Memory Write, Memory Read, data check |
+| `common/start.S` | sets the stack pointer, jumps to `main()` |
+| `common/sections.lds` | maps code and data to the 8 KB BRAM at `0x00000000` |
 
-*   **`common/pcie.c`, `common/pcie.h`**: the HAL and driver layer - register access, TLP send and Completion wait (with Completion Status and CRS retry), the configuration read/write helpers and BAR sizing.
-*   **`main.c`**: the variant's application:
-    *   **Enumeration:** device discovery, BAR placement, and the Command Register that enables the device. `RC-switched` also programs the switch's bus numbers and memory windows.
-    *   **App:** a test that performs a Memory Write and Memory Read to the Endpoint and verifies the data integrity.
-*   **`common/start.S`**: The assembly startup code. It initializes the Stack Pointer and jumps to the `main()` C function.
-*   **`common/sections.lds`**: The Linker script. It maps the code and data to the FPGA's Block RAM (BRAM), starting at address `0x00000000` with a size of 8KB.
+The API and register map are common to both; the enumeration below is `RC-direct`'s.
 
 ### Code and data size
 
-RV32I without the C extension (no compressed instructions), built without optimisation (`-O0`), riscv-none-elf-gcc 15.2; `riscv-none-elf-size -A` on the board build. Code, data and stack share the 8 KB SOC RAM; the stack starts at its top (`li sp, 0x2000` in `start.S`).
+RV32I without C (no compressed instructions), `-O0`, riscv-none-elf-gcc 15.2; `riscv-none-elf-size -A` on the board build. Code, data and stack share the 8 KB SOC RAM; the stack starts at its top (`li sp, 0x2000` in `start.S`).
 
 | Firmware | Code (`.text`) | Read-only data | Data (`.data` + `.bss`) | Stack, worst case | Of the 8 KB RAM |
 | :--- | ---: | ---: | ---: | ---: | ---: |
 | `RC-direct` | 2,548 B | 0 B | 1 B | 368 B | 36% |
 | `RC-switched` | 3,532 B | 8 B | 1 B | 416 B | 48% |
 
-The firmware keeps its data on the stack: its only global is `tx_tag` (`common/pcie.c`), the tag of the next request TLP; `RC-switched` adds two 4-byte constant tables of the switch ports. The worst case is the deepest call chain, from `gcc -fcallgraph-info=su`: `main` → `assign_bars` → `cfg_read32_checked` → `cfg_read32` → `pcie_cfg_read` → `pcie_request` → `wait_for_completion`. No recursion and no variable-size frames.
+Data lives on the stack. The only global is `tx_tag` (`common/pcie.c`), the next request's tag; `RC-switched` adds two 4-byte constant tables of switch ports. Worst-case stack is the deepest call chain, from `gcc -fcallgraph-info=su`: `main` → `assign_bars` → `cfg_read32_checked` → `cfg_read32` → `pcie_cfg_read` → `pcie_request` → `wait_for_completion`. No recursion, no variable-size frames.
 
 ---
 
-## **API Reference**
+## API Reference
 
-The driver exposes four high-level functions for interacting with the PCIE Endpoint. These functions abstract away the TLP packet construction and handshake logic.
+Four functions hide TLP construction and handshakes:
 
+| Function | Does | Returns |
+| :--- | :--- | :--- |
+| `uint32_t pcie_cfg_read(uint32_t bus, uint32_t dev, uint32_t func, uint32_t reg, uint32_t *val);` | Configuration Read: IDs, status, BARs. `*val` gets the raw (byte-swapped) value, only on success | Completion Status: `CPL_STAT_SC` (0), `_UR` (1), `_CRS` (2, after 100 retries), `_CA` (4), or `CPL_TIMEOUT` (8) |
+| `uint32_t pcie_cfg_write(uint32_t bus, uint32_t dev, uint32_t func, uint32_t reg, uint32_t val);` | Configuration Write: BARs, Command register. A CRS answer is re-issued, as for reads | Completion Status, as above |
+| `void pcie_mem_write(uint32_t addr, uint32_t val);` | Memory Write to BAR space, `addr` 4-byte aligned. Posted: returns at once, no Completion | - |
+| `uint32_t pcie_mem_read(uint32_t addr, uint32_t *val);` | Memory Read from BAR space. `*val` written only on success | Completion Status, as above |
 
-### **1. Configuration Read**
-**Reads a 32-bit value from the device's Configuration Space. Used primarily during enumeration to read Device IDs and Status registers.**
+`bus, dev, func` is usually `1, 0, 0` on a direct link. The three non-posted calls share `pcie_request()`. `main()` uses the wrappers `cfg_read32()` / `cfg_write32()`, which add `bswap32()` and, for writes, stop with `0xBAD00002` on failure.
 
-<div align="center">
-
-| **Function Prototype** |
-| :---: |
-| `uint32_t pcie_cfg_read(uint32_t bus, uint32_t dev, uint32_t func, uint32_t reg, uint32_t *val);` |
-
-</div>
-
-*   **Parameters:**
-    *   **bus, dev, func:** Target device topology (usually 1, 0, 0 for a direct connection).
-    *   **reg:** The register offset (e.g., 0x00 for Vendor ID).
-    *   **val:** **Receives the raw (byte-swapped) register value - written only on success.**
-*   **Returns:** **The Completion Status: `CPL_STAT_SC` (0), `_UR` (1), `_CRS` (2, after 100 retries), `_CA` (4), or `CPL_TIMEOUT` (8).**
->*   **Example:** 
-    > `if (pcie_cfg_read(1, 0, 0, 0x00, &id) == CPL_STAT_SC) ...`
-*   **Note:** `main()` uses the wrappers `cfg_read32()` / `cfg_write32()`, which add the `bswap32()` and, for writes, stop with `0xBAD00002` on failure.
-
-### **2. Configuration Write**
-**Writes a 32-bit value to the Configuration Space. Used to configure BARs, enable Bus Mastering, and set Command registers.**
-
-
-<div align="center">
-  
-| **Function Prototype** |
-| :---: |
-| `uint32_t pcie_cfg_write(uint32_t bus, uint32_t dev, uint32_t func, uint32_t reg, uint32_t val);` |
-
-</div>
-
-
-*   **Parameters:**
-    *   **bus, dev, func:** Target device topology.
-    *   **reg:** The register offset.
-    *   **val:** **The 32-bit data to write.**
-*   **Returns:** **The Completion Status, as for `pcie_cfg_read()`. A write answered with CRS is re-issued, like a read.**
->*   **Example:** 
-   > `status = pcie_cfg_write(1, 0, 0, 0x10, 0xFFFFFFFF);`
-
-
-### **3. Memory Write (32-bit)**
-**Performs a Memory Write transaction to the mapped Base Address Register (BAR) space.**
-
-<div align="center">
-  
-| **Function Prototype** |
-| :---: |
-| `void pcie_mem_write(uint32_t addr, uint32_t val);` |
-
-</div>
-
-
-*   **Parameters:**
-    *   **addr:** **Target memory address (must be 4-byte aligned).**
-    *   **val:** **The 32-bit data payload.**
-*   **Note:** **This is a Posted Transaction, meaning the function sends the packet and returns immediately without waiting for a completion.**
->*   **Example:** 
-   > `pcie_mem_write(0x80000000, 0x00000006);`
-
-
-### **4. Memory Read (32-bit)**
-**Performs a Memory Read transaction from the mapped BAR space.**
-
-<div align="center">
-
-| **Function Prototype** |
-| :---: |
-| `uint32_t pcie_mem_read(uint32_t addr, uint32_t *val);` |
-
-</div>
-
-*   **Parameters:**
-    *   **addr:** **Target memory address.**
-    *   **val:** **Receives the 32-bit data read from the Endpoint - written only on success.**
-*   **Returns:** **The Completion Status, as for `pcie_cfg_read()`. All three non-posted calls share `pcie_request()`.**
->*   **Example:** 
-    > `if (pcie_mem_read(0x80000000, &data) == CPL_STAT_SC) ...`
+```c
+if (pcie_cfg_read(1, 0, 0, 0x00, &id) == CPL_STAT_SC) ...   // Vendor ID
+status = pcie_cfg_write(1, 0, 0, 0x10, 0xFFFFFFFF);         // size BAR0
+pcie_mem_write(0x80000000, 0x00000006);
+if (pcie_mem_read(0x80000000, &data) == CPL_STAT_SC) ...
+```
 
 ---
 
 ## Hardware Abstraction Layer (HAL)
 
-The driver interacts with the custom PCIE Bridge RTL via **Memory Mapped I/O (MMIO)**. The C code writes to specific memory addresses that the hardware interprets as control registers.
+The driver talks to the PCIE bridge RTL through memory-mapped registers.
 
 ### Register Map
-The following addresses map directly to the RTL bridge inputs/outputs. `common/pcie.h` takes them from `csr.h`, generated from `csr.rdl`, through `csr_regs.h` - see [4.build/README.md](../4.build/README.md#the-register-map).
-
-<div align="center">
+`common/pcie.h` takes these from `csr.h` (generated from `csr.rdl`) through `csr_regs.h`; see [4.build/README.md](../4.build/README.md#the-register-map).
 
 | Register Name | Address | R/W | Description |
 | :--- | :--- | :--- | :--- |
@@ -148,29 +78,24 @@ The following addresses map directly to the RTL bridge inputs/outputs. `common/p
 | `PCIE_PHY_STATUS` | `0x30000020` | R | Tx FSM state and the number of free hard-macro Tx buffers - polled before every send. |
 | `PCIE_RESULT` | `0x30000024` | RW | **Result marker** the firmware writes when it stops (table below). Sends nothing; drives the PASS LED and an ILA probe. |
 
-</div>
-
 ---
 
 ## Driver Logic & Features
 
 ### 1. Robust TLP Transmission
-Every non-posted request (config read, config write, memory read) goes through `pcie_request()`, which checks the **Completion Status** (SC / UR / CRS / CA) or reports a timeout, and passes read data back separately - so a genuine `0xFFFFFFFF` read is never mistaken for an error. A request answered with **CRS (Configuration Retry Status)** - read or write - is re-issued with a fresh tag up to 100 times. Any config request that fails after the device has been found stops the firmware with `0xBAD00002`.
+Every non-posted request (config read, config write, memory read) goes through `pcie_request()`. It checks the **Completion Status** (SC / UR / CRS / CA) or reports a timeout, and returns read data separately, so a genuine `0xFFFFFFFF` is never taken for an error. A **CRS** answer (Configuration Retry Status), read or write, is re-issued with a fresh tag up to 100 times. A config request that fails after the device was found stops the firmware with `0xBAD00002`.
 
 ### 2. Enumeration Sequence (in `main`)
-The firmware performs a standard PCIE Bring-up sequence:
-1.  **Wait:** Delays execution to allow the Physical Link to stabilize.
-2.  **Discovery:** Reads the `Device ID` from Bus 1.
-3.  **BAR Sizing:** With memory decoding off, writes `0xFFFFFFFF` to each of the six BARs and reads it back. `0` = BAR not implemented; bit 0 = I/O BAR (left unassigned, this RC has no I/O space); bits `[2:1] = 10` = 64-bit BAR, the next BAR is its upper half. Size = `~(readback & ~0xF) + 1`.
-4.  **Assignment:** Places each memory BAR, aligned to its size, in the window `0x80000000 - 0xFFFFFFFF` (`RC-switched`: the 1 MB window of the endpoint's switch port). BAR0 lands at the window base - `0x80000000` for the AMD EP's 2 KB BAR0. A BAR that does not fit is parked out of the way (64-bit above 4 GB, 32-bit at 0); if that is BAR0, the firmware stops with `0xBAD00003`.
-5.  **Enable:** Sets the **Bus Master** and **Memory Space** bits in the Command Register.
+1.  **Wait** for the link to settle.
+2.  **Discovery:** read the `Device ID` on bus 1.
+3.  **BAR sizing:** with memory decoding off, write `0xFFFFFFFF` to each of the six BARs and read back. `0` = not implemented; bit 0 = I/O BAR (left unassigned: this RC has no I/O space); bits `[2:1] = 10` = 64-bit BAR, the next BAR is its upper half. Size = `~(readback & ~0xF) + 1`.
+4.  **Assignment:** place each memory BAR, aligned to its size, in `0x80000000 - 0xFFFFFFFF` (`RC-switched`: the 1 MB window of the endpoint's switch port). BAR0 lands at the base: `0x80000000` for the AMD EP's 2 KB BAR0. A BAR that does not fit is parked (64-bit above 4 GB, 32-bit at 0); if it is BAR0, the firmware stops with `0xBAD00003`.
+5.  **Enable:** set **Bus Master** and **Memory Space** in the Command Register.
 
-Configuration payloads travel big-endian on this RC (byte 0 of the register in bits `[31:24]`), so all config data goes through `bswap32()` and the values in the source read the way the spec prints them.
+Configuration payloads are big-endian on this RC (register byte 0 in bits `[31:24]`), so config data goes through `bswap32()` and source values read as the spec prints them.
 
 ### 3. Self-Test & Debug Codes
-The driver reports its execution status by writing specific "Magic Numbers" to the `PCIE_RESULT` register. Unlike `PCIE_TX_DATA`, this write sends no TLP. On the board, PASS lights `led_link_up[3]`, and every marker can be watched with an ILA ([RTL Debug with ILA](../2.rtl/README.md#rtl-debug-with-ila)).
-
-<div align="center">
+The driver ends by writing a marker to `PCIE_RESULT`. Unlike `PCIE_TX_DATA`, this sends no TLP. On the board, PASS lights `led_link_up[3]`, and an ILA can watch every marker ([RTL Debug with ILA](../2.rtl/README.md#rtl-debug-with-ila)).
 
 | Magic Number | Meaning |
 | :--- | :--- |
@@ -180,8 +105,6 @@ The driver reports its execution status by writing specific "Magic Numbers" to t
 | **`0xBAD00001`** | **ERROR** (`RC-switched` only): the switch is up, but no Endpoint was found behind it. |
 | **`0xBAD00002`** | **ERROR:** A config request to a device that had answered failed (UR, CA, timeout, or CRS after 100 retries). |
 | **`0xBAD00003`** | **ERROR:** The Endpoint's BAR0 is not implemented, is an I/O BAR, or does not fit the window. |
-
-</div>
 
 
 ----------------

@@ -1,50 +1,23 @@
 # RTL Implementation: Opensource designs
 
-The **opensource** FPGA designs: the Artix-7 hard macros wrapped in open logic,
-with no Vivado IP generator.
-
-Their AMD/Vivado-IP counterparts are in
-[`2.amd-rtl-with-Vivado-build`](../2.amd-rtl-with-Vivado-build). Each design here
-has an `.amd` sibling there, built and proven first, as the reference.
+The **opensource** FPGA designs: Artix-7 hard macros wrapped in open logic, no Vivado IP generator. Each has an `.amd` sibling in [`2.amd-rtl-with-Vivado-build`](../2.amd-rtl-with-Vivado-build), built and proven first as the reference.
 
 ### Directory Structure
 
-- **`0.common.opensource`**
-  The RTL both Root Complex designs share: the top (`RC_opensource`), the RISC-V
-  SoC, the CSR wrapper, the opensource PCIE stack, the shared constraints and the
-  Vivado project script. The RC folders below hold only what differs: the GT lane
-  XDC per link width and a short wrapper for the shared script. Their firmware is
-  in [`3.sw`](../3.sw).
+| Folder | Contents | Status |
+|---|---|---|
+| [`0.common.opensource`](0.common.opensource/README.md) | RTL both RCs share: top (`RC_opensource`), RISC-V SoC, CSR wrapper, PCIE stack, shared constraints, Vivado project script. Firmware is in [`3.sw`](../3.sw) | |
+| [`1.EP.opensource`](1.EP.opensource/README.md) | EndPoints to test against: points to LiteFury PCIE EP, regymm's pcie_7x, LitePCIe. The [`1.EP.amd`](../2.amd-rtl-with-Vivado-build/1.EP.amd) replica works too | |
+| [`2.RC-direct.opensource`](2.RC-direct.opensource/README.md) | RC for a **Direct (Point-to-Point)** link, the core of the project. **x4 Gen1 default**, x1 Gen2 option; x4 only in this topology. Builds with Vivado and the [open openXC7 toolchain](../4.build/hw_build.openXC7) | **working**: Gen2 x1 on hardware; x4 Gen2 trained, x4 TLPs not re-tested after the [user-clock fix](#link-width-speed-and-user-clock) |
+| [`3.Bonus--RC-switched.opensource`](3.Bonus--RC-switched.opensource/README.md) | RC for a **Switched** topology (RC ⇔ Switch ⇔ EP) | **working**: on hardware through an ASM1184e switch |
 
-- **`1.EP.opensource`**
-  Opensource PCIE EndPoints to test our Root Complex against. Points to upstream
-  projects (LiteFury PCIE EP, regymm's pcie_7x, LitePCIe) instead of copying them.
-  The [`1.EP.amd`](../2.amd-rtl-with-Vivado-build/1.EP.amd) replica works too.
-
-- **`2.RC-direct.opensource`** — **implemented and working**
-
-  Root Complex for a **Direct (Point-to-Point)** link, the core of the project:
-  opensource PCIE logic around the `PCIE_2_1` and `GTPE2_CHANNEL` hard macros, a
-  RISC-V SoC, and its software.
-
-  Verified on hardware: **PCIE Gen2 x1**, and x4 Gen2 link up and trained, RC to EP.
-  x4 TLP traffic needed a faster user clock, not yet re-tested on hardware
-  ([Link width, speed and user clock](#link-width-speed-and-user-clock)).
-  **x4 Gen1 is the default**, x1 Gen2 a build option (`PCIE_LANES`). x4 can only be
-  tested in this Direct topology. Builds with Vivado and with a
-  [fully opensource toolchain](../4.build/hw_build.openXC7) (openXC7: Yosys,
-  nextpnr, prjxray), no proprietary tool in the chain.
-
-- **`3.Bonus--RC-switched.opensource`** — **implemented and working**
-
-  Root Complex for a **Switched** topology (RC ⇔ Switch ⇔ EP). Verified on
-  hardware through a standard PCIE switch (ASM1184e).
+The RC folders hold only what differs: the GT lane XDC and a short wrapper for the shared script.
 
 ---
 
 ### Build parameters
 
-The user-settable choices are SystemVerilog defines, passed in by the build. Each one is read in a single file:
+SystemVerilog defines, passed in by the build, each read in one file:
 
 | Define | Values | Default | Read in |
 |---|---|---|---|
@@ -53,7 +26,7 @@ The user-settable choices are SystemVerilog defines, passed in by the build. Eac
 
 Set them with openXC7 `make LANES=1|4 GEN=1|2`, or in Vivado with `set ::pcie_lanes` / `set ::pcie_gen` before sourcing the project script. Together they also set `user_clk` ([below](#link-width-speed-and-user-clock)).
 
-**For advanced users.** The SOC defines below are not normally needed: the build picks the CPU that fits the link. They are exposed for those who use openPCIE as a basis for their own designs.
+**For advanced users** building their own designs on openPCIE. Not normally needed: the build picks the CPU that fits the link.
 
 | Define | Values | Default | Read in |
 |---|---|---|---|
@@ -67,12 +40,7 @@ The CPU is set with openXC7 `make CPU=edubos5|edubos5_3stg|picorv32` or Vivado `
 
 ### Common CSR
 
-Both RC designs take their register block from one SystemRDL spec,
-[`4.build/csr_build/csr.rdl`](../4.build/csr_build/csr.rdl). `peakrdl` turns it
-into the register RTL (`csr_pkg.sv`, `csr.sv`) and the software headers;
-[`soc_csr.sv`](0.common.opensource/src/soc_csr.sv) bridges the block to the
-picorv32 memory bus. Regenerate with `make -f MakefileCSR` in
-[`4.build`](../4.build) ([details](../4.build/README.md#csr-hal-compilation)).
+Both RCs share one register block, generated by `peakrdl` from [`4.build/csr_build/csr.rdl`](../4.build/csr_build/csr.rdl) into RTL (`csr_pkg.sv`, `csr.sv`) and software headers. [`soc_csr.sv`](0.common.opensource/src/soc_csr.sv) bridges it to the CPU memory bus. Regenerate: `make -f MakefileCSR` in [`4.build`](../4.build) ([details](../4.build/README.md#csr-hal-compilation)).
 
 ---
 
@@ -112,11 +80,16 @@ The `PCIE_2_1` and `GTPE2` hard macros keep their flat pins; unused ones are tie
 
 `pipe_clk` switches to 250 MHz once all lanes vote for Gen2 (`pipe_clk_sel`, from `gtp_wrapper`). The single reset source is two `FDCE` with `INIT = 0`: they hold reset after configuration (flash or JTAG, which can end after PERST# is released); PERST# or a loss of MMCM lock asserts it later. Diagram source: [`0.doc/2.rtl/clk-rst.drawio`](../0.doc/2.rtl/clk-rst.drawio).
 
-**PERST# and the `pipe_clk` vote: a difference from AMD.** The vote is AMD's (`pipe_clock` in the pcie_7x core), but the resets differ. AMD never resets the vote or the MMCM on PERST# (`PIPE_MMCM_RST_N` is tied high in its example designs). After a PERST# at Gen2, `pipe_clk` stays at 250 MHz until the reset FSM clears the lanes' select in `FSM_PLLRESET`, with the GTs held in reset, then switches once to 125 MHz. Here PERST# resets the MMCM and the vote, while each lane's `speed_ctrl` keeps its Gen2 select until `gtpll0_reset` clears it. Left alone, the vote would switch to 250 MHz at reset release and back to 125 MHz about 1 µs later, during `init_ctrl`'s CFG_WAIT. So the vote counts only after that first `gtpll0_reset` (`vote_armed` in `gtp_wrapper`): `pipe_clk` comes out of PERST# at 125 MHz and does not switch. Co-simulation runs at Gen1 only, so only a board test can check this path (pending).
+**PERST# and the `pipe_clk` vote: a difference from AMD.** The vote is AMD's (`pipe_clock` in the pcie_7x core); the resets differ.
+
+- **AMD** never resets the vote or the MMCM on PERST# (`PIPE_MMCM_RST_N` tied high in its example designs). After a PERST# at Gen2, `pipe_clk` stays at 250 MHz until the reset FSM clears the lanes' select in `FSM_PLLRESET`, GTs held in reset, then switches once to 125 MHz.
+- **Here** PERST# resets the MMCM and the vote, but each lane's `speed_ctrl` keeps its Gen2 select until `gtpll0_reset` clears it. Unguarded, the vote would switch to 250 MHz at reset release and back about 1 µs later, during `init_ctrl`'s CFG_WAIT. So the vote counts only after that first `gtpll0_reset` (`vote_armed` in `gtp_wrapper`): `pipe_clk` leaves PERST# at 125 MHz and does not switch.
+
+Co-simulation is Gen1 only, so only a board test can check this path (pending).
 
 ### Link width, speed and user clock
 
-Two build defines, read by [`link_pkg.sv`](0.common.opensource/src/pcie/link_pkg.sv): `PCIE_LANES` (4, 1) and `PCIE_GEN` (1, 2). Default speed: Gen1 at x4 (x4 Gen2 closes timing in Vivado only), Gen2 at x1. Together they set `user_clk`, the clock of `PCIE_2_1` USERCLK, the TRN bus and the SOC (`USER_CLK_FREQ` in [`pcie_pkg.sv`](0.common.opensource/src/pcie/pcie_pkg.sv)). The TRN bus has to carry the link's bandwidth ([UG477](../0.doc/xilinx/ug477_7Series_IntBlock_PCIe.pdf) table 2-8):
+`PCIE_LANES` (4, 1) and `PCIE_GEN` (1, 2), read by [`link_pkg.sv`](0.common.opensource/src/pcie/link_pkg.sv), set `user_clk`: the clock of `PCIE_2_1` USERCLK, the TRN bus and the SOC (`USER_CLK_FREQ` in [`pcie_pkg.sv`](0.common.opensource/src/pcie/pcie_pkg.sv)). `trn_if` is fixed at 64 bits, so `user_clk` scales to carry the link's bandwidth ([UG477](../0.doc/xilinx/ug477_7Series_IntBlock_PCIe.pdf) table 2-8): 250 MB/s per lane at Gen1 (2.5 GT/s, 8b/10b), twice that at Gen2. Default speed: Gen1 at x4 (x4 Gen2 closes timing in Vivado only), Gen2 at x1.
 
 | Link | Bandwidth, each way | TRN bus | `user_clk` | `USER_CLK_FREQ` | Status |
 |---|---|---|---|---|---|
@@ -126,11 +99,9 @@ Two build defines, read by [`link_pkg.sv`](0.common.opensource/src/pcie/link_pkg
 | x4 Gen2 | 2 GB/s | 64-bit | 250 MHz | 3 | Vivado meets timing with the 3-stage eduBOS5 (below); the link trained on hardware before the user-clock fix, TLPs not re-tested |
 | x4 Gen2 | 2 GB/s | 128-bit | 125 MHz | 3, with `USER_CLK2_DIV2` | not implemented, [open for contribution](../CONTRIBUTING.md) |
 
-`trn_if` is fixed at 64 bits, so `user_clk` scales with the link bandwidth. Vivado and openXC7 both derive it through the MMCM: one constraint set fits all four builds.
+Vivado and openXC7 both derive `user_clk` through the MMCM: one constraint set fits all four builds. Build commands: [RC-direct](2.RC-direct.opensource/README.md). Co-simulation is always Gen1.
 
-Bandwidth is 250 MB/s per lane at Gen1 (2.5 GT/s, 8b/10b), twice that at Gen2. Builds: openXC7 `make LANES=1|4 GEN=1|2`, Vivado `set ::pcie_lanes` / `set ::pcie_gen` / `set ::cpu` ([RC-direct](2.RC-direct.opensource/README.md)). The co-simulation is always Gen1.
-
-**x4 Gen2 runs the SOC at 250 MHz.** The PCIE core and `trn_bridge` meet that. The SOC needs the 3-stage eduBOS5, the default CPU at x4 Gen2. Vivado 2026.1, `user_clk` at 250 MHz:
+**x4 Gen2 runs the SOC at 250 MHz.** The PCIE core and `trn_bridge` meet it; the SOC needs the 3-stage eduBOS5, the default CPU at x4 Gen2. Vivado 2026.1, `user_clk` at 250 MHz:
 
 | CPU | WNS | Failing paths | Critical path |
 |---|---|---|---|
@@ -139,28 +110,26 @@ Bandwidth is 250 MB/s per lane at Gen1 (2.5 GT/s, 8b/10b), twice that at Gen2. B
 | + fetch from `pc + 1`, refetch after a jump | -0.22 ns | | ALU shifter -> register-file write |
 | + shift result registered | **+0.15 ns** | 0 | load data -> register-file write |
 
-The 3-stage pays for it with 1 more cycle per instruction, 2 more per jump or taken branch ([eduBOS5](0.common.opensource/src/CPU.eduBOS5/README.md)). Two other ways to 2 GB/s, both open for contribution:
+The 3-stage costs 1 more cycle per instruction, 2 more per jump or taken branch ([eduBOS5](0.common.opensource/src/CPU.eduBOS5/README.md)). Two other ways to 2 GB/s, both open for contribution:
 
 - a **128-bit `trn_if`** at 125 MHz (USERCLK 250 MHz, USERCLK2 125 MHz): `trn_bridge`, `axis_if` and the SOC's TLP path go 128-bit;
 - the SOC on its own, slower clock, with a clock-crossing FIFO on each AXI-Stream.
 
-Until October 2026 `user_clk` was 62.5 MHz at every width. x4 trained, but TLPs could not pass: the core repeated each PIPE beat for two clocks, which co-simulation catches at the first TLP.
+Before October 2026 `user_clk` was 62.5 MHz at every width: x4 trained, but the core repeated each PIPE beat for two clocks, so no TLP passed. Co-simulation catches this at the first TLP.
 
 ### Common Physical Constraints (XDC)
 
-The XDC maps the PCIE signals to the pins of the `Acorn CLE-215+` and the `openPCIE Backplane`. Every design needs:
+Pin mapping for the `Acorn CLE-215+` on the `openPCIE Backplane`. Every design needs:
 
-1.  **Clock Request (CRITICAL):** the backplane outputs the 100 MHz reference clock **only** while `CLKREQ#` (pin **G1**) is driven **LOW**. Without it: no clock, no link.
+1.  **Clock Request (CRITICAL):** the backplane sends the 100 MHz reference clock **only** while `CLKREQ#` (pin **G1**) is **LOW**. No clock, no link.
 
 2.  **Reference Clock & Reset:**
     - **REFCLK:** 100 MHz, differential pair on pins **F6/E6**.
     - **PERST#:** pin **J1**, active low.
 
-3.  **Transceiver (GTP) Placement:** each logical lane **must be locked** to its **GTP Channel Primitive** (`GTPE2_CHANNEL_X0Y...`); `PACKAGE_PIN` on the RX/TX pairs is **not enough**. The `LOC` alone **is** enough: GT pads are dedicated, so each channel site fixes its four pins. The Vivado XDC files therefore have no `PACKAGE_PIN` on GT ports. (openXC7 is the opposite: nextpnr needs the pins; see [`4.build/hw_build.openXC7`](../4.build/hw_build.openXC7/README.md#gt-channel).)
+3.  **Transceiver (GTP) Placement:** lock each lane to its **GTP Channel Primitive** (`GTPE2_CHANNEL_X0Y...`). `PACKAGE_PIN` on the RX/TX pairs is **not enough**; the `LOC` alone **is**, since GT pads are dedicated to their channel. So the Vivado XDC has no `PACKAGE_PIN` on GT ports. (openXC7 is the opposite: [`4.build/hw_build.openXC7`](../4.build/hw_build.openXC7/README.md#gt-channel).)
 
-    **Finding the channel:**
-    1.  Map the M.2/PCIE connector pins to FPGA **Package Pins** in the [NiteFury](https://github.com/RHSResearchLLC/NiteFury-and-LiteFury/tree/master) schematic.
-    2.  In the Vivado **Device Window**, find those pins and their **GTP Channel Primitive**.
+    **Finding the channel:** map the M.2/PCIE connector pins to FPGA **Package Pins** in the [NiteFury](https://github.com/RHSResearchLLC/NiteFury-and-LiteFury/tree/master) schematic, then find their **GTP Channel Primitive** in the Vivado **Device Window**.
 
     <div align="center">
 
@@ -175,14 +144,14 @@ The XDC maps the PCIE signals to the pins of the `Acorn CLE-215+` and the `openP
 
     Pin names are from AMD's package file [`xc7a200t-fbg484-package.txt`](../0.doc/xilinx/xc7a200t-fbg484-package.txt) ([source](https://www.xilinx.com/support/packagefiles/a7packages/xc7a200tfbg484pkg.txt)) (`MGTPRXP<n>_216` etc.). An x1 design uses one of the four positions for its lane `[0]`; x4 uses all four.
 
-> **Note:** The AMD XDC files in [`2.amd-rtl-with-Vivado-build`](../2.amd-rtl-with-Vivado-build) have a `LOC` block for all 4 positions, with only the active one **uncommented**. The opensource designs carry only their active `LOC`s, in the per-variant lane XDC; all other constraints are shared, in [`0.common.opensource/xdc`](0.common.opensource/xdc). Neither has GT pin constraints.
+> **Note:** The AMD XDC files in [`2.amd-rtl-with-Vivado-build`](../2.amd-rtl-with-Vivado-build) list all 4 `LOC`s, only the active one **uncommented**. The opensource designs carry only their active `LOC`s, in the per-variant lane XDC; the rest is shared in [`0.common.opensource/xdc`](0.common.opensource/xdc). Neither has GT pin constraints.
 
 4.  **Visual Debug (LEDs):** `led_link_up[3:0]` drives the 4 **User LEDs** (pins **G3, H3, G4, H4**), active low: `[2]` (G4) is `trn_link_up`, `[3]` (H4) lights when the firmware reports PASS ([RTL Debug with ILA](#rtl-debug-with-ila)); `[1:0]` stay off.
 
 
 ### Utilization and Timing Stats
 
-openXC7 v1.0.0 builds (Yosys `read_slang` + nextpnr-himbaechel) of the opensource RC, part `xc7a200tfbg484-3`, 2026-10-25: **x4 Gen1** (the default, eduBOS5 2-stage), x4 Gen2 (`make GEN=2`, eduBOS5 3-stage) and x1 Gen2 (`make LANES=1`).
+openXC7 v1.0.0 (Yosys `read_slang` + nextpnr-himbaechel), part `xc7a200tfbg484-3`, 2026-10-25: **x4 Gen1** (default, eduBOS5 2-stage), x4 Gen2 (`make GEN=2`, eduBOS5 3-stage), x1 Gen2 (`make LANES=1`).
 
 | Resource | x4 Gen1 | x4 Gen2 | x1 Gen2 |
 |---|---|---|---|
@@ -202,7 +171,7 @@ openXC7 v1.0.0 builds (Yosys `read_slang` + nextpnr-himbaechel) of the opensourc
 | `clk125`, needs 125 MHz | 337.0 MHz | 348.6 MHz | 409.8 MHz |
 | `user_clk` | 157.2 MHz, needs 125 | **181.1 MHz, needs 250** | 148.2 MHz, needs 62.5 |
 
-Fmax is nextpnr's estimate and varies with placement. Every clock meets its target except x4 Gen2's `user_clk`: nextpnr cannot apply the 3-stage eduBOS5's multicycle paths ([nextpnr#110](https://github.com/openXC7/nextpnr/issues/110)), so it times them as single-cycle. Vivado closes x4 Gen2 ([above](#link-width-speed-and-user-clock)).
+Fmax is nextpnr's estimate and varies with placement. All clocks meet their target except x4 Gen2's `user_clk`: nextpnr cannot apply the 3-stage's multicycle paths ([nextpnr#110](https://github.com/openXC7/nextpnr/issues/110)). Vivado closes x4 Gen2 ([above](#link-width-speed-and-user-clock)).
 
 ### RTL coding rules
 
@@ -223,10 +192,10 @@ IEEE 1800-2009 SystemVerilog. For the opensource RTL and the models that stand i
   | `priority` | first one wins | violation, unless there is a `default` | ordered (priority) logic |
 
   `unique0` (IEEE 1800-2009) is the simulation-aware `parallel_case`; the old work-around, `unique case` with an empty `default`, is not used.
-- **`logic`, not `wire`:** every signal and port is `logic`, every `input`/`output` typed (`input logic ...`), never left to default to `wire`. Only an `inout` would be a `wire`; there are none. `wire x = expr;` becomes `logic x;` + `assign x = expr;` (`logic x = expr;` is only an initial value).
+- **`logic`, not `wire`:** every signal and port is `logic`, every `input`/`output` typed (`input logic ...`). Only an `inout` would be a `wire`; there are none. `wire x = expr;` becomes `logic x;` + `assign x = expr;` (`logic x = expr;` is only an initial value).
 - **`initial` blocks:** not in RTL, except `$readmemh` of the firmware into the SOC RAM, and the register-file RAM of the CPU cores, cleared so that x0 reads 0 (`edubos5_rf.sv`, `picorv32.CHILI.sv`). Models and test benches (`5.sim`) may use them freely.
 - **No `` `timescale `` in RTL:** the test bench sets it (`5.sim/tb.sv`, and `--timescale 1ps/1ps` for xelab in `5.sim/Makefile`). RTL has no `#` delays; a directive in only some files is a lint finding (Verilator TIMESCALEMOD).
-- **No initial values on registers:** a register gets its value from the reset branch of its `always_ff`. The one exception is the design's reset source, two `FDCE` instances in `clk_rst_gen.sv` (`u_rst_sync0/1`), instantiated by name so it stands out: their `INIT` asserts reset at configuration (flash or JTAG, which can end after PERST# is released); PERST# asserts it later. Every other reset derives from it.
+- **No initial values on registers:** a register gets its value from the reset branch of its `always_ff`. One exception: the reset source, two `FDCE` instances in `clk_rst_gen.sv` (`u_rst_sync0/1`), instantiated by name so it stands out; their `INIT` asserts reset at configuration (see [Clocks and resets](#clocks-and-resets)). Every other reset derives from it.
 - **Arrays, not flat buses:** arrays of lanes or structs, no index arithmetic on flat buses.
 - **`/*LINT:OK*/`:** marks an unused *output* pin of a hard macro, primitive or third-party core as reviewed: `.PIN (/*LINT:OK*/)`, with a `// reason` if not obvious. Never on an input (`run-lint.sh` flags it); unused inputs are tied off.
 - **No-connects:** unused bits of a hard-macro or primitive output go to `NC_` signals: `{NC_x, used}` on a bus pin, or an `NC_` signal for an unused lane. `NC_` signals are never read.
@@ -238,19 +207,19 @@ IEEE 1800-2009 SystemVerilog. For the opensource RTL and the models that stand i
 - **Assertions:** only under an `ifdef`, and the RTL is never changed for them. Simulation gets SVA, open-source formal gets immediate `assert` with `$past`, and both forms stay ([eduBOS5](0.common.opensource/src/CPU.eduBOS5/README.md#getting-started-with-formal-proving-a-worked-example)). In an RTL file they follow these rules too (`always_ff`, reset instead of initial values). The harnesses in `0.common.opensource/src/CPU.eduBOS5/formal/` are verification code, like `5.sim`.
 - **Clean diffs:** no blank-line or alignment changes beyond what `run-format.sh` makes; check `git diff` before a commit.
 - **Models follow the RTL:** a model keeps the ports, interfaces, structs, loops and names of the RTL it replaces.
-- **Formatting:** [`run-format.sh`](../4.build/hw_build.openXC7/run-format.sh) puts every `if`, `else`, `always`, `for` and `initial` body in `begin` ... `end`, even a single statement, then runs Verible (`verible-verilog-format`) at its defaults plus all alignment options set to `align`, `end` and `else` on separate lines, LF line endings (flags in the script). Lines are at most 100 columns; wrap longer ones by hand. Run it last, after lint, before a commit. `run-format.sh --check` only lists unformatted files; the `Verible` GitHub Action runs that check and the Verible lint.
+- **Formatting:** run [`run-format.sh`](../4.build/hw_build.openXC7/run-format.sh) last, after lint, before a commit. It puts every `if`, `else`, `always`, `for` and `initial` body in `begin` ... `end`, then runs `verible-verilog-format` with all alignment options set to `align`, `end` and `else` on separate lines, LF endings (flags in the script). Lines are at most 100 columns; wrap by hand. `--check` only lists unformatted files; the `Verible` GitHub Action runs it and the Verible lint.
 
 ### RTL Debug with ILA
 
-On the board, an Integrated Logic Analyzer (ILA) does what a waveform does in simulation: it captures signals inside the FPGA at speed, and JTAG reads them out.
+An Integrated Logic Analyzer (ILA) is the board's waveform: it captures signals inside the FPGA at speed, read out over JTAG.
 
-The firmware ends by writing its result marker to `status.result` (`0x3000_0024`, values in [3.sw](../3.sw/README.md#3-self-test--debug-codes)). Writing it sends no TLP. In [`riscv_pcie_soc.sv`](0.common.opensource/src/riscv_pcie_soc.sv) the register drives `fw_result`, marked `mark_debug` so that Vivado keeps it for an ILA. PASS (`0x0000FACE`) also lights `led_link_up[3]`, so the verdict shows with no debug core at all.
+The firmware ends by writing its result marker to `status.result` (`0x3000_0024`, values in [3.sw](../3.sw/README.md#3-self-test--debug-codes)); this sends no TLP. In [`riscv_pcie_soc.sv`](0.common.opensource/src/riscv_pcie_soc.sv) it drives `fw_result`, marked `mark_debug` so Vivado keeps it for an ILA. PASS (`0x0000FACE`) also lights `led_link_up[3]`, no debug core needed.
 
 With Vivado's ILA (ChipScope):
-1. Synthesize, then **Set Up Debug**: `fw_result` is already listed. Add what else you want to see, e.g. the LTSSM state or the `s_axis_tx` / `m_axis_rx` streams, on `user_clk`.
+1. Synthesize, then **Set Up Debug**: `fw_result` is already listed. Add more, e.g. the LTSSM state or the `s_axis_tx` / `m_axis_rx` streams, on `user_clk`.
 2. Trigger on `fw_result` not equal to 0, program the board, and run.
 
-ChipScope is proprietary and part of Vivado; the openXC7 flow has no such core. For that, we have an eye on [fpgacapZero](https://github.com/lcapossio/fpgacapZero) (fcapz, Apache-2.0): vendor-agnostic logic-analyzer and I/O cores in Verilog and VHDL, with a 7-series JTAG wrapper, OpenOCD or Vivado's hw_server, and VCD export, which opens in WaveCrux like our simulation dumps.
+ChipScope is proprietary; openXC7 has no such core. Candidate: [fpgacapZero](https://github.com/lcapossio/fpgacapZero) (fcapz, Apache-2.0), vendor-agnostic logic-analyzer and I/O cores in Verilog and VHDL, with a 7-series JTAG wrapper, OpenOCD or Vivado's hw_server, and VCD export that opens in WaveCrux.
 
 ### References
 

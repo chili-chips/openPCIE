@@ -1,9 +1,9 @@
 # Opensource RC: shared RTL
 
-The two opensource Root Complex designs,
 [RC-direct](../2.RC-direct.opensource) and
-[RC-switched](../3.Bonus--RC-switched.opensource), are built from the very same
-RTL. It lives here, once.
+[RC-switched](../3.Bonus--RC-switched.opensource) are built from the same RTL,
+kept here once. It also feeds the [openXC7 build](../../4.build/hw_build.openXC7)
+and the [co-simulation](../../5.sim).
 
 ```
 src/
@@ -18,7 +18,7 @@ xdc/
 RC.opensource.tcl               the Vivado project script behind both wrappers
 ```
 
-What stays in each variant's own folder is only what really differs:
+Each variant's folder keeps only what differs:
 
 | | RC-direct | RC-switched |
 |---|---|---|
@@ -26,16 +26,14 @@ What stays in each variant's own folder is only what really differs:
 | Vivado project | `RC-direct.opensource.tcl` -> `xbuild.Vivado-v2024.2/` | `RC-switched.opensource.tcl` -> `xbuild.Vivado-v2024.2/` |
 | Firmware | [`3.sw/RC-direct`](../../3.sw/RC-direct) | [`3.sw/RC-switched`](../../3.sw/RC-switched) |
 
-`riscv_pcie_soc.sv` picks Type 0 or Type 1 for every Configuration TLP from the
-target bus number - Type 1 beyond bus 1, as a switch needs. The RC-direct
-firmware addresses its endpoint on bus 1, so for it every request stays Type 0.
+`riscv_pcie_soc.sv` makes each Configuration TLP Type 1 when its target bus is
+beyond 1, as a switch needs, and Type 0 otherwise. RC-direct addresses its
+endpoint on bus 1, so it only ever sends Type 0.
 
-The PCIE stack is described file by file in the
+More: the PCIE stack file by file in the
 [RC-direct README](../2.RC-direct.opensource/README.md#the-pcie-stack-by-layer),
 the switch handling in the
 [RC-switched README](../3.Bonus--RC-switched.opensource/README.md#what-differs-from-rc-direct).
-The same sources also feed the [openXC7 build](../../4.build/hw_build.openXC7)
-and the [co-simulation](../../5.sim).
 
 -----------
 #### End-of-Document

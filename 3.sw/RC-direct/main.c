@@ -58,7 +58,7 @@ int main() {
 
 	tx_tag = 0;
 
-	wait_cycles(STARTUP_DELAY);
+	wait_cycles(US2WAIT(STARTUP_US));
 
     uint32_t dev_id;
 
@@ -76,6 +76,17 @@ int main() {
 
 	uint32_t test_data = 0x00000006;
     uint32_t readback;
+
+#ifdef HM_PROBE
+    // Simulation only (5.sim: make HM_PROBE=1): traffic for the endpoint's
+    // Data Link faults against the hard macro (5.sim/usercode/hm_probe.h)
+    for (uint32_t i = 1; i <= 16; i++) {
+        pcie_mem_write(test_addr + 4 * i, i);
+        if (pcie_mem_read(test_addr + 4 * i, &readback) != CPL_STAT_SC || readback != i) {
+            halt(RESULT_FAIL);
+        }
+    }
+#endif
 
     pcie_mem_write(test_addr, test_data);
 

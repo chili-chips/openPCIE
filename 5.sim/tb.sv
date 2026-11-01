@@ -13,7 +13,7 @@
 //          |    |- clk_rst_gen        MMCM, real RTL
 //          |    |- pcie_core       real RTL
 //          |    |    `- PCIE_2_1     Xilinx hard macro
-//          |    `- phy_top     <-- SWAPPED for models/phy_top.PIPE.sv
+//          |    `- phy_top     <-- SWAPPED for models/phy_top.EP-PIPE-BFM.sv
 //          |                            (PIPE PHY model + pcievhost endpoint)
 //          `- riscv_pcie_soc
 //               |- picorv32 / edubos5  real RTL, runs the real firmware.hex
@@ -253,7 +253,7 @@ module tb;
 
 //--------------------------------------------------------------
 // VCD dump, for viewers that do not read xsim's .wdb (e.g. WaveCrux):
-//     make run USRSIMOPTS="--define DUMP_VCD"     -> tb.vcd, converted to tb.x1g1.direct.fst
+//     make run SIM_GEN=1 USRSIMOPTS="--define DUMP_VCD"  -> tb.vcd, converted to tb.x1g1.direct.fst
 // Add --define DUMP_SOC_CPU for the CPU under RVFI names (CPU.eduBOS5/wavecrux).
 // Only the TLP monitors, the decoder view, the SOC level, the LTSSM
 // state and the decoder page of the pcieVHost endpoint (u_pcie_ep, our
@@ -497,8 +497,7 @@ module tb;
 // via the `fatal definition in pciedispheader.v.
 task Fatal;
 begin
-    $display("***FATAL ERROR...calling $finish!");
-    $finish;
+    $fatal(1, "pcieVHost fatal: a model's FAIL, or a bad VProc access");
 end
 endtask
 

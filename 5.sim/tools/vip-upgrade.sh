@@ -52,9 +52,18 @@ O=$(mktemp -d)
 trap 'rm -rf "$O"' EXIT
 
 # ---- VProc: libcosimlnx.a (DPI build) and its headers/HDL ------------------
+# local change: the user code runs as a coroutine on the simulator's thread,
+# not in a thread per node (models/cosim/vproc-coroutine.patch)
 V=$W/vproc
+for f in code/VProc.h code/VSched.c code/VUser.c; do
+    sed -i 's/\r$//' "$V/$f"
+done
+if ! patch -s --no-backup-if-mismatch -p1 -d "$V" < "$M/cosim/vproc-coroutine.patch"; then
+    echo "ERROR: vproc-coroutine.patch no longer applies to VProc $VPROC_REF."
+    exit 1
+fi
 for f in VSched VUser; do
-    gcc -c -fPIC -m64 -I"$V/code" -DVPROC_SV "$V/code/$f.c" -o "$O/$f.o"
+    gcc -c -O2 -g -fPIC -m64 -I"$V/code" -DVPROC_SV "$V/code/$f.c" -o "$O/$f.o"
 done
 rm -f "$M/cosim/lib/libcosimlnx.a"
 ar cr "$M/cosim/lib/libcosimlnx.a" "$O"/VSched.o "$O"/VUser.o
@@ -69,17 +78,26 @@ lf "$W/mem_model/mem_model_dpi.vh" > "$M/cosim/mem_model_dpi.vh"
 
 # ---- pcievhost: libpcielnx.a, headers, HDL ---------------------------------
 P=$W/pcievhost
-# local change: transaction taps, TLP and DLLP ports (models/pcievhost/README.md),
-# on LF copies of the files it changes
-for f in src/displink.c src/pcie_vhost_map.h verilog/pcieVHost/pcieVHost.v verilog/pcieVHost/pcieVHostPipex1.v; do
+# local changes, on LF copies of the files they change:
+#   transaction taps, TLP and DLLP ports (models/pcievhost/README.md)
+#   speed change: speed_change bit in TS, SetTxDisabled holds the queue,
+#   InitFC follows the partner into Recovery, ltssm.h declares LinkIdle() etc.
+#   mem.c: per-node table init, RW1C config bits (WriteConfigSpaceW1c)
+#   Serialiser.v: per lane, re-sync at the comma, sync lost at the first idle symbol
+#   lane reversal: a lane map in pcie.c, the encoder's disparity swapped (codec.c)
+#   electrical idle: the core's ElecIdleIn/Out ports on every simulator, the
+#   line constant 0, NOSIG on the PIPE (pciexpress_header.v); no X or Z
+for f in src/codec.c src/codec.h src/displink.c src/ltssm.h src/mem.c src/mem.h src/pci_express.h src/pcie.c src/pcie.h src/pcie_utils.c src/pcie_utils.h src/pcie_vhost_map.h verilog/pcieVHost/pcieVHost.v verilog/pcieVHost/pcieVHostPipex1.v verilog/lib/Serialiser.v verilog/headers/pciexpress_header.v verilog/lib/clkmux.v; do
     sed -i 's/\r$//' "$P/$f"
 done
-if ! patch -s --no-backup-if-mismatch -p1 -d "$P" < "$M/pcievhost/pcievhost-taps.patch"; then
-    echo "ERROR: pcievhost-taps.patch no longer applies to pcievhost $PCIEVHOST_REF."
-    exit 1
-fi
+for p in taps speed; do
+    if ! patch -s --no-backup-if-mismatch -p1 -d "$P" < "$M/pcievhost/pcievhost-$p.patch"; then
+        echo "ERROR: pcievhost-$p.patch no longer applies to pcievhost $PCIEVHOST_REF."
+        exit 1
+    fi
+done
 for f in codec mem pcie pcie_utils pcicrc32 displink; do
-    gcc -c -fPIC -m64 -I"$V/code" -DVPROC_SV -DLTSSM_ABBREVIATED "$P/src/$f.c" -o "$O/$f.o"
+    gcc -c -O2 -g -fPIC -m64 -I"$V/code" -DVPROC_SV "$P/src/$f.c" -o "$O/$f.o"
 done
 rm -f "$M/pcievhost/lib/libpcielnx.a"
 ar cr "$M/pcievhost/lib/libpcielnx.a" "$O"/{codec,mem,pcie,pcie_utils,pcicrc32,displink}.o
@@ -98,6 +116,11 @@ lf "$P/verilog/test/test_defs.v" | sed 's/`define fatal test\.Fatal;/`define fat
 grep -q 'define fatal tb\.Fatal' "$H/test_defs.v"
 for f in pcieVHost.v pcieVHostPipex1.v; do
     lf "$P/verilog/pcieVHost/$f" > "$M/pcievhost/verilog/pcieVHost/$f"
+done
+# the serial wrapper's parts (PcieVhostSerial, make IFACE=serial)
+mkdir -p "$M/pcievhost/verilog/lib"
+for f in Serialiser.v clkmux.v; do
+    lf "$P/verilog/lib/$f" > "$M/pcievhost/verilog/lib/$f"
 done
 # local change: VProc byte-enable/burst ports, left open (we build VProc with
 # VPROC_BYTE_ENABLE)

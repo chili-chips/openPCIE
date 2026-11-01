@@ -44,6 +44,9 @@
 `define EIE                         8'hfc       // K28.7
 `define RV2                         8'h9c       // K28.4
 `define RV3                         8'hdc       // K28.6
+// openPCIE: electrical idle on the PIPE, this byte with the K flag. It has no
+// 8b/10b code, so PCIe never sends it
+`define NOSIG                       8'hff       // K + 0xFF: no symbol
 
 // Training sequence IDs
 `define TS1_ID                      8'h4a       // D10.2

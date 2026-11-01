@@ -224,6 +224,8 @@ typedef struct {
 
     // AckNak state
     pPkt_t           ack_to_send_p;
+    bool             nak_wait;            // openPCIE: a Nak received, its replay held (Artix-7 RC profile), since
+    uint32_t         nak_seen;
     pPkt_t           nak_to_send_p;
     int              curr_ack;
     int              curr_nak;
@@ -248,6 +250,22 @@ typedef struct {
 
     // Input OS State
     os_callback_t    vuser_os_cb;
+    os_callback_t    os_mon;              // openPCIE: SetOsMonitor(), beside the model's own processing
+    void            *os_mon_usrptr;
+    bool             rx_invert[MAX_LINK_WIDTH];   // openPCIE: the lane's polarity inverted (4.2.4.4)
+    bool             lane_reverse;                // openPCIE: lanes reversed: logical lane l is physical LinkWidth-1-l (4.2.4.9.1)
+
+    // openPCIE: packet monitor (SetPktMonitor)
+    mon_callback_t   mon_cb;
+    void             *mon_usrptr;
+
+    // openPCIE: the config space DW and bit of UR Detected (SetUrDetectedReg)
+    uint32_t         ur_reg;
+    uint32_t         ur_bit;
+
+    // openPCIE: the request being answered: its TC (header byte 1) and Attr
+    // (byte 2, << 8), copied into the Completions made meanwhile (2.2.9)
+    uint32_t         cpl_tc_attr;
 
     // Ordered set and Training sequence reception state
     LinkEventCount_t linkevent;
@@ -260,6 +278,26 @@ typedef struct {
 
     bool             draining_queue;
     bool             tx_disabled;
+
+    // openPCIE: the Data Link receive state (3.5.3.1): the next sequence
+    // number expected, and a Nak sent since the last good TLP
+    int              next_rcv_seq;
+    bool             nak_scheduled;
+
+    // openPCIE: the replay timer and REPLAY_NUM (3.5.2.1)
+    bool             replay_running;
+    uint32_t         replay_start;
+    int              replay_num;
+    uint32_t         replay_rec_ticks; // GetLinkRecoveryTicks() when last looked: the timer holds in Recovery
+
+    // openPCIE: one-shot faults (InjectFault()), and the packet being sent
+    // with its CRC inverted on the wire
+    int              fault;
+    pPkt_t           corrupt_p;
+    pPkt_t           dup_copy;         // FAULT_TX_DUP: a copy of a TLP sent, for SendDuplicate()
+
+    // openPCIE: no UpdateFC before this cycle (HoldFc())
+    uint32_t         fc_hold_until;
 
 } PcieModelState_t, *pPcieModelState_t;
 
@@ -287,6 +325,7 @@ int         CheckCredits         (const int disable_fc, const uint32_t fc_state,
 void        AddPktToQueue        (const pPcieModelState_t const state, const pPkt_t const packet);
 void        AddPktToQueueDelay   (const pPcieModelState_t const state, const pPkt_t const packet);
 void        ExtractPhyInput      (const pPcieModelState_t const state, const uint32_t* const rawlinkin);
+void        CorrectableDetected  (const pPcieModelState_t const state);
 
 uint32_t    CalcNewRand          (const uint32_t Seed);
 void        CheckFree            (void *ptr);

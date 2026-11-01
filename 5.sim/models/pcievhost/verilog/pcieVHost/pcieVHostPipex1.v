@@ -45,16 +45,15 @@ module pcieVHostPipex1
   output                         Gen2ClkSel,
   output                         ClkOut,
 
-`ifdef VERILATOR
-  output                         ElecIdleOut,
-  input                          ElecIdleIn,
-`endif
-
+  // openPCIE: electrical idle is NOSIG (the K flag and 0xFF: no 8b/10b code)
+  // on the PIPE data, per symbol, on every simulator. Upstream had Z on a
+  // 4-state simulator and a side-band under Verilator (ElecIdleOut/ElecIdleIn),
+  // which reached the partner ahead of the data
   input  [DataWidth-1:0]         RxData,
   input  [(DataWidth/8)-1:0]     RxDataK,
 
-  output reg [DataWidth-1:0]     TxData,
-  output reg [(DataWidth/8)-1:0] TxDataK,
+  output bit [DataWidth-1:0]     TxData,
+  output bit [(DataWidth/8)-1:0] TxDataK,
 
   // Transaction taps (openPCIE), on ClkOut: see pcieVHost.v
   output [31:0]                  TlpTxData,
@@ -89,20 +88,52 @@ wire  [DataWidth/8-1:0]      TxDataKPipeShift;
 wire                         pclk_main;
 wire                         pcieclk_main;
 
-reg                          pcieclk_div2;
-reg                          pclk_div2;
+bit                          pcieclk_div2;
+bit                          pclk_div2;
 
-reg   [DataWidth-1:0]        RxDataSample;
-reg   [DataWidth/8-1:0]      RxDataKSample;
-reg   [DataWidth-1:0]        TxDataPipe;
-reg   [DataWidth/8-1:0]      TxDataKPipe;
+bit   [DataWidth-1:0]        RxDataSample;
+bit   [DataWidth/8-1:0]      RxDataKSample;
+bit   [DataWidth-1:0]        TxDataPipe;
+bit   [DataWidth/8-1:0]      TxDataKPipe;
 
-integer                      rxcount;
+int                          rxcount;
 
-`ifdef VERILATOR
-wire [15:0] ElecIdleOutInt;
-assign ElecIdleOut            = ElecIdleOutInt[0];
-`endif
+// openPCIE: the core's electrical idle (its ElecIdleOut) goes out as NOSIG; a
+// received NOSIG is the partner's idle, to the core's ElecIdleIn
+localparam [8:0]             NOSIG_SYM   = {1'b1, `NOSIG};   // {K, byte}
+logic [15:0]                 ElecIdleOutInt;
+logic                        LinkOutIdle;
+logic [7:0]                  LinkOutData;
+logic                        LinkOutK;
+logic                        RxIdle;
+
+assign LinkOutIdle           = ElecIdleOutInt[0];
+assign LinkOutData           = LinkOutIdle ? NOSIG_SYM[7:0] : LinkOut[7:0];
+assign LinkOutK              = LinkOutIdle ? NOSIG_SYM[8]   : LinkOut[8];
+assign RxIdle                = ({RxDataKSample[0], RxDataSample[7:0]} == NOSIG_SYM);
+
+// openPCIE: the core's TX symbol and idle, taken on the falling edge. The core
+// writes them on the rising edge, in VProc's delta cycles, the edge the TX
+// shift runs on, so which one the shift saw was the scheduler's choice (the TX
+// side of issue 56). Half a symbol later both have settled.
+// openPCIE: every register resets on nreset, asynchronously: in reset the line
+// is idle (NOSIG with the K flag), both ways
+bit   [7:0]                  LinkOutDataQ;
+bit                          LinkOutKQ;
+
+always_ff @(negedge pcieclk_main or negedge nreset)
+begin
+  if (nreset == 1'b0)
+  begin
+    LinkOutDataQ             <= `NOSIG;
+    LinkOutKQ                <= 1'b1;
+  end
+  else
+  begin
+    LinkOutDataQ             <= LinkOutData;
+    LinkOutKQ                <= LinkOutK;
+  end
+end
 
 //-------------------------------------------------------------
 // Select local clocks
@@ -117,20 +148,22 @@ generate
   else
   begin
 
-    initial
+    // openPCIE: always_ff, reset on nreset to upstream's start value, 0 (the
+    // clock muxes hold both clocks off in reset)
+    always_ff @(posedge pclk or negedge nreset)
     begin
-      pclk_div2         <= 1'b0;
-      pcieclk_div2      <= 1'b0;
+      if (nreset == 1'b0)
+        pclk_div2       <= 1'b0;
+      else
+        pclk_div2       <= ~pclk_div2;
     end
 
-    always @(posedge pclk)
+    always_ff @(posedge pcieclk or negedge nreset)
     begin
-      pclk_div2         <= ~pclk_div2;
-    end
-
-    always @(posedge pcieclk)
-    begin
-      pcieclk_div2      <= ~pcieclk_div2;
+      if (nreset == 1'b0)
+        pcieclk_div2    <= 1'b0;
+      else
+        pcieclk_div2    <= ~pcieclk_div2;
     end
 
     clkmux clkmux_pclk
@@ -164,32 +197,60 @@ generate
     assign TxSampleClk        = pcieclk_main;
     assign RxDataSampleShift  = RxData;
     assign RxDataKSampleShift = RxDataK;
-    assign TxDataPipeShift    = LinkOut[7:0];
-    assign TxDataKPipeShift   = LinkOut[8];
+    assign TxDataPipeShift    = LinkOutDataQ;
+    assign TxDataKPipeShift   = LinkOutKQ;
   end
   else
   begin
     assign TxSampleClk        = pclk_main;
     assign RxDataSampleShift  = {8'h00, RxDataSample[DataWidth-1:8]};
     assign RxDataKSampleShift = {1'b0,  RxDataKSample[DataWidth/8-1: 1]};
-    assign TxDataPipeShift    = {LinkOut[7:0], TxDataPipe[DataWidth-1:8]};
-    assign TxDataKPipeShift   = {LinkOut[8], TxDataKPipe[DataWidth/8-1:1]};
+    assign TxDataPipeShift    = {LinkOutDataQ, TxDataPipe[DataWidth-1:8]};
+    assign TxDataKPipeShift   = {LinkOutKQ, TxDataKPipe[DataWidth/8-1:1]};
   end
 endgenerate
 
 // Link input is the lower bits of the sampled RX input
+// openPCIE: the partner's electrical idle reaches the core on its ElecIdleIn
 assign LinkIn                = {1'b0, RxDataKSample[0], RxDataSample[7:0]};
 
 //-------------------------------------------------------------
 // Process PIPE interface signals
 //-------------------------------------------------------------
 
-always @(posedge pcieclk_main or negedge nreset)
+always_ff @(posedge pcieclk_main or negedge nreset)
+begin
+
+  if (nreset == 1'b0)
+  begin
+    // openPCIE: in reset the line is idle (NOSIG with the K flag). The TX
+    // shift ran in reset too, and at time 0 this edge read LinkOutData before
+    // its assign had settled: a Z symbol on the line under Icarus, and the
+    // partner left Detect at once
+    TxDataPipe               <= {(DataWidth/8){`NOSIG}};
+    TxDataKPipe              <= {(DataWidth/8){1'b1}};
+  end
+  else
+  begin
+    // At each cycle, shift right TX PIPE registers, adding link output to top
+    TxDataPipe               <= TxDataPipeShift;
+    TxDataKPipe              <= TxDataKPipeShift;
+  end
+
+end
+
+// openPCIE: the RX side on the falling edge. The core reads LinkIn and
+// ElecIdleIn on the rising edge, in VProc's delta cycles; a sample changing on
+// that same edge was seen before or after the read as the scheduler chose: one
+// symbol apart between simulators, and between XSIM's own scheduling modes
+always_ff @(negedge pcieclk_main or negedge nreset)
 begin
 
   if (nreset == 1'b0)
   begin
     rxcount                  <= 0;
+    RxDataSample             <= {(DataWidth/8){`NOSIG}};
+    RxDataKSample            <= {(DataWidth/8){1'b1}};
   end
   else
   begin
@@ -212,17 +273,21 @@ begin
     end
   end
 
-  // At each cycle, shift right TX PIPE registers, adding link output to top
-  TxDataPipe                 <= TxDataPipeShift;
-  TxDataKPipe                <= TxDataKPipeShift;
-
 end
 
 // At the PIPE clock rate, update TX outputs with TX PIPE data
-always @(posedge TxSampleClk)
+always_ff @(posedge TxSampleClk or negedge nreset)
 begin
-  TxData                     <= TxDataPipe;
-  TxDataK                    <= TxDataKPipe;
+  if (nreset == 1'b0)
+  begin
+    TxData                   <= {(DataWidth/8){`NOSIG}};
+    TxDataK                  <= {(DataWidth/8){1'b1}};
+  end
+  else
+  begin
+    TxData                   <= TxDataPipe;
+    TxDataK                  <= TxDataKPipe;
+  end
 end
 
 //-------------------------------------------------------------
@@ -244,20 +309,18 @@ end
 
     .ClkOut                (ClkOut),
 
-`ifdef VERILATOR
-    .ElecIdleOut           (ElecIdleOutInt),
-    .ElecIdleIn            ({15'h0000, ElecIdleIn}),
-`endif
+    .ElecIdleOut           (ElecIdleOutInt),    // openPCIE: on every simulator
+    .ElecIdleIn            ({15'h7fff, RxIdle}),
 
      // Link lane input
     .LinkIn0               (LinkIn),
 
-    // Unused inputs
-    .LinkIn1               ({10{1'bZ}}), .LinkIn2  ({10{1'bZ}}), .LinkIn3  ({10{1'bZ}}),
-    .LinkIn4               ({10{1'bZ}}), .LinkIn5  ({10{1'bZ}}), .LinkIn6  ({10{1'bZ}}),
-    .LinkIn7               ({10{1'bZ}}), .LinkIn8  ({10{1'bZ}}), .LinkIn9  ({10{1'bZ}}),
-    .LinkIn10              ({10{1'bZ}}), .LinkIn11 ({10{1'bZ}}), .LinkIn12 ({10{1'bZ}}),
-    .LinkIn13              ({10{1'bZ}}), .LinkIn14 ({10{1'bZ}}), .LinkIn15 ({10{1'bZ}}),
+    // Unused inputs (openPCIE: 0, idle on ElecIdleIn; upstream Z)
+    .LinkIn1               (10'h000), .LinkIn2  (10'h000), .LinkIn3  (10'h000),
+    .LinkIn4               (10'h000), .LinkIn5  (10'h000), .LinkIn6  (10'h000),
+    .LinkIn7               (10'h000), .LinkIn8  (10'h000), .LinkIn9  (10'h000),
+    .LinkIn10              (10'h000), .LinkIn11 (10'h000), .LinkIn12 (10'h000),
+    .LinkIn13              (10'h000), .LinkIn14 (10'h000), .LinkIn15 (10'h000),
 
     // Link lane output
     .LinkOut0              (LinkOut),

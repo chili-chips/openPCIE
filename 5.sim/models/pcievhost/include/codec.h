@@ -113,6 +113,7 @@ typedef struct {
 
 extern unsigned int Encode    (const int      data, const int no_scramble, const int no_8b10b,  const int lane, const int linkwidth, const int node);
 extern unsigned int Decode    (const int      data, const int no_scramble, const int no_8b10b,  const int lane, const int linkwidth, const int node);
+extern void         SwapLaneDisparity (const int linkwidth, const int node);   // openPCIE: lane reversal
 extern uint32_t     PciCrc    (const uint32_t Data, const uint32_t CrcIn,  const uint32_t Bits, const uint32_t poly, const uint32_t crcsize);
 extern void         InitCodec (const int node);
 

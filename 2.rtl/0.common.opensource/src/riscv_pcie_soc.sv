@@ -102,6 +102,15 @@ module riscv_pcie_soc
 `else
   localparam bit CSR_RD_FLOP = 1'b1;
 `endif
+
+  // The CPU's cycle counter (rdcycle): the firmware times its waits with it.
+  // `define SOC_NO_COUNTERS: none, the firmware then counts loops (make
+  // COUNTERS=0 builds both)
+`ifdef SOC_NO_COUNTERS
+  localparam bit CPU_COUNTERS = 1'b0;
+`else
+  localparam bit CPU_COUNTERS = 1'b1;
+`endif
 `ifdef SOC_CPU_VPROC
   soc_cpu_vproc #(
       .NODE(4'd0)
@@ -120,7 +129,7 @@ module riscv_pcie_soc
       .PROGADDR_RESET (32'h0000_0000),
       .STACKADDR      (32'h0000_2000),
       .BARREL_SHIFTER (0),              // shifts by 4, then by 1, per cycle; the firmware has few
-      .ENABLE_COUNTERS(0)               // no rdcycle/rdinstret in the firmware
+      .ENABLE_COUNTERS(CPU_COUNTERS)    // rdcycle/rdinstret: the firmware's waits
   ) cpu (
       .clk         (clk),
       .resetn      (resetn),
@@ -187,7 +196,8 @@ module riscv_pcie_soc
 `endif
 
   edubos5 #(
-      .EN_WAIT4REGS(EDUBOS5_WAIT4REGS)
+      .EN_WAIT4REGS(EDUBOS5_WAIT4REGS),
+      .EN_COUNTERS (CPU_COUNTERS)
   ) cpu (
       .clk        (clk),
       .arst_n     (resetn),
@@ -219,7 +229,10 @@ module riscv_pcie_soc
 `endif
 `endif
 
-  always_ff @(posedge clk) begin
+  // A plain always: the $readmemh above also writes ram, and a variable an
+  // always_ff writes may have no other writer (IEEE 1800-2017 9.2.2.4; VCS
+  // refuses it). Found by openpcie-uvm (RTL-SIM-001)
+  always @(posedge clk) begin
     ram_ready <= 1'b0;
     if (mem.valid && is_ram) begin
       if (mem.wstrb == '0) begin

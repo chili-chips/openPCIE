@@ -139,7 +139,15 @@ CPU    ?= $(CPU_DEF)
 ifeq ($(filter picorv32 edubos5 edubos5_3stg,$(CPU)),)
     $(error CPU must be picorv32, edubos5 or edubos5_3stg, got "$(CPU)")
 endif
-CPU_SFX = $(if $(filter-out $(CPU_DEF),$(CPU)),.$(CPU))
+CPU_SFX = $(if $(filter-out $(CPU_DEF),$(CPU)),.$(CPU))$(if $(filter 0,$(COUNTERS)),.nocnt)
+
+# COUNTERS=1 (default): the CPU's cycle counter, and the firmware's waits use
+# it; 0: neither (SOC_NO_COUNTERS), the waits count loops. One switch, so the
+# bitstream and its firmware always match
+COUNTERS ?= 1
+ifeq ($(filter 0 1,$(COUNTERS)),)
+    $(error COUNTERS must be 0 or 1, got "$(COUNTERS)")
+endif
 
 TOP        = RC_opensource
 COMMON_DIR = ../../2.rtl/0.common.opensource
@@ -205,7 +213,8 @@ CHIPDB    = $(WORK_ROOT)/chipdb
 
 # every build asks sw_build again (about a second), as the variant may differ
 $(FIRMWARE): FORCE
-	@$(MAKE) --no-print-directory -C ../sw_build VARIANT=$(VARIANT) OUT=$(abspath $(dir $(FIRMWARE)))
+	@$(MAKE) --no-print-directory -C ../sw_build VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) LINK=$(LINK) \
+	    OUT=$(abspath $(dir $(FIRMWARE)))
 
 CONV_DIR      = $(WORK)/converted
 EXTRACTED_DIR = $(CONV_DIR)/extracted
@@ -252,7 +261,8 @@ SV_CPU_picorv32 = $(SRC_DIR)/picorv32.CHILI.sv
 SV_CPU_edubos5  = $(addprefix $(EDUBOS5_DIR)/,edubos5_pkg.sv edubos5_rf.sv edubos5_alu.sv edubos5.sv)
 SV_CPU_edubos5_3stg = $(SV_CPU_edubos5)
 CPU_DEFS = $(if $(filter picorv32,$(CPU)),-DSOC_CPU_PICORV32) \
-           $(if $(filter edubos5_3stg,$(CPU)),-DSOC_EDUBOS5_3STG)
+           $(if $(filter edubos5_3stg,$(CPU)),-DSOC_EDUBOS5_3STG) \
+           $(if $(filter 0,$(COUNTERS)),-DSOC_NO_COUNTERS)
 
 SV_TOP = \
     $(SV_CPU_$(CPU)) \

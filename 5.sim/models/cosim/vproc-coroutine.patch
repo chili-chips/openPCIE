@@ -1,0 +1,234 @@
+--- a/code/VProc.h
++++ b/code/VProc.h
+@@ -118,10 +118,21 @@
+     uint32_t eventQueue [MAX_QUEUED_VEC_IRQ];
+ } vecIrqState_t;
+ 
++// openPCIE: the user code runs as a coroutine on the simulator's own thread,
++// on a stack of its own, and VSched()/VExch() switch between the two stacks
++// (VUser.c). Upstream ran it in a thread per node, handing over through two
++// semaphores: two system calls and a scheduler wake-up on each exchange.
++// x86-64 Linux; elsewhere, or with VPROC_THREADS defined, the thread version
++#if !defined(VPROC_THREADS) && defined(__x86_64__) && defined(__linux__)
++#define VPROC_COROUTINE
++#endif
++
+ // Scheduler node state structure
+ typedef struct {
+     sem_t               snd;
+     sem_t               rcv;
++    void               *co_sim_sp;      // openPCIE: the simulator's stack pointer, while the user code runs
++    void               *co_user_sp;     // openPCIE: the user code's stack pointer, while the simulator runs
+     send_buf_t          send_buf;
+     rcv_buf_t           rcv_buf;
+     pVUserIrqCB_t       VUserIrqCB;
+@@ -133,4 +144,10 @@
+ // Reference to node state array
+ extern pSchedState_t ns[];
+ 
++#ifdef VPROC_COROUTINE
++// openPCIE: switch stacks: save the callee-saved registers on the current
++// stack, its pointer in *save, then continue on the stack 'load' (VUser.c)
++extern void VCoSwap (void **save, void *load) __attribute__((visibility("hidden")));
++#endif
++
+ #endif
+--- a/code/VSched.c
++++ b/code/VSched.c
+@@ -380,6 +380,10 @@
+     // Send inputs to user thread
+     //----------------------------------------------
+ 
++#ifdef VPROC_COROUTINE
++    // openPCIE: run the user code until its next access (VExch())
++    VCoSwap(&(ns[node]->co_sim_sp), ns[node]->co_user_sp);
++#else
+     // Send message to VUser with VPDataIn value
+     debug_io_printf("VSched(): setting rcv[%d] semaphore\n", node);
+     sem_post(&(ns[node]->rcv));
+@@ -390,7 +394,8 @@
+ 
+     // Wait for a message from VUser process with output data
+     debug_io_printf("VSched(): waiting for snd[%d] semaphore\n", node);
+-    sem_wait(&(ns[node]->snd));
++    while (sem_wait(&(ns[node]->snd)) == -1 && errno == EINTR);   // openPCIE: a signal is no handover
++#endif
+ 
+     // Update outputs of $vsched task
+     if (ns[node]->send_buf.ticks >= DELTA_CYCLE)
+--- a/code/VUser.c
++++ b/code/VUser.c
+@@ -30,9 +30,114 @@
+ #include "VProc.h"
+ #include "VUser.h"
+ 
++#ifdef VPROC_COROUTINE
++#include <stdint.h>
++#include <sys/mman.h>
++#endif
++
+ // Forward declaration
+ static void VUserInit (const unsigned node);
+ 
++#ifdef VPROC_COROUTINE
++// -------------------------------------------------------------------------
++// openPCIE: the user code as a coroutine (VProc.h, VPROC_COROUTINE)
++//
++// VCoSwap(save, load), x86-64 System V ABI: pushes the callee-saved registers
++// and the SSE/x87 control words, stores the stack pointer in *save, loads
++// 'load' and pops the same from there. A new coroutine's stack starts as if
++// VCoSwap had saved it, returning into VCoStart, which calls r12(r13).
++// -------------------------------------------------------------------------
++
++#define VCO_STACK_BYTES   (16u << 20)   // as a thread's default stack, ample for an ISS
++#define VCO_GUARD_BYTES   4096          // no access: a stack overflow faults at once
++#define VCO_CTL_WORDS     0x037f00001f80ull  // x87 control word 0x037f, MXCSR 0x1f80: the defaults
++
++extern void VCoStart (void) __attribute__((visibility("hidden")));
++
++__asm__ (
++    "    .text\n"
++    "    .p2align 4\n"
++    "    .globl  VCoSwap\n"
++    "    .hidden VCoSwap\n"
++    "    .type   VCoSwap, @function\n"
++    "VCoSwap:\n"
++    "    pushq   %rbp\n"
++    "    pushq   %rbx\n"
++    "    pushq   %r12\n"
++    "    pushq   %r13\n"
++    "    pushq   %r14\n"
++    "    pushq   %r15\n"
++    "    subq    $8, %rsp\n"
++    "    stmxcsr (%rsp)\n"
++    "    fnstcw  4(%rsp)\n"
++    "    movq    %rsp, (%rdi)\n"
++    "    movq    %rsi, %rsp\n"
++    "    ldmxcsr (%rsp)\n"
++    "    fldcw   4(%rsp)\n"
++    "    addq    $8, %rsp\n"
++    "    popq    %r15\n"
++    "    popq    %r14\n"
++    "    popq    %r13\n"
++    "    popq    %r12\n"
++    "    popq    %rbx\n"
++    "    popq    %rbp\n"
++    "    ret\n"
++    "    .size   VCoSwap, .-VCoSwap\n"
++    "    .p2align 4\n"
++    "    .globl  VCoStart\n"
++    "    .hidden VCoStart\n"
++    "    .type   VCoStart, @function\n"
++    "VCoStart:\n"
++    "    .cfi_startproc\n"
++    "    .cfi_undefined rip\n"              // the bottom of the coroutine's stack: backtraces end here
++    "    movq    %r13, %rdi\n"
++    "    callq   *%r12\n"
++    "    ud2\n"
++    "    .cfi_endproc\n"
++    "    .size   VCoStart, .-VCoStart\n"
++);
++
++// The coroutine's body: the user code. Should VUserMain<n>() return, the node
++// idles from then on, instead of the simulator waiting for it forever
++static void VCoEntry (const unsigned node)
++{
++    VUserInit(node);
++
++    VPrint("***Error: VUserMain%d returned; node %d now idles\n", node, node);
++    for (;;)
++    {
++        ns[node]->send_buf.ticks = 0x7fffffff;
++        ns[node]->send_buf.rw    = 0;
++        VCoSwap(&(ns[node]->co_user_sp), ns[node]->co_sim_sp);
++    }
++}
++
++// A stack for 'node' (a guard page below it), laid out as VCoSwap leaves one,
++// so that the first switch to it enters VCoEntry(node)
++static int VCoCreate (const unsigned node)
++{
++    char *mem = mmap(NULL, VCO_STACK_BYTES + VCO_GUARD_BYTES, PROT_READ | PROT_WRITE,
++                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
++    if (mem == MAP_FAILED || mprotect(mem, VCO_GUARD_BYTES, PROT_NONE))
++    {
++        return 1;
++    }
++
++    uint64_t *sp = (uint64_t *)(((uintptr_t)(mem + VCO_GUARD_BYTES + VCO_STACK_BYTES)) & ~(uintptr_t)15);
++    *--sp = (uint64_t)(uintptr_t)VCoStart;     // VCoSwap returns here; then rsp is 16-byte aligned
++    *--sp = 0;                                 // rbp
++    *--sp = 0;                                 // rbx
++    *--sp = (uint64_t)(uintptr_t)VCoEntry;     // r12: the function
++    *--sp = node;                              // r13: its argument
++    *--sp = 0;                                 // r14
++    *--sp = 0;                                 // r15
++    *--sp = VCO_CTL_WORDS;                     // MXCSR, x87 control word
++    ns[node]->co_user_sp = sp;
++
++    return 0;
++}
++#endif
++
+ // =========================================================================
+ // Simulation interface functions
+ // =========================================================================
+@@ -58,12 +163,21 @@
+ 
+     debug_io_printf("VUser(): initialised callbacks at node %d\n", node);
+ 
++#ifdef VPROC_COROUTINE
++    // openPCIE: the user code as a coroutine; the first VSched() call enters it
++    if (VCoCreate(node))
++    {
++        VPrint("***Error: VUser(): no stack for the user code of node %d\n", node);
++        exit(1);                               // VInit() ignores the status: stop here
++    }
++#else
+     // Set off the user code thread using VUserInit to initialise before entering user code
+     if (status = pthread_create(&thread, NULL, (pThreadFunc_t)VUserInit, (void *)((nodecast_t)node)))
+     {
+         debug_io_printf("VUser(): pthread_create returned %d\n", status);
+         return 1;
+     }
++#endif
+ 
+     debug_io_printf("VUser(): spawned user thread for node %d\n", node);
+ 
+@@ -109,11 +223,14 @@
+     // Wait for first message from simulator
+     debug_io_printf("VUserInit(): waiting for first message semaphore rcv[%d]\n", node);
+ 
+-    if ((status = sem_wait(&(ns[node]->rcv))) == -1)
++#ifndef VPROC_COROUTINE   // openPCIE: a coroutine starts at the first VSched() call
++    while ((status = sem_wait(&(ns[node]->rcv))) == -1 && errno == EINTR);
++    if (status == -1)
+     {
+         VPrint("***Error: bad sem_post status (%d) on node %d (VUserInit)\n", status, node);
+         exit(1);
+     }
++#endif
+ 
+     debug_io_printf("VUserInit(): calling user code for node %d\n", node);
+ 
+@@ -138,6 +255,10 @@
+     // Send message to simulator
+     ns[node]->send_buf = *psbuf;
+ 
++#ifdef VPROC_COROUTINE
++    // openPCIE: back to the simulator, until its next VSched() call for this node
++    VCoSwap(&(ns[node]->co_user_sp), ns[node]->co_sim_sp);
++#else
+     debug_io_printf("VExch(): setting snd[%d] semaphore\n", node);
+ 
+     if ((status = sem_post(&(ns[node]->snd))) == -1)
+@@ -148,7 +269,8 @@
+ 
+     // Wait for response message from simulator
+     debug_io_printf("VExch(): waiting for rcv[%d] semaphore\n", node);
+-    sem_wait(&(ns[node]->rcv));
++    while (sem_wait(&(ns[node]->rcv)) == -1 && errno == EINTR);   // openPCIE: a signal is no handover
++#endif
+ 
+     *prbuf = ns[node]->rcv_buf;
+ 

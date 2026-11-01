@@ -127,9 +127,11 @@ set csr_files [list $csr_pkg_sv $csr_sv $soc_csr_sv]
 # 4.build/sw_build/firmware.hex stays the RC-direct board build.
 set sw_dir   [file normalize "$common_dir/../../4.build/sw_build"]
 set fw_dir   "$origin_dir/xbuild.firmware"
-if { [catch { exec {*}$fw_make -C $sw_dir OUT=$fw_dir 2>@1 } msg] } {
+# LINK: the firmware times its waits at this build's CPU clock (sw_build README)
+set fw_link  "LINK=x${pcie_lanes}g${pcie_gen}"
+if { [catch { exec {*}$fw_make -C $sw_dir $fw_link OUT=$fw_dir 2>@1 } msg] } {
   puts $msg
-  return -code error "Firmware build failed: $fw_make -C $sw_dir OUT=$fw_dir"
+  return -code error "Firmware build failed: $fw_make -C $sw_dir $fw_link OUT=$fw_dir"
 }
 set hex_file "$fw_dir/firmware.hex"
 

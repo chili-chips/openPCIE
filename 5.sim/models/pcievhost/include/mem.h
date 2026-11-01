@@ -88,6 +88,7 @@ extern void     WriteConfigSpaceBuf       (const uint32_t addr, const PktData_t*
 extern void     ReadConfigSpaceBuf        (const uint32_t addr, PktData_t* const data, const int length, const uint32_t node);
 extern void     WriteConfigSpaceMask      (const uint32_t addr, const uint32_t data, const uint32_t node);
 extern uint32_t ReadConfigSpaceMask       (const uint32_t addr, const uint32_t node);
+extern void     WriteConfigSpaceW1c       (const uint32_t addr, const uint32_t data, const uint32_t node);  // openPCIE: RW1C bits
 extern void     WriteConfigSpaceMaskBuf   (const uint32_t addr, const PktData_t* const data, const int length, const uint32_t node);
 extern void     ReadConfigSpaceMaskBuf    (const uint32_t addr, PktData_t* const data, const int length, const uint32_t node);
 
