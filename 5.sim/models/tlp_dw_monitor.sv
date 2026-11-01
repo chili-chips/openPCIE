@@ -39,9 +39,10 @@ module tlp_dw_monitor (
     } dw_t;
 
     dw_t  queue [$];
-    logic in_packet = 1'b0;
+    bit   in_packet;
 
     initial begin
+        in_packet    = 1'b0;
         dw.tlp_data  = '0;
         dw.tlp_sop   = 1'b0;
         dw.tlp_eop   = 1'b0;

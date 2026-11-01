@@ -109,7 +109,7 @@ logic [31:0]          vp_wdat;
 logic [31:0]          vp_rdat;
 logic                 cpu_access;
 logic                 vp_acc;
-logic                 done;
+bit                   done;
 
 logic                 imem_write;
 logic                 imem_read;
@@ -129,7 +129,14 @@ logic                 imem_readdatavalid;
 // access takes 2 clocks, as on the RTL cores.
 //--------------------------------------------------------
 
-always_ff @(posedge bus.clk) done <= vp_wack | vp_rack;
+always_ff @(posedge bus.clk or negedge bus.arst_n) begin
+  if (!bus.arst_n) begin
+    done <= 1'b0;
+  end
+  else begin
+    done <= vp_wack | vp_rack;
+  end
+end
 
 // VProc access in progress
 assign vp_acc         = (vp_we | vp_rd) & ~done;

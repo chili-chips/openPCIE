@@ -13,7 +13,7 @@
         <mxCell id="c5" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#f2f2f2;strokeColor=none;fontColor=#ffffff;fontSize=13;fontStyle=0;align=center;verticalAlign=middle;spacingLeft=6;spacingRight=6;arcSize=4;" value="" vertex="1">
           <mxGeometry height="445" width="453" x="352" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="c6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;fillColor=none;strokeColor=none;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;" value="&lt;span style=&quot;font-size:20px&quot;&gt;top&lt;/span&gt;&lt;br&gt;PCIe 2.0&lt;br&gt;x1/x4 RC" vertex="1">
+        <mxCell id="c6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;fillColor=none;strokeColor=none;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;" value="&lt;span style=&quot;font-size:20px&quot;&gt;top&lt;/span&gt;&lt;br&gt;PCIe 2.0&lt;br&gt;x1/x4 RC&lt;br&gt;(RC=hm)" vertex="1">
           <mxGeometry height="100" width="160" x="352" y="30" as="geometry" />
         </mxCell>
         <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#d9d9d9;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;dashed=1;dashPattern=1 2;" value="riscv_pcie_soc (PICORV32)" vertex="1">
@@ -220,7 +220,7 @@
             <mxPoint x="498" y="752" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="c59" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;fillColor=none;strokeColor=none;fontColor=#000000;fontSize=20;fontStyle=2;align=center;verticalAlign=middle;spacingLeft=6;spacingRight=6;" value="Link traffic display&lt;br&gt;to console" vertex="1">
+        <mxCell id="c59" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;fillColor=none;strokeColor=none;fontColor=#000000;fontSize=20;fontStyle=2;align=center;verticalAlign=middle;spacingLeft=6;spacingRight=6;" value="Link traffic display&lt;br&gt;to console,&lt;br&gt;+ the checker's verdicts" vertex="1">
           <mxGeometry height="56" width="240" x="1050" y="458" as="geometry" />
         </mxCell>
         <mxCell id="c60" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;fillColor=#0c0c0c;strokeColor=#7f7f7f;fontColor=#39d353;fontSize=13;fontStyle=0;align=center;verticalAlign=middle;spacingLeft=6;spacingRight=6;fontFamily=Courier New;shadow=1;" value="&lt;font style=&quot;font-size: 22px;&quot;&gt;console&lt;br&gt;&lt;br&gt;DL / TL packets&lt;/font&gt;&lt;div&gt;&lt;font style=&quot;font-size: 22px;&quot;&gt;on the link,&lt;br&gt;printed&amp;nbsp;&lt;/font&gt;&lt;span style=&quot;font-size: 22px; background-color: transparent; color: light-dark(rgb(57, 211, 83), rgb(0, 128, 18));&quot;&gt;by&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 22px; background-color: transparent; color: light-dark(rgb(57, 211, 83), rgb(0, 128, 18));&quot;&gt;pcievhost&lt;/span&gt;&lt;/div&gt;" vertex="1">
@@ -237,6 +237,15 @@
             <mxPoint x="704" y="685" as="sourcePoint" />
             <mxPoint x="1115" y="685" as="targetPoint" />
           </mxGeometry>
+        </mxCell>
+        <mxCell id="a7_box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;spacingLeft=4;spacingRight=4;fillColor=#6b8f45;strokeColor=none;fontColor=#a9d18e;fontSize=15;fontStyle=1;align=center;verticalAlign=bottom;spacingBottom=4;shadow=1;" value="pcievhost RC, node 2&lt;br&gt;&lt;font style=&quot;font-size: 12px; font-weight: normal;&quot;&gt;RC=model: in place of top (tb_rc*.sv)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="128" width="228" x="112" y="292" as="geometry" />
+        </mxCell>
+        <mxCell id="a7_code" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;spacingLeft=4;spacingRight=4;fillColor=#c55a11;strokeColor=none;fontColor=#ffffff;fontSize=17;align=center;verticalAlign=middle;" value="&lt;b&gt;A7RC&lt;/b&gt; driver + checker&lt;br&gt;&lt;font style=&quot;font-size: 11px;&quot;&gt;VUserMain2 + a7rc_check: 59 rules&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="208" x="122" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="a7_vp" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;spacingLeft=4;spacingRight=4;fillColor=#a9d18e;strokeColor=none;fontColor=#ffffff;fontSize=17;align=center;verticalAlign=middle;" value="&lt;b&gt;vproc&lt;/b&gt; (2)" vertex="1">
+          <mxGeometry height="26" width="208" x="122" y="352" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

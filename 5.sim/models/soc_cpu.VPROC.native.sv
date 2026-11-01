@@ -63,10 +63,15 @@ module soc_cpu_vproc #(
     // ---------------------------------------------------------------------
     // Bus side
     // ---------------------------------------------------------------------
-    logic done;  // the cycle after ready: VProc still holds the finished access
+    bit done;  // the cycle after ready: VProc still holds the finished access
 
-    always_ff @(posedge clk) begin
-        done <= mem_valid & mem_ready;
+    always_ff @(posedge clk or negedge resetn) begin
+        if (!resetn) begin
+            done <= 1'b0;
+        end
+        else begin
+            done <= mem_valid & mem_ready;
+        end
     end
 
     assign mem_valid = resetn & (vp_we | vp_rd) & ~done;
