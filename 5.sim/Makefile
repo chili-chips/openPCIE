@@ -64,6 +64,10 @@ MUTANT_JOBS       ?= 3
 # WaveCrux runs with --wcp-port 54321). WCX_OPEN=0: the dump only.
 # REGRESS_DUMP=fail: after make regress, every failing seed dumped that way
 WCX_OPEN          ?= 1
+# the endpoint's view: its PIPE (or 10-bit symbols on the serial line) and TLPs
+WCX_SIGNALS        = $(if $(filter serial,$(IFACE)),$(addprefix tb.u_ep.pvh.,LinkIn0 LinkOut0 ElecIdleOut \
+                     TlpRxValid TlpRxData TlpTxValid TlpTxData),$(addprefix tb.u_ep.,pipe_dn_data pipe_dn_datak \
+                     pipe_up_data pipe_up_datak tlp_dn_valid tlp_dn_data tlp_up_valid tlp_up_data))
 ifneq ($(filter regress,$(MAKECMDGOALS)),)
   ifneq ($(RC),model)
     $(error make regress needs RC=model)
@@ -553,7 +557,7 @@ wavecrux:
 	$(MAKE) --no-print-directory run SEED=$(SEED) USRSIMOPTS="$(USRSIMOPTS) --define DUMP_VCD"; \
 	if [ ! -f xsim.log ] || [ ! -f $(DUMP_FST) ]; then echo "seed $(SEED): no run or no waveform"; exit 1; fi; \
 	cp xsim.log wavecrux.$(SEED).log; echo "seed $(SEED): $$(grep -a -m1 'RC MODEL RESULT' xsim.log), $(DUMP_FST)"; \
-	$(if $(filter 1,$(WCX_OPEN)),python3 tools/wavecrux.py $(DUMP_FST) wavecrux.$(SEED).log,echo "  open it: make wavecrux RC=model SEED=$(SEED)")
+	$(if $(filter 1,$(WCX_OPEN)),python3 tools/wavecrux.py $(DUMP_FST) wavecrux.$(SEED).log $(WCX_SIGNALS),echo "  open it: make wavecrux RC=model$(if $(filter serial,$(IFACE)), IFACE=serial) SEED=$(SEED)")
 
 fst:
 	@bash tools/vcd2fst.sh tb.vcd $(DUMP_FST)
