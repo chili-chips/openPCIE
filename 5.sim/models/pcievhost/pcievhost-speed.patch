@@ -65,7 +65,7 @@
  enum config_e {
      CONFIG_FC_HDR_RATE                         = 0,
      CONFIG_FC_DATA_RATE,
-@@ -556,6 +575,10 @@
+@@ -556,6 +575,13 @@
  EXTERN void       WaitForCompletionN      (const uint32_t count,          const int node);
  EXTERN void       InitialisePcie          (const callback_t    cb_func, void *usrptr, const int node);
  EXTERN void       RegisterOsCallback      (const os_callback_t cb_func, const int node);
@@ -73,10 +73,13 @@
 +// openPCIE: an endpoint sets 'bit' of config DW 'reg' (Device Status, UR
 +// Detected) on each Unsupported Request it detects (7.8.5)
 +EXTERN void       SetUrDetectedReg        (const uint32_t reg, const uint32_t bit, const int node);
++// openPCIE: an endpoint answers its next 'count' Configuration Requests with
++// Configuration Request Retry Status, as after a reset (2.3.1, 6.6)
++EXTERN void       SetCfgCrs               (const int count, const int node);
  EXTERN uint32_t   GetCycleCount           (const int node);
  EXTERN void       ConfigurePcie           (const config_t type, const int value, const int node);
  
-@@ -569,6 +592,14 @@
+@@ -569,6 +595,14 @@
  EXTERN void       PcieSeed                (const uint32_t seed, const int node);
  EXTERN void       SetTxEnabled            (const int      node);
  EXTERN void       SetTxDisabled           (const int      node);
@@ -102,7 +105,7 @@
      pPkt_t           nak_to_send_p;
      int              curr_ack;
      int              curr_nak;
-@@ -248,6 +250,22 @@
+@@ -248,6 +250,25 @@
  
      // Input OS State
      os_callback_t    vuser_os_cb;
@@ -119,13 +122,16 @@
 +    uint32_t         ur_reg;
 +    uint32_t         ur_bit;
 +
++    // openPCIE: Configuration Requests still to answer with CRS (SetCfgCrs)
++    int              cfg_crs_left;
++
 +    // openPCIE: the request being answered: its TC (header byte 1) and Attr
 +    // (byte 2, << 8), copied into the Completions made meanwhile (2.2.9)
 +    uint32_t         cpl_tc_attr;
  
      // Ordered set and Training sequence reception state
      LinkEventCount_t linkevent;
-@@ -261,6 +279,26 @@
+@@ -261,6 +282,26 @@
      bool             draining_queue;
      bool             tx_disabled;
  
@@ -152,7 +158,7 @@
  } PcieModelState_t, *pPcieModelState_t;
  
  // -------------------------------------------------------------------------
-@@ -287,6 +325,7 @@
+@@ -287,6 +328,7 @@
  void        AddPktToQueue        (const pPcieModelState_t const state, const pPkt_t const packet);
  void        AddPktToQueueDelay   (const pPcieModelState_t const state, const pPkt_t const packet);
  void        ExtractPhyInput      (const pPcieModelState_t const state, const uint32_t* const rawlinkin);
@@ -651,7 +657,7 @@
  }
  
  void SendTs (const int identifier, const int lane_num, const int link_num, const int n_fts, const int control, const bool is_gen2, const int node)
-@@ -2050,6 +2341,28 @@
+@@ -2050,6 +2341,34 @@
  }
  
  // -------------------------------------------------------------------------
@@ -676,11 +682,17 @@
 +    this->ur_bit = bit;
 +}
 +
++// openPCIE: the next 'count' Configuration Requests get a CRS Completion
++void SetCfgCrs (const int count, const int node)
++{
++    this->cfg_crs_left = count;
++}
++
 +// -------------------------------------------------------------------------
  // ResetEventCount()
  //
  // Clear count for each lane for give OS/TS type. Returns
-@@ -2491,6 +2804,37 @@
+@@ -2491,6 +2810,37 @@
  }
  
  // -------------------------------------------------------------------------
@@ -718,7 +730,7 @@
  // SetTxDisabled()
  //
  // -------------------------------------------------------------------------
-@@ -2511,6 +2855,113 @@
+@@ -2511,6 +2861,113 @@
  }
  
  // -------------------------------------------------------------------------
@@ -1457,7 +1469,22 @@
          {
              addr   = (uint64_t)(pkt->data[TLP_ADDR_OFFSET]   << 24) | (uint64_t)(pkt->data[TLP_ADDR_OFFSET+1] << 16) |
                       (uint64_t)(pkt->data[TLP_ADDR_OFFSET+2] << 8)  | (uint64_t)(pkt->data[TLP_ADDR_OFFSET+3] << 0) ;
-@@ -870,6 +1075,14 @@
+@@ -863,13 +1068,28 @@
+             cid               = state->CplId;
+             tag               = GET_TLP_TAG(pkt->data);
+ 
+-            if (type == TL_CFGRD0)
++            // openPCIE: not ready yet (SetCfgCrs): a CRS Completion, the request
++            // not carried out (2.3.1)
++            if (state->cfg_crs_left > 0)
++            {
++                state->cfg_crs_left--;
++                PartCompletionDelay(0, NULL, CPL_CRS, 0x0, 0x0, 0, 0, tag, cid, rid, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
++            }
++            else if (type == TL_CFGRD0)
+             {
+                 // Read a word (4 bytes) from the config space and put in buffer
+                 ReadConfigSpaceBuf((uint32_t)(addr & 0xfff), buff, 4, state->thisnode);
  
                  PartCompletionDelay(0, buff, CPL_SUCCESS, 0xf, 0x0, 1, 1, tag, cid, rid, gen_cmpl_ecrc, state->usrconf.CompletionRate, true, state->thisnode);
              }
@@ -1472,7 +1499,7 @@
              else
              {
                  // The device completer ID is always updated on config writes
-@@ -893,6 +1106,27 @@
+@@ -893,6 +1113,27 @@
              cid = state->CplId;
              tag = GET_TLP_TAG(pkt->data);
  
@@ -1500,7 +1527,7 @@
              // Accesses, other than messages and memory write accesses, require a completion of some sort,
              // unless specifically disabled or internal memory disabled where all packets get sent to
              // any registered user callback function
-@@ -935,6 +1169,10 @@
+@@ -935,6 +1176,10 @@
                        const pLinkEventCount_t const linkevent, const int lane, const int type, const pTS_t const ts_data,
                        const os_callback_t cb, void* usrptr, const int node)
  {
@@ -1511,7 +1538,7 @@
      if (cb != NULL)
      {
          cb(type, lane, ts_data, usrptr);
-@@ -1050,8 +1288,10 @@
+@@ -1050,8 +1295,10 @@
  {
      pPkt_t pkt1, pkt2;
  
@@ -1524,7 +1551,7 @@
  
      if (pkt1->TimeStamp > pkt2->TimeStamp)
      {
-@@ -1062,7 +1302,8 @@
+@@ -1062,7 +1309,8 @@
          return (-1);
      }
  
@@ -1534,7 +1561,7 @@
  }
  
  // -------------------------------------------------------------------------
-@@ -1527,7 +1768,8 @@
+@@ -1527,7 +1775,8 @@
          // Header 3
          pmem[idx++] = 0;
          pmem[idx++] = 0;
@@ -1544,7 +1571,7 @@
          pmem[idx++] = (addr & ADDR_LO_BYTE_MASK);
  
          // Jump over payload and tail
-@@ -1716,7 +1958,24 @@
+@@ -1716,7 +1965,24 @@
      state->head_p        = state->send_p        = state->end_p = NULL;
      state->ack_to_send_p = state->nak_to_send_p = NULL;
      state->curr_ack      = state->curr_nak      = NULLACK;
@@ -1569,7 +1596,7 @@
  
      for (fc_vc = 0; fc_vc < NUM_VIRTUAL_CHANNELS; fc_vc++)
      {
-@@ -1821,8 +2080,20 @@
+@@ -1821,8 +2087,20 @@
      // Remove any previous linkage
      packet->NextPkt = NULL;
  
@@ -1592,7 +1619,7 @@
      {
          state->end_p = state->send_p = state->head_p = packet;
      // Queue has at least one packet
-@@ -1844,6 +2115,7 @@
+@@ -1844,6 +2122,7 @@
              state->NakHolder.NextPkt = packet;
          }
  
@@ -1600,7 +1627,7 @@
          // Point current end of queue NextPkt pointer to
          // the new packet, and then update end_p to the
          // added packet.
-@@ -1910,7 +2182,9 @@
+@@ -1910,7 +2189,9 @@
  
      for (idx = 0; idx < state->LinkWidth; idx++)
      {
@@ -1611,7 +1638,7 @@
  
          // ----- Extracting Ordered Sets/Training Sequences for each lane -----
  
-@@ -1986,6 +2260,19 @@
+@@ -1986,6 +2267,19 @@
                  case  5: linkevent->Tseq[idx].control  = linkin[idx];
                      break;
                  case  6: linkevent->Tseq[idx].id       = linkin[idx];
@@ -1631,7 +1658,7 @@
                      break;
                  case  7: case  8: case  9: case 10:
                  case 11: case 12: case 13: case 14: case 15:
-@@ -2069,12 +2356,18 @@
+@@ -2069,12 +2363,18 @@
                  pkt->data = state->pRxPktData;
                  pkt->seq  = (pkt->data[0] == SDP) ? DLLP_SEQ_ID : ((((pkt->data[1] & 0xff) << 8) | (pkt->data[2] & 0xff)) & 0xfff);
                  pkt->Retry = 0;
@@ -1651,7 +1678,7 @@
              }
          }
      }
-@@ -2107,29 +2400,65 @@
+@@ -2107,29 +2407,65 @@
  
  void TxFcInitInt (const pFlowControl_t const flw, const pUserConfig_t const usrcfg, const int node)
  {
@@ -1725,7 +1752,7 @@
          // Ensure that at least one InitFC2 set is transmitted, even if at INITFC_FI2 already
          if (flw->fc_state[0] == INITFC_FI2 && flw->fc_init_count[0] >= FC_INIT_SENT_MIN)
          {
-@@ -2148,6 +2477,11 @@
+@@ -2148,6 +2484,11 @@
      DebugVPrint("** Received InitFC type %d hdrval=%d dataval=%d rx_fc_state=%d fc_state=%d @ node %d\n",
              type, hdrval, dataval, flw->rx_fc_state[0], flw->fc_state[0], node);
  

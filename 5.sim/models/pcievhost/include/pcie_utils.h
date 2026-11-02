@@ -263,6 +263,9 @@ typedef struct {
     uint32_t         ur_reg;
     uint32_t         ur_bit;
 
+    // openPCIE: Configuration Requests still to answer with CRS (SetCfgCrs)
+    int              cfg_crs_left;
+
     // openPCIE: the request being answered: its TC (header byte 1) and Attr
     // (byte 2, << 8), copied into the Completions made meanwhile (2.2.9)
     uint32_t         cpl_tc_attr;

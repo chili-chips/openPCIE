@@ -579,6 +579,9 @@ EXTERN void       SetPktMonitor           (const mon_callback_t cb_func, void *u
 // openPCIE: an endpoint sets 'bit' of config DW 'reg' (Device Status, UR
 // Detected) on each Unsupported Request it detects (7.8.5)
 EXTERN void       SetUrDetectedReg        (const uint32_t reg, const uint32_t bit, const int node);
+// openPCIE: an endpoint answers its next 'count' Configuration Requests with
+// Configuration Request Retry Status, as after a reset (2.3.1, 6.6)
+EXTERN void       SetCfgCrs               (const int count, const int node);
 EXTERN uint32_t   GetCycleCount           (const int node);
 EXTERN void       ConfigurePcie           (const config_t type, const int value, const int node);
 

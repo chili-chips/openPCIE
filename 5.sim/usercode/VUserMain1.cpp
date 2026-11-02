@@ -419,6 +419,13 @@ extern "C" void VUserMain1(int node)
 #else
     // Construct an endpoint PCIe configuration space
     ConfigureType0PcieCfg(pcie, node);
+
+    // CRS after reset (2.3.1): one seed in four (make SEED=N, A7RC_SEED) answers
+    // its first one or two Configuration Requests with CRS: the RC retries, and
+    // the checker's TL.CRS sees it
+    const char *seed_env = getenv("A7RC_SEED");
+    uint32_t    seed     = seed_env ? strtoul(seed_env, NULL, 10) : 1;
+    SetCfgCrs((seed % 4) ? 0 : 1 + (seed / 4) % 2, node);
 #endif
 
     // Send out idles until reset is released

@@ -11,6 +11,8 @@
 # bench's own time limit does not, it would hang again. Prints one line per
 # seed, then the checker's rules no seed checked; exits 1 if any seed failed,
 # each with a file DIR/<seed>/failed (make regress REGRESS_DUMP=fail).
+# REGRESS_NA (environment): rules that cannot apply to this endpoint, listed
+# apart, not counted as unchecked (e.g. the Gen2 rules for a Gen1 endpoint).
 #
 # Usage: regress.sh SEEDS JOBS LIMIT TRIES QUIET DIR "FILES" -- simulator command...
 
@@ -57,9 +59,12 @@ for s in $(seq 1 "$seeds"); do
     { echo "$r" | grep -q PASS && [ "${bad:-0}" = 0 ]; } || { fails=$((fails + 1)); touch "$dir/$s/failed"; }
 done
 # Rule coverage: the checks column of each seed's rule table, summed
-awk '$1 == "===>" && $2 ~ /^[A-Z]+\.[A-Z0-9-]+$/ && $4 ~ /^[0-9]+$/ { c[$2] += $4 }
-     END { n = 0; for (r in c) if (c[r] == 0) { z = z " " r; n++ }
-           if (length(c)) printf "%d of %d rules checked in no seed:%s\n", n, length(c), n ? z : " none" }' \
+awk -v na="${REGRESS_NA:-}" '
+     BEGIN { split(na, a, " "); for (i in a) skip[a[i]] = 1 }
+     $1 == "===>" && $2 ~ /^[A-Z]+\.[A-Z0-9-]+$/ && $4 ~ /^[0-9]+$/ { c[$2] += $4 }
+     END { n = 0; m = 0; for (r in c) { if (r in skip) { x = x " " r; continue } m++; if (c[r] == 0) { z = z " " r; n++ } }
+           if (length(c)) printf "%d of %d rules checked in no seed:%s%s\n", n, m, n ? z : " none",
+                                 x != "" ? "; not applicable here:" x : "" }' \
     "$dir"/*/regress.log
 echo "$fails of $seeds seeds failed"
 [ $fails = 0 ]

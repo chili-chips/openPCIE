@@ -129,8 +129,8 @@ static int chk_width = 1;
 #define CHK_PAD               0x1f7     // K23.7: Link or Lane Number not set
 #define CHK_EIOS_IDLE_NS      800       // Recovery.Speed: the shortest electrical idle (4.2.6.4.2)
 #define CHK_EIOS_FAIL_NS      6000      // ... after a failed speed negotiation
-#define CHK_RCVRLOCK_NS       23990000  // Recovery.RcvrLock times out, to Recovery.Speed: 24 ms (4.2.6.4.1),
-                                        // less the time the RC takes to see the Recovery
+#define CHK_RCVRLOCK_NS       23900000  // Recovery.RcvrLock times out, to Recovery.Speed: 24 ms (4.2.6.4.1),
+                                        // less the time the RC takes to see the Recovery (receiver lock)
 #define CHK_SC_TS2            32        // TS2s with speed_change before Recovery.Speed (4.2.6.4.3)
 
 // ---- Rules ----------------------------------------------------------------
@@ -217,7 +217,7 @@ static Rule rules[R_NUM] =
     {"PL.SPEED",        "4.2.6.4.3", "a speed change up only in a Recovery whose TS2s from the endpoint carried speed_change, to a rate they advertised (down to 2.5 GT/s: also the fallback, 4.2.6.4.2)"},
     {"PL.TS-FIELDS",    "4.2.4.1", "TS1/TS2: Data Rate bit 1 set, bits 0, 3-5 0, speed_change not in Polling or Configuration, the same rates there; Training Control 0 but Disable Scrambling (bits 5-7 reserved; the RC directs no Hot Reset, Disable, Loopback or Compliance Receive); after Configuration, the Link and Lane Numbers it set"},
     {"PL.SKP",          "4.2.7.1", "SKP Ordered Sets, lane 0: in Polling, Configuration and L0 never more than 1538 + Max_Payload_Size + 28 Symbol Times apart (4.2.7.2); in L0 one per 1180 to 1538 (give or take one per L0 period)"},
-    {"PL.EIOS",         "4.2.4.2", "EIOS from the endpoint, lane 0: only in Recovery, on the way to Recovery.Speed (after TS2s with speed_change, at 2.5 GT/s with 5.0 GT/s on both sides; or back from a failed change; at 5.0 GT/s also after RcvrLock timed out, 4.2.6.4.1, or after the RC's EIOS); one at 2.5 GT/s, two in a row at 5.0 GT/s; at least 32 TS2s with speed_change before (counted from its first); then electrically idle until the RC is, and for at least 800 ns after the later EIOS, 6 us without speed_change (4.2.6.4.2)"},
+    {"PL.EIOS",         "4.2.4.2", "EIOS from the endpoint, lane 0: only in Recovery, on the way to Recovery.Speed (after TS2s with speed_change, at 2.5 GT/s with 5.0 GT/s on both sides; or, at 5.0 GT/s or back from a changed rate, after RcvrLock timed out with TS1 only, 4.2.6.4.1, or in RcvrCfg, after its TS2, once the RC sent EIOS, 4.2.6.4.3); one at 2.5 GT/s, two in a row at 5.0 GT/s; at least 32 TS2s with speed_change before (counted from its first); then electrically idle until the RC is, and for at least 800 ns after the later EIOS, 6 us without speed_change (4.2.6.4.2)"},
 };
 
 static int PcieCapDw(void);
@@ -1667,7 +1667,8 @@ static int      pl_eios_gen    = 0;
 static uint64_t pl_eios_min    = 0;
 static bool     pl_eios_spdchg = false;     // TS2s with speed_change since L0 or the last idle, how many
 static unsigned pl_eios_sc_n   = 0;
-static uint64_t pl_rec_ns      = 0;         // the RC entered Recovery, or the endpoint last left idle
+static uint64_t pl_rec_ns      = 0;         // the RC entered Recovery, or the endpoint last left idle,
+static bool     pl_rec_ts2     = false;     // and the endpoint sent TS2 since (in RcvrCfg)
 
 static uint64_t PlSym(void)
 {
@@ -1722,6 +1723,7 @@ static void PlEiosEnd(uint64_t now)
           (unsigned long long)(now - base), (rc > pl_eios_ns) ? "the RC's" : "its own", (unsigned long long)pl_eios_min);
     pl_eios_n  = 0;
     pl_rec_ns  = now;
+    pl_rec_ts2 = false;
 }
 
 static void OsMonitor(int type, int lane, pTS_t ts, void *usrptr)
@@ -1744,9 +1746,17 @@ static void OsMonitor(int type, int lane, pTS_t ts, void *usrptr)
         }
         if (st == CHK_LTSSM_RECOVERY)
         {
-            pl_rec_ns = now;
+            pl_rec_ns  = now;
+            pl_rec_ts2 = false;
         }
         pl_state = st;
+    }
+    // An L0 too short for an ordered set from the endpoint: its next Recovery
+    // starts after it all the same
+    if (GetLtssmL0Ns(chk_node) > pl_rec_ns)
+    {
+        pl_rec_ns  = GetLtssmL0Ns(chk_node);
+        pl_rec_ts2 = false;
     }
     // EIOS: before Configuration, the link is idle anyway (the endpoint's EIOS until its reset)
     if (lane == 0 && type == IDL && pl_cfg_set && st != CHK_LTSSM_DETECT)
@@ -1759,15 +1769,19 @@ static void OsMonitor(int type, int lane, pTS_t ts, void *usrptr)
         {
             PlEiosEnd(now);
             // Recovery.Speed after a speed negotiation (at 2.5 GT/s with 5.0 GT/s on both
-            // sides), back to the rate Recovery started at, or at 5.0 GT/s after RcvrLock
-            // timed out or after the RC's EIOS in RcvrCfg (4.2.6.4.3)
-            int  spd = GetLinkSpeed(chk_node);
-            bool neg = pl_eios_spdchg && (spd == 2 || (pl_rec_rates & GetLtssmRates(chk_node) & 4));
-            Check(R_PL_EIOS, st == CHK_LTSSM_RECOVERY &&
-                             (neg || spd != pl_speed ||
-                              (spd == 2 && (now - pl_rec_ns >= CHK_RCVRLOCK_NS || GetLtssmEiosNs(chk_node) > pl_rec_ns))),
-                  "EIOS in LTSSM state %d at Gen%d (Gen%d in L0): the endpoint's TS2s %s speed_change, rates 0x%02x, the RC's 0x%02x",
-                  st, spd, pl_speed, pl_eios_spdchg ? "with" : "without", pl_rec_rates, GetLtssmRates(chk_node));
+            // sides); else at 5.0 GT/s or at a rate changed since L0, only from RcvrLock
+            // timed out (TS1 only, 4.2.6.4.1) or from RcvrCfg (its TS2) after the RC's
+            // EIOS (4.2.6.4.3)
+            int  spd  = GetLinkSpeed(chk_node);
+            bool neg  = pl_eios_spdchg && (spd == 2 || (pl_rec_rates & GetLtssmRates(chk_node) & 4));
+            bool lock = !pl_rec_ts2 && now - pl_rec_ns >= CHK_RCVRLOCK_NS;
+            bool cfg  = pl_rec_ts2 && GetLtssmEiosNs(chk_node) > pl_rec_ns;
+            Check(R_PL_EIOS, st == CHK_LTSSM_RECOVERY && (neg || ((spd == 2 || spd != pl_speed) && (lock || cfg))),
+                  "EIOS in LTSSM state %d at Gen%d (Gen%d in L0): the endpoint's TS2s %s speed_change, rates 0x%02x, the RC's 0x%02x; "
+                  "%s, %llu ns since Recovery or idle, the RC's EIOS %s",
+                  st, spd, pl_speed, pl_eios_spdchg ? "with" : "without", pl_rec_rates, GetLtssmRates(chk_node),
+                  pl_rec_ts2 ? "RcvrCfg" : "RcvrLock", (unsigned long long)(now - pl_rec_ns),
+                  GetLtssmEiosNs(chk_node) > pl_rec_ns ? "seen" : "not seen");
             if (neg && spd == pl_speed)
             {
                 Check(R_PL_EIOS, pl_eios_sc_n >= CHK_SC_TS2, "EIOS after %u TS2s with speed_change, at least %d",
@@ -1841,6 +1855,7 @@ static void OsMonitor(int type, int lane, pTS_t ts, void *usrptr)
                   lane, ts->linknum, ts->lanenum, pl_cfg_link[lane], pl_cfg_lane[lane]);
         }
     }
+    pl_rec_ts2 |= type == TS2_ID && lane == 0 && st == CHK_LTSSM_RECOVERY;
     if (type == TS2_ID && (rate & 0x80))
     {
         pl_rec_spdchg  = true;

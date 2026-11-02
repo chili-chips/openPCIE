@@ -40,6 +40,11 @@ MUTANTS = [
     ('pl-eios-idle', 'PL.EIOS', [], [
         ('models/pcievhost/ltssm/ltssm.c', '                SendIdle(idle_us * ticks_us, node);',
          '                SendIdle(100, node);   // MUTANT: idle too short')]),
+    ('pl-eios-lock', 'PL.EIOS', [], [
+        ('models/pcievhost/ltssm/ltssm.c',
+         'timeout  = RECOVERY_RCVRLOCK_TO_US * SYMCLK_TICKS_PER_US(ltssm_cur_gen[node]) / TS_TICKS;',
+         'timeout  = (ltssm_cur_gen[node] == 2) ? 4 : RECOVERY_RCVRLOCK_TO_US * SYMCLK_TICKS_PER_US(1) / TS_TICKS;'
+         '   // MUTANT: RcvrLock at 5.0 GT/s gives up long before 24 ms')]),
     ('pl-eios-gen1', 'PL.EIOS', ['SIM_RC_GEN=1', 'SIM_SPEED_TEST=1'], [
         ('models/pcievhost/ltssm/ltssm.c',
          'to_speed = directed && (ltssm_cur_gen[node] > 1 || (ltssm_rate[node] & partner & TS_DATA_RATE_5G));',
