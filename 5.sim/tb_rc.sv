@@ -41,22 +41,18 @@ module tb;
   endtask
 
 //--------------------------------------------------------------
-// Clocks and reset: PCLK 125 MHz at Gen1, 250 MHz at Gen2, and the symbol
-// clock at twice that, started from each PCLK rising edge a quarter symbol
-// later (models/phy_top.EP-PIPE-BFM.sv). The RC model sets the rate: its
-// GEN2_CLK register, which it writes in Recovery.Speed with both sides idle;
-// across the switch one PCLK may get no symbol clocks, harmless while idle.
+// Clocks and reset: PCLK 125 MHz at Gen1, 250 MHz at Gen2; each model makes
+// its symbol clock from it (models/PIPExN__pcieVHost.sv). The RC model sets
+// the rate: its GEN2_CLK register, which it writes in Recovery.Speed with
+// both sides idle.
 // Resets are released with nonblocking assignments: a release on a symbol
 // clock edge then comes after that edge on every simulator.
 //--------------------------------------------------------------
 
   localparam int PCLK_HALF_GEN1_PS   = 4000;  // 125 MHz
   localparam int PCLK_HALF_GEN2_PS   = 2000;  // 250 MHz
-  localparam int SYMCLK_HALF_GEN1_PS = 2000;  // 250 MHz
-  localparam int SYMCLK_HALF_GEN2_PS = 1000;  // 500 MHz
 
   bit   pclk;
-  bit   symclk;
   bit   nreset;             // PERST#: the RC model
   bit   ep_nreset;          // the endpoint
   bit   rate_sel;
@@ -64,7 +60,6 @@ module tb;
 
   initial begin
     pclk      = 1'b0;
-    symclk    = 1'b0;
     nreset    = 1'b0;
     ep_nreset = 1'b0;
     rate_sel  = 1'b0;
@@ -74,17 +69,6 @@ module tb;
   always @(rc_gen2) rate_sel = (rc_gen2 === 1'b1);
 
   always #((rate_sel ? PCLK_HALF_GEN2_PS : PCLK_HALF_GEN1_PS) * 1ps) pclk = ~pclk;
-
-  always begin
-    automatic int half;
-
-    @(posedge pclk);
-    half = rate_sel ? SYMCLK_HALF_GEN2_PS : SYMCLK_HALF_GEN1_PS;
-    #((half / 2) * 1ps) symclk = 1'b0;
-    #(half       * 1ps) symclk = 1'b1;
-    #(half       * 1ps) symclk = 1'b0;
-    #(half       * 1ps) symclk = 1'b1;
-  end
 
   initial begin
     get_run_length();
@@ -140,8 +124,8 @@ module tb;
     .Lanes     (L),
     .DataWidth (16)
   ) u_rc (
-    .pcieclk   (symclk),
     .pclk      (pclk),
+    .gen2      (rate_sel),
     .nreset    (nreset),
     .Gen2ClkSel(rc_gen2),
     .RxData    (rc_rx_data),
@@ -167,8 +151,8 @@ module tb;
     .Lanes     (L),
     .DataWidth (16)
   ) u_ep (
-    .pcieclk   (symclk),
     .pclk      (pclk),
+    .gen2      (rate_sel),
     .nreset    (ep_nreset),
     .Gen2ClkSel(),
     .RxData    (ep_rx_data),

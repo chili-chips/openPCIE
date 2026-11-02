@@ -34,6 +34,8 @@
 //   of an alias from 1.1.
 //==========================================================================
 
+`timescale 1ps/1ps
+
 module PIPExN__pcieVHost #(
     parameter int NodeNum   = 1,
     parameter bit EndPoint  = 0,   // 0: RC, 1: EP
@@ -41,8 +43,8 @@ module PIPExN__pcieVHost #(
     parameter int DataWidth = 64,  // 8, 16, 32 or 64, per lane
     parameter int DllBytes  = 8    // dll_rx_data width, in bytes
 ) (
-    input  logic                     pcieclk,  // symbol clock: 250 MHz Gen1, 500 MHz Gen2
-    input  logic                     pclk,     // pcieclk / (DataWidth/8)
+    input  logic                     pclk,     // the symbol clock / (DataWidth/8)
+    input  logic                     gen2,     // the link rate: 5.0 GT/s
     input  logic                     nreset,
     output logic                     Gen2ClkSel, // GEN2_CLK register: the test bench's clocks are Gen2
 
@@ -98,6 +100,30 @@ module PIPExN__pcieVHost #(
     output logic                     rx_peer_eop,
     output logic                     rx_peer_valid
 );
+
+  // The symbol clock, made here from PCLK: 250 MHz at Gen1, 500 MHz at Gen2,
+  // DataWidth/8 cycles per PCLK, started from each PCLK rising edge with the
+  // edges a quarter symbol away from it (Gen1: 1 ns, Gen2: 0.5 ns). An edge in
+  // the same time step as PCLK races the PIPE word against the symbol shift
+  // register, and the link then drops or doubles symbols. Across a rate
+  // switch one PCLK may get no symbol clocks: harmless, both sides are idle.
+  // gen2 is taken as a hard 0/1: an X delay is a zero delay, which hangs the
+  // simulator
+  localparam int SYMCLK_HALF_GEN1_PS = 2000;  // 250 MHz
+  localparam int SYMCLK_HALF_GEN2_PS = 1000;  // 500 MHz
+
+  bit pcieclk;
+
+  initial pcieclk = 1'b0;
+
+  always begin
+    automatic int half;
+
+    @(posedge pclk);
+    half = (gen2 === 1'b1) ? SYMCLK_HALF_GEN2_PS : SYMCLK_HALF_GEN1_PS;
+    #((half / 2) * 1ps) pcieclk = 1'b0;
+    repeat (DataWidth / 4 - 1) #(half * 1ps) pcieclk = ~pcieclk;
+  end
 
   // The model's taps, as this node sees them: Tx = sent, Rx = received
   logic [31:0] tap_tx_data, tap_rx_data, tap_dllp_tx, tap_dllp_rx;

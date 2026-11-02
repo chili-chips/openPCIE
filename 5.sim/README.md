@@ -1443,7 +1443,7 @@ Fixed in this repo only; [Local changes](#local-changes) lists how we differ fro
 | 7 | RV32-ISS | Timing tables not matched to the RTL cores | fixed here: within 0.6%, [#35](https://github.com/chili-chips-ba/openPCIE/issues/35) |
 | 8 | pcievhost | No Recovery.Speed: cannot follow the RC to Gen2; a TS cannot carry the Speed Change bit | fixed here: `ltssm-openpcie.patch`, `pcievhost-speed.patch` |
 | 9 | pcievhost | `SetTxDisabled()` has no effect: DLLPs go out during Recovery | fixed here: `pcievhost-speed.patch` |
-| 10 | PIPE PHY model | At Gen2 the symbol clock and PCLK edges share a time step, and symbols are dropped or doubled | fixed here: symbol clock started from PCLK, `phy_top.EP-PIPE-BFM.sv` |
+| 10 | PIPE PHY model | At Gen2 the symbol clock and PCLK edges share a time step, and symbols are dropped or doubled | fixed here: symbol clock started from PCLK, made in the model's wrapper (`PIPExN__pcieVHost.sv`; the test bench gives it PCLK only) |
 | 11 | pcievhost | `initFc()` does not follow the partner into Recovery: InitFC2 and UpdateFC go out during Recovery.RcvrLock | fixed here: `pcievhost-speed.patch`, `ltssm-openpcie.patch` |
 | 12 | pcievhost | FC_INIT2 waits for all three InitFC types again after FC_INIT1: hangs on a partner that sends one InitFC1 and one InitFC2 set (legal) | fixed here, Artix-7 RC profile: `pcievhost-speed.patch` |
 | 13 | pcievhost | Segfault on the first Nak received: the replay search skips while seq > Nak and runs off the end of the queue | fixed here: `pcievhost-speed.patch` |

@@ -95,13 +95,7 @@ module phy_top
   // link partner, duplicating one symbol in five.
   localparam int TXOUTCLK_HALF_PS = 5000;   // 100 MHz
 
-  // Symbol clock for the pcievhost wrapper. A 16-bit PIPE carries 2 symbols
-  // per PCLK, so this is 2 x PCLK: 250 MHz at Gen1, 500 MHz at Gen2.
-  localparam int SYMCLK_HALF_GEN1_PS = 2000;  // 250 MHz
-  localparam int SYMCLK_HALF_GEN2_PS = 1000;  // 500 MHz
-
   bit   txoutclk;
-  bit   symclk;
 
   always #(TXOUTCLK_HALF_PS * 1ps) txoutclk = ~txoutclk;
 
@@ -113,27 +107,10 @@ module phy_top
 
   initial begin
     txoutclk = 1'b0;
-    symclk   = 1'b0;
     rate_sel = 1'b0;
   end
 
   always @(pipe_mac.tx_ctrl.rate) rate_sel = (pipe_mac.tx_ctrl.rate === 1'b1);
-
-  // Two symbol clocks per PCLK, started from each PCLK rising edge, with the
-  // edges a quarter symbol away from it (Gen1: 1 ns, Gen2: 0.5 ns). An edge
-  // in the same time step as PCLK races the PIPE word against the symbol
-  // shift register, and the link then drops or doubles symbols. Across a rate
-  // switch one PCLK may get no symbol clocks: harmless, both sides are idle.
-  always begin
-    automatic int half;
-
-    @(posedge pipe_clk_in);
-    half = rate_sel ? SYMCLK_HALF_GEN2_PS : SYMCLK_HALF_GEN1_PS;
-    #((half / 2) * 1ps) symclk = 1'b0;
-    #(half       * 1ps) symclk = 1'b1;
-    #(half       * 1ps) symclk = 1'b0;
-    #(half       * 1ps) symclk = 1'b1;
-  end
 
   assign pipe_txoutclk_out = txoutclk;
 
@@ -223,8 +200,8 @@ module phy_top
     .Lanes     (PCIE_LANES),
     .DataWidth (16)      // matches the 7-series 2-symbol PIPE
   ) u_pcie_ep (
-    .pcieclk   (symclk),
     .pclk      (pipe_clk),
+    .gen2      (rate_sel),   // its symbol clock follows the rate
     .nreset    (pipe_rst_n),
     .Gen2ClkSel(),       // the hard macro sets the rate (PIPETXRATE)
 
