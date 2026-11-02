@@ -494,6 +494,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 
 
 ### Community Outreach:
+- [2026-11-01, LinkedIn](https://lnkd.in/p/g3Qi_uvv)
 - [2026-10-25, LinkedIn](https://lnkd.in/p/gNncVdNv)
 - [2026-10-20, LinkedIn (Ferrite)](https://lnkd.in/p/g-yGBEU8)
 - [2026-10-20, Hacker News](https://news.ycombinator.com/item?id=50162122)

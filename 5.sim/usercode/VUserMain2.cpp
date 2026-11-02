@@ -1506,7 +1506,9 @@ extern "C" void VUserMain2(int node)
         Unsupported(pcie);
         Odd(pcie);
         Faults(pcie);
+#ifndef A7RC_NO_DMA                      // another project's endpoint without DMA
         Dma(pcie);
+#endif
         Speed(pcie);
         Retrain(pcie);
 #endif
