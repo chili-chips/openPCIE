@@ -21,7 +21,9 @@
 
 `include "pciexpress_header.v"
 
-module pcieVHostPipexN #(
+module pcieVHostPipexN
+  import pipe_sym_pkg::*;
+#(
     parameter int NodeNum   = 8,
     parameter bit EndPoint  = 1,
     parameter int Lanes     = 4,   // 1 to 16
@@ -60,12 +62,19 @@ module pcieVHostPipexN #(
   // electrical idle is NOSIG per symbol, both ways: the core's idle (its
   // ElecIdleOut) goes out as NOSIG, and a received NOSIG is the partner's
   // idle, to the core's ElecIdleIn
-  localparam logic [8:0] NOSIG_SYM = {1'b1, `NOSIG};   // {K, byte}
   logic [15:0]      link_out_idle;
   bit   [15:0][7:0] link_out_q;     // the core's TX symbols, on the falling edge
   bit   [15:0]      link_outk_q;
   logic [15:0]      link_in_idle;
   logic [Lanes-1:0] rx_idle;
+
+  // pipe_sym_pkg's NOSIG_SYM is the patch's `NOSIG (the header is included
+  // for this check only)
+  initial begin
+    if (NOSIG_SYM != {1'b1, `NOSIG}) begin
+      $fatal(1, "pipe_sym_pkg::NOSIG_SYM differs from NOSIG in pciexpress_header.v");
+    end
+  end
 
   for (genvar l = 0; l < 16; l++) begin : g_link_in
     if (l < Lanes) begin : g_used
@@ -88,7 +97,7 @@ module pcieVHostPipexN #(
   always_ff @(negedge pcieclk or negedge nreset) begin
     if (!nreset) begin
       rxcount    <= 0;
-      rx_sample  <= {Lanes*BYTES{`NOSIG}};
+      rx_sample  <= {Lanes*BYTES{NOSIG_SYM[7:0]}};
       rxk_sample <= '1;
     end else if (rxcount == 0) begin
       for (int l = 0; l < Lanes; l++) begin
@@ -109,7 +118,7 @@ module pcieVHostPipexN #(
   // edge, in VProc's delta cycles, the edge the TX shift runs on (pcieVHostPipex1)
   always_ff @(negedge pcieclk or negedge nreset) begin
     if (!nreset) begin
-      link_out_q  <= {16{`NOSIG}};
+      link_out_q  <= {16{NOSIG_SYM[7:0]}};
       link_outk_q <= '1;
     end else for (int l = 0; l < 16; l++) begin
       link_out_q[l]  <= link_out_idle[l] ? NOSIG_SYM[7:0] : link_out[l][7:0];
@@ -120,7 +129,7 @@ module pcieVHostPipexN #(
   if (BYTES == 1) begin : g_tx1
     always_ff @(posedge pcieclk or negedge nreset) begin
       if (!nreset) begin
-        tx_pipe  <= {Lanes*BYTES{`NOSIG}};
+        tx_pipe  <= {Lanes*BYTES{NOSIG_SYM[7:0]}};
         txk_pipe <= '1;
       end else for (int l = 0; l < Lanes; l++) begin
         tx_pipe[l]  <= DataWidth'(link_out_q[l]);
@@ -130,7 +139,7 @@ module pcieVHostPipexN #(
   end else begin : g_txn
     always_ff @(posedge pcieclk or negedge nreset) begin
       if (!nreset) begin
-        tx_pipe  <= {Lanes*BYTES{`NOSIG}};
+        tx_pipe  <= {Lanes*BYTES{NOSIG_SYM[7:0]}};
         txk_pipe <= '1;
       end else for (int l = 0; l < Lanes; l++) begin
         tx_pipe[l]  <= {link_out_q[l], tx_pipe[l][DataWidth-1:8]};
@@ -145,7 +154,7 @@ module pcieVHostPipexN #(
 
   always_ff @(posedge tx_sample_clk or negedge nreset) begin
     if (!nreset) begin
-      TxData  <= {Lanes*BYTES{`NOSIG}};
+      TxData  <= {Lanes*BYTES{NOSIG_SYM[7:0]}};
       TxDataK <= '1;
     end else for (int l = 0; l < Lanes; l++) begin
       TxData [l*DataWidth +: DataWidth] <= tx_pipe[l];

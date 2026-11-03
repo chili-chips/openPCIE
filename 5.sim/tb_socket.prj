@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Chili.CHIPS
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# xsim source list for the Artix-7 RC model in the hard macro's socket (make
+# RC=model PHY=hm, tb_socket.sv): pcie_top with clk_rst_gen, and models for
+# pcie_core and phy_top. No SOC.
+
+sv work models/cosim/mem_model.sv
+sv work models/cosim/f_VProc.v
+sv work models/pcievhost/verilog/pcieVHost/pcieVHost.v
+sv work models/pcievhost/verilog/pcieVHost/pcieVHostPipex1.v
+sv work models/pipe_sym_pkg.sv
+sv work models/pcieVHostPipexN.sv
+sv work models/PIPExN__pcieVHost.sv
+sv work models/pipe_phy_core.sv
+sv work models/pipe_x4_view.sv
+sv work models/pipe_mac_adapter.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/link_pkg.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/pcie_pkg.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/axis_if.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/cfg_if.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/pipe_if.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/clk_rst_gen.sv
+sv work ../2.rtl/0.common.opensource/src/pcie/pcie_top.sv
+# pcie_core.sv is DELIBERATELY absent: the RC model takes its place
+sv work models/pcie_core.RC-model.sv
+sv work models/phy_top.EP-PIPE-BFM.sv
+sv work tb_socket.sv

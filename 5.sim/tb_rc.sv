@@ -15,6 +15,12 @@
 //          |   PIPE
 //        u_ep  PIPExN__pcieVHost, EndPoint = 1   <-- the endpoint
 //
+//   make PHY=core: a PIPE PHY between them, the RC model as its MAC
+//
+//        u_rc  -> u_mac  pipe_mac_adapter (the MAC side of the PIPE)
+//                 |      PIPE, with its handshakes
+//                 u_phy  pipe_phy_core    (the PHY side) -> u_ep
+//
 //   The module is called tb, like tb.sv: the pcieVHost headers call tb.Fatal.
 //   The run ends when the model has checked the endpoint's answers (RC MODEL
 //   RESULT), or at the time limit of run_us.cfg.
@@ -22,9 +28,9 @@
 
 `timescale 1ps/1ps
 
-`include "pciexpress_header.v"
-
 module tb;
+
+  import pipe_sym_pkg::*;
 
   int RUN_SIM_US;
 
@@ -81,19 +87,102 @@ module tb;
   end
 
 //--------------------------------------------------------------
-// The link: one register stage each way
+// The link: one register stage each way; with PHY=core through a PIPE PHY
 //--------------------------------------------------------------
 
-`ifndef PCIE_LANES
-  `define PCIE_LANES 1
-`endif
-  localparam int L = `PCIE_LANES;   // make SIM_LANES: 1 or 4
+  localparam int L = link_pkg::PCIE_LANES;   // make SIM_LANES: 1 or 4
 
   bit   [16*L-1:0] rc_rx_data,  ep_rx_data;
   bit   [ 2*L-1:0] rc_rx_datak, ep_rx_datak;
   logic [16*L-1:0] rc_tx_data,  ep_tx_data;
   logic [ 2*L-1:0] rc_tx_datak, ep_tx_datak;
 
+`ifdef SIM_PIPE_PHY
+  // make PHY=core: the RC model is the MAC of a PIPE, through
+  // models/pipe_mac_adapter.sv, above models/pipe_phy_core.sv; the endpoint is
+  // that PHY's link partner. The core's TX flop and the flop on the endpoint's
+  // TX are the register stage each way. The endpoint's receiver is present
+  // once it is out of reset: the first detection, before that, finds none.
+// PCLK and both symbol clocks follow the RC model's Gen2 request at once
+// (rate_sel); the adapter's Rate only asks the PHY for its PhyStatus.
+// PHY=hm tests Rate driving PCLK
+  logic [16*L-1:0] p_tx_data,  p_rx_data,  ep_tx_q;
+  logic [ 2*L-1:0] p_tx_datak, p_rx_datak, ep_txk_q;
+  logic [   L-1:0] p_tx_elec_idle, p_rx_valid, p_rx_elec_idle;
+  logic [     1:0] p_powerdown;
+  logic [     2:0] p_rx_status;
+  logic            p_mac_reset, p_rate, p_tx_detect_rx, p_phy_status;
+
+`ifdef SIM_LANE_REVERSE
+  initial $fatal(1, "PHY=core does not reverse lanes");
+`endif
+
+  pipe_mac_adapter #(
+    .LANES (L),
+    .BYTES (2)
+  ) u_mac (
+    .pclk         (pclk),
+    .rst_n        (nreset),
+    .link_up      (),
+    .vh_gen2      (rc_gen2),
+    .vh_txdata    (rc_tx_data),
+    .vh_txdatak   (rc_tx_datak),
+    .vh_rxdata    (rc_rx_data),
+    .vh_rxdatak   (rc_rx_datak),
+    .mac_reset    (p_mac_reset),
+    .powerdown    (p_powerdown),
+    .rate         (p_rate),
+    .tx_detect_rx (p_tx_detect_rx),
+    .tx_elec_idle (p_tx_elec_idle),
+    .tx_data      (p_tx_data),
+    .tx_datak     (p_tx_datak),
+    .phy_status   (p_phy_status),
+    .rx_status    (p_rx_status),
+    .rx_valid     (p_rx_valid),
+    .rx_elec_idle (p_rx_elec_idle),
+    .rx_data      (p_rx_data),
+    .rx_datak     (p_rx_datak)
+  );
+
+  pipe_phy_core #(
+    .LANES   (L),
+    .BYTES   (2),
+    .TX_FLOP (1)
+  ) u_phy (
+    .pclk         (pclk),
+    .rst_n        (nreset),
+    .phy_rdy      (),
+    .mac_reset    (p_mac_reset),
+    .powerdown    (p_powerdown),
+    .rate         (p_rate),
+    .tx_detect_rx (p_tx_detect_rx),
+    .tx_elec_idle (p_tx_elec_idle),
+    .tx_data      (p_tx_data),
+    .tx_datak     (p_tx_datak),
+    .phy_status   (p_phy_status),
+    .rx_status    (p_rx_status),
+    .rx_valid     (p_rx_valid),
+    .rx_elec_idle (p_rx_elec_idle),
+    .rx_data      (p_rx_data),
+    .rx_datak     (p_rx_datak),
+    .rcvr_present (ep_nreset),
+    .host_rxdata  (ep_rx_data),
+    .host_rxdatak (ep_rx_datak),
+    .host_txdata  (ep_tx_q),
+    .host_txdatak (ep_txk_q)
+  );
+
+  always_ff @(posedge pclk or negedge nreset) begin
+    if (!nreset) begin
+      ep_tx_q  <= {2*L{NOSIG_SYM[7:0]}};
+      ep_txk_q <= '1;
+    end
+    else begin
+      ep_tx_q  <= ep_tx_data;
+      ep_txk_q <= ep_tx_datak;
+    end
+  end
+`else
   // the link is idle in reset (NOSIG with the K flag). make SIM_LANE_REVERSE=1:
   // lane l of the RC goes to lane L-1-l of the endpoint, both ways (4.2.4.9.1)
   for (genvar l = 0; l < L; l++) begin : g_lane
@@ -104,8 +193,8 @@ module tb;
 `endif
     always_ff @(posedge pclk or negedge nreset) begin
       if (!nreset) begin
-        {rc_rx_data[16*l +: 16], rc_rx_datak[2*l +: 2]} <= {{2{`NOSIG}}, 2'b11};
-        {ep_rx_data[16*M +: 16], ep_rx_datak[2*M +: 2]} <= {{2{`NOSIG}}, 2'b11};
+        {rc_rx_data[16*l +: 16], rc_rx_datak[2*l +: 2]} <= {{2{NOSIG_SYM[7:0]}}, 2'b11};
+        {ep_rx_data[16*M +: 16], ep_rx_datak[2*M +: 2]} <= {{2{NOSIG_SYM[7:0]}}, 2'b11};
       end
       else begin
         {rc_rx_data[16*l +: 16], rc_rx_datak[2*l +: 2]} <= {ep_tx_data[16*M +: 16], ep_tx_datak[2*M +: 2]};
@@ -113,6 +202,7 @@ module tb;
       end
     end
   end
+`endif
 
 //--------------------------------------------------------------
 // The RC model and the endpoint
@@ -182,6 +272,10 @@ module tb;
     $dumpfile("tb.vcd");
     $dumpvars(1, tb.u_ep);
     $dumpvars(1, tb.u_rc);
+`ifdef SIM_PIPE_PHY
+    $dumpvars(1, tb.u_mac);
+    $dumpvars(1, tb.u_phy);
+`endif
   end
 `endif
 

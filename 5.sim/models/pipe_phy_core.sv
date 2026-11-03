@@ -33,9 +33,9 @@
 
 `timescale 1ps/1ps
 
-`include "pciexpress_header.v"
-
-module pipe_phy_core #(
+module pipe_phy_core
+  import pipe_sym_pkg::*;
+#(
     parameter int LANES         = 1,
     parameter int BYTES         = 2,    // symbols per lane per PCLK
     parameter bit TX_FLOP       = 0,    // 1: the partner gets the MAC's TX one PCLK later
@@ -73,7 +73,6 @@ module pipe_phy_core #(
     input  logic [  LANES*BYTES-1:0] host_txdatak
 );
 
-  localparam logic [8:0] NOSIG_SYM = {1'b1, `NOSIG};   // {K, byte}
   localparam bit   [1:0] P1        = 2'b10;
 
   //------------------------------------------------------------------

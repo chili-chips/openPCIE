@@ -10,4 +10,5 @@ sv work models/cosim/f_VProc.v
 sv work models/pcievhost/verilog/lib/clkmux.v
 sv work models/pcievhost/verilog/lib/Serialiser.v
 sv work models/pcievhost/verilog/pcieVHost/pcieVHost.v
+sv work ../2.rtl/0.common.opensource/src/pcie/link_pkg.sv
 sv work tb_rc_serial.sv

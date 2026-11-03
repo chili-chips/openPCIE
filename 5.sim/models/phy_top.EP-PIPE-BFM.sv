@@ -48,8 +48,6 @@
 
 `timescale 1ps/1ps
 
-`include "pciexpress_header.v"
-
 module phy_top
   import link_pkg::*;
 (
@@ -355,21 +353,23 @@ module phy_top
 `endif
 
   // Raw symbol dump (+define+PIPE_RAW_DUMP): lane 0's first 40 words in each
-  // direction once the partner drives, from PIPE_DUMP_FROM (ps). Ground truth
-  // for alignment problems.
+  // direction once the partner drives, from make PLUSARGS=PIPE_DUMP_FROM=<ps>
+  // (default 0). Ground truth for alignment problems.
 `ifdef PIPE_RAW_DUMP
-`ifndef PIPE_DUMP_FROM
-  `define PIPE_DUMP_FROM 0
-`endif
   int     dump_n;     // 0 at time 0
-  always @(posedge pipe_clk) if (pipe_rst_n && mac_rx_valid[0] && dump_n < 40 && $time > `PIPE_DUMP_FROM) begin
-    $display("%t  RAW  tx=%02h%s %02h%s   rx=%02h%s %02h%s", $time,
-             pipe_mac.tx[0].data[7:0],  pipe_mac.tx[0].char_is_k[0] ? "K" : "d",
-             pipe_mac.tx[0].data[15:8], pipe_mac.tx[0].char_is_k[1] ? "K" : "d",
-             ep_tx_data[7:0],       ep_tx_datak[0] ? "K" : "d",
-             ep_tx_data[15:8],      ep_tx_datak[1] ? "K" : "d");
-    dump_n <= dump_n + 1;
-  end
+  longint dump_from;
+
+  initial if (!$value$plusargs("PIPE_DUMP_FROM=%d", dump_from)) dump_from = 0;
+
+  always @(posedge pipe_clk)
+    if (pipe_rst_n && mac_rx_valid[0] && dump_n < 40 && $time > dump_from) begin
+      $display("%t  RAW  tx=%02h%s %02h%s   rx=%02h%s %02h%s", $time,
+               pipe_mac.tx[0].data[7:0],  pipe_mac.tx[0].char_is_k[0] ? "K" : "d",
+               pipe_mac.tx[0].data[15:8], pipe_mac.tx[0].char_is_k[1] ? "K" : "d",
+               ep_tx_data[7:0],       ep_tx_datak[0] ? "K" : "d",
+               ep_tx_data[15:8],      ep_tx_datak[1] ? "K" : "d");
+      dump_n <= dump_n + 1;
+    end
 `endif
 
   //------------------------------------------------------------------

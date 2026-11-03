@@ -21,6 +21,8 @@ PCIECODEDIR      = $(CURDIR)/usercode
 OPTFLAG         ?= -O2 -g
 VPROC_PLI        = VProc.so
 USRSIMOPTS       =
+# PLUSARGS: run-time options for the test bench, e.g. BUS_TRACE_N=10 (no rebuild)
+PLUSARGS         =
 # BUILD (DEFAULT or ISS) follows CPU; not a command-line option
 override BUILD   = DEFAULT
 
@@ -33,6 +35,12 @@ override BUILD   = DEFAULT
 # IFACE (RC=model): pipe (default), the PIPE as in tb.sv; serial, the serial
 # line, both sides upstream's PcieVhostSerial with 8b/10b and scrambling
 # (tb_rc_serial.sv).
+# PHY (RC=model IFACE=pipe): none (default), the two models meet at the PIPE;
+# core, the RC model is the MAC of a PIPE (models/pipe_mac_adapter.sv) above
+# the PIPE PHY of the co-simulation (models/pipe_phy_core.sv), whose link
+# partner is the endpoint; hm, the same in the hard macro's socket: pcie_top
+# with models/pcie_core.RC-model.sv, clk_rst_gen and the phy_top of tb.sv
+# (tb_socket.sv, no SOC).
 # A7RC (RC=model): 0 (default), the tester: the lab RC's sequence, then what
 # its firmware never sends but the spec allows (8 writes and 8 reads to BAR0
 # back to back, checked); 1, literal: only what the lab RC sends. Both match
@@ -65,9 +73,15 @@ MUTANT_JOBS       ?= 3
 # REGRESS_DUMP=fail: after make regress, every failing seed dumped that way
 WCX_OPEN          ?= 1
 # the endpoint's view: its PIPE (or 10-bit symbols on the serial line) and TLPs
-WCX_SIGNALS        = $(if $(filter serial,$(IFACE)),$(addprefix tb.u_ep.pvh.,LinkIn0 LinkOut0 ElecIdleOut \
-                     TlpRxValid TlpRxData TlpTxValid TlpTxData),$(addprefix tb.u_ep.,pipe_dn_data pipe_dn_datak \
+WCX_EP             = $(if $(filter hm,$(PHY)),tb.u_pcie.u_phy_top.u_pcie_ep,tb.u_ep)
+WCX_SIGNALS        = $(if $(filter serial,$(IFACE)),$(addprefix $(WCX_EP).pvh.,LinkIn0 LinkOut0 ElecIdleOut \
+                     TlpRxValid TlpRxData TlpTxValid TlpTxData),$(addprefix $(WCX_EP).,pipe_dn_data pipe_dn_datak \
                      pipe_up_data pipe_up_datak tlp_dn_valid tlp_dn_data tlp_up_valid tlp_up_data))
+ifneq ($(filter mutants,$(MAKECMDGOALS)),)
+  ifneq ($(PHY),none)
+    $(error make mutants runs the PIPE without a PHY: leave PHY out)
+  endif
+endif
 ifneq ($(filter regress,$(MAKECMDGOALS)),)
   ifneq ($(RC),model)
     $(error make regress needs RC=model)
@@ -98,6 +112,7 @@ endif
 # SIM_FAULT: the endpoint misbehaves, for the RC firmware's error paths:
 # crs, nocpl, late or linkdown (usercode/VUserMain1.cpp).
 SIM_LANES         ?= 1
+PHY               ?= none
 SIM_GEN           ?= $(if $(filter 4,$(SIM_LANES)),1,2)
 SIM_RC_GEN        ?= $(SIM_GEN)
 # SIM_POLARITY=1 (RC=model IFACE=serial): both lines with D+ and D- swapped;
@@ -166,8 +181,19 @@ endif
 ifeq ($(filter pipe serial,$(IFACE)),)
   $(error IFACE must be pipe or serial (got "$(IFACE)"))
 endif
+ifeq ($(filter none core hm,$(PHY)),)
+  $(error PHY must be none, core or hm (got "$(PHY)"))
+endif
+ifneq ($(filter core hm,$(PHY)),)
+  ifneq ($(RC)$(IFACE)$(SIM_LANE_REVERSE),modelpipe0)
+    $(error PHY=$(PHY) needs RC=model IFACE=pipe, no SIM_LANE_REVERSE)
+  endif
+endif
 ifeq ($(IFACE)$(RC),serialhm)
   $(error IFACE=serial needs RC=model)
+endif
+ifeq ($(RC)$(SIM_FAULT),modellinkdown)
+  $(error SIM_FAULT=linkdown with RC=model: not modelled, the model would retrain forever)
 endif
 ifeq ($(RC),model)
   ifneq ($(or $(VARIANT),direct),direct)
@@ -398,12 +424,12 @@ FW_DIR           = $(VOBJDIR)/fw
 # It is a simulation-only parameter of PCIE_2_1 -- see pcie_core.sv.
 # PCIE_LANES and PCIE_GEN go to xvlog through an options file (xvlog.defines); at 4
 # lanes also PIPE_X4, which dumps the four-lane PIPE page (tb.sv).
-TB_PRJ             = $(if $(filter model,$(RC)),$(if $(filter serial,$(IFACE)),tb_rc_serial.prj,tb_rc.prj),tb.prj)
-ANALYSEFLAGS       = -i $(PCIEDIR)/verilog/headers --define VPROC_SV --define VPROC_BYTE_ENABLE --define SIM_FAST_TRAIN $(if $(filter 1,$(SIM_GEN)),--define SIM_GEN1_ONLY) $(if $(filter 1,$(SIM_POLARITY)),--define SIM_POLARITY) $(if $(filter 1,$(SIM_LANE_REVERSE)),--define SIM_LANE_REVERSE) --define SIM_PIPE_CODING -f xvlog.defines $(CPUDEFINE) $(USRSIMOPTS) --prj $(TB_PRJ)
+TB_PRJ             = $(if $(filter model,$(RC)),$(if $(filter serial,$(IFACE)),tb_rc_serial.prj,$(if $(filter hm,$(PHY)),tb_socket.prj,tb_rc.prj)),tb.prj)
+ANALYSEFLAGS       = -i $(PCIEDIR)/verilog/headers --define VPROC_SV --define VPROC_BYTE_ENABLE --define SIM_FAST_TRAIN $(if $(filter 1,$(SIM_GEN)),--define SIM_GEN1_ONLY) $(if $(filter 1,$(SIM_POLARITY)),--define SIM_POLARITY) $(if $(filter 1,$(SIM_LANE_REVERSE)),--define SIM_LANE_REVERSE) --define SIM_PIPE_CODING $(if $(filter core,$(PHY)),--define SIM_PIPE_PHY)$(if $(filter hm,$(PHY)), --define NO_LTSSM_TRACE) -f xvlog.defines $(CPUDEFINE) $(USRSIMOPTS) --prj $(TB_PRJ)
 ELABFLAGS          = -sv_lib $(VPROC_PLI) --timescale 1ps/1ps --debug typical $(XILLIBS) $(TB_NAME) glbl
 # The snapshot xelab produces when two tops are elaborated is named
 # "<top>#glbl". The hash has to be escaped or make treats the rest as a comment.
-SIMFLAGS           = work.$(TB_NAME)\#work.glbl
+SIMFLAGS           = work.$(TB_NAME)\#work.glbl $(addprefix -testplusarg ,$(PLUSARGS))
 
 XVLOG           ?= xvlog
 XELAB           ?= xelab
@@ -533,7 +559,7 @@ sim: sysverilog run_us.cfg $(RUN_CFG)
 # adds its name (tb.x1g2.direct.vproc.fst, not tracked), so it never replaces
 # a tracked dump.
 DUMP_TAG = $(if $(filter rtl,$(CPU)),$(filter-out $(CORE_DEF),$(CORE)),$(CPU))$(if $(filter 1,$(SIM_SPEED_TEST)),.speed)$(if $(filter-out none,$(SIM_FAULT)),.fault-$(SIM_FAULT))$(if $(filter 1,$(A7RC)),.a7rc)$(if $(filter-out 1,$(SEED)),.seed$(SEED))
-DUMP_FST = tb.x$(SIM_LANES)g$(SIM_GEN).$(if $(filter model,$(RC)),model$(if $(filter serial,$(IFACE)),.serial),$(VARIANT))$(if $(filter 1,$(SIM_LANE_REVERSE)),.rev)$(if $(DUMP_TAG),.$(patsubst .%,%,$(DUMP_TAG))).fst
+DUMP_FST = tb.x$(SIM_LANES)g$(SIM_GEN).$(if $(filter model,$(RC)),model$(if $(filter serial,$(IFACE)),.serial)$(if $(filter-out none,$(PHY)),.phy-$(PHY)),$(VARIANT))$(if $(filter 1,$(SIM_LANE_REVERSE)),.rev)$(if $(DUMP_TAG),.$(patsubst .%,%,$(DUMP_TAG))).fst
 run: sysverilog run_us.cfg $(RUN_CFG)
 	@rm -f xsim.log; A7RC_SEED=$(SEED) $(SIMEXE) -R $(SIMFLAGS); rc=$$?; grep -q '^Fatal:' xsim.log && rc=1; \
 	$(if $(findstring DUMP_VCD,$(USRSIMOPTS)),bash tools/vcd2fst.sh tb.vcd $(DUMP_FST);) exit $$rc
@@ -557,7 +583,7 @@ wavecrux:
 	$(MAKE) --no-print-directory run SEED=$(SEED) USRSIMOPTS="$(USRSIMOPTS) --define DUMP_VCD"; \
 	if [ ! -f xsim.log ] || [ ! -f $(DUMP_FST) ]; then echo "seed $(SEED): no run or no waveform"; exit 1; fi; \
 	cp xsim.log wavecrux.$(SEED).log; echo "seed $(SEED): $$(grep -a -m1 'RC MODEL RESULT' xsim.log), $(DUMP_FST)"; \
-	$(if $(filter 1,$(WCX_OPEN)),python3 tools/wavecrux.py $(DUMP_FST) wavecrux.$(SEED).log $(WCX_SIGNALS),echo "  open it: make wavecrux RC=model$(if $(filter serial,$(IFACE)), IFACE=serial) SEED=$(SEED)")
+	$(if $(filter 1,$(WCX_OPEN)),python3 tools/wavecrux.py $(DUMP_FST) wavecrux.$(SEED).log $(WCX_SIGNALS),echo "  open it: make wavecrux RC=model$(if $(filter serial,$(IFACE)), IFACE=serial)$(if $(filter-out none,$(PHY)), PHY=$(PHY)) SEED=$(SEED)")
 
 fst:
 	@bash tools/vcd2fst.sh tb.vcd $(DUMP_FST)
@@ -584,6 +610,7 @@ help:
 	@$(info $(SPC) $(SPC) USRCODEDIR:   directory containing user source code (default $$(CURDIR)/usercode))
 	@$(info $(SPC) $(SPC) OPTFLAG:      Optimisation flag for user VProc code (default -O2 -g))
 	@$(info $(SPC) $(SPC) USRSIMOPTS:   additional simulator analysis flags, such as setting defines (default blank))
+	@$(info $(SPC) $(SPC) PLUSARGS:     run-time options, no rebuild: BUS_TRACE_N=<n>, PIPE_DUMP_FROM=<ps> (default blank))
 	@$(info $(SPC) $(SPC) CPU:          CPU model on VProc node 0 (default rtl))
 	@$(info $(SPC) $(SPC) $(SPC)   rtl    the RTL core (CORE), executing firmware.hex)
 	@$(info $(SPC) $(SPC) $(SPC)   vproc  the 3.sw firmware, compiled for the host (usercode/VUserMain0.cpp))
@@ -591,6 +618,7 @@ help:
 	@$(info $(SPC) $(SPC) CORE:         edubos5, edubos5_3stg or picorv32: the RTL core, or the ISS timing model (default edubos5, at x4 Gen2 edubos5_3stg))
 	@$(info $(SPC) $(SPC) RC:           hm (the RC_opensource DUT, tb.sv) or model (the Artix-7 RC model, tb_rc.sv; direct) (default hm))
 	@$(info $(SPC) $(SPC) IFACE:        with RC=model: pipe, or serial (the serial line, 8b/10b and scrambling on; tb_rc_serial.sv) (default pipe))
+	@$(info $(SPC) $(SPC) PHY:          with RC=model IFACE=pipe: none; core (the RC model as the MAC of pipe_phy_core, through pipe_mac_adapter); hm (the same in the hard macro's socket, tb_socket.sv) (default none))
 	@$(info $(SPC) $(SPC) A7RC:         1 with RC=model: literal, only what the lab RC sends; 0 (default): the tester, also back-to-back requests)
 	@$(info $(SPC) $(SPC) SEED:         with RC=model: the seed of the tester's random stimulus, no rebuild (default 1))
 	@$(info $(SPC) $(SPC) SEEDS:        make regress RC=model: seeds 1 to SEEDS, REGRESS_S seconds each (default 10, 900))

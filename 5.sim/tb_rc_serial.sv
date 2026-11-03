@@ -78,10 +78,7 @@ module tb;
 // The lines, one bit per lane each way
 //--------------------------------------------------------------
 
-`ifndef PCIE_LANES
-  `define PCIE_LANES 1
-`endif
-  localparam int L = `PCIE_LANES;   // make SIM_LANES: 1 or 4
+  localparam int L = link_pkg::PCIE_LANES;   // make SIM_LANES: 1 or 4
 
   logic [15:0] rc_out, ep_out;   // what each wrapper drives, all 16 lanes
   logic [15:0] rc_in,  ep_in;    // what each receives

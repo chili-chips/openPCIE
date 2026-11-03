@@ -65,7 +65,7 @@ One rule: the line never carries X or Z, on any simulator. Electrical idle is a 
 
 | On | Value | Means |
 |---|---|---|
-| PIPE (`pcieVHostPipex1.v`, `pcieVHostPipexN.sv`) | `` `NOSIG `` with the K flag, per symbol | electrical idle, both ways. `0xFF` with K has no 8b/10b code, so PCIe never sends it (4.2.1). Defined with the K codes in `pciexpress_header.v` |
+| PIPE (`pcieVHostPipex1.v`, `pcieVHostPipexN.sv`) | `` `NOSIG `` with the K flag, per symbol | electrical idle, both ways. `0xFF` with K has no 8b/10b code, so PCIe never sends it (4.2.1). Defined with the K codes in `pciexpress_header.v` (our patch); our models take it from `models/pipe_sym_pkg.sv`, and `pcieVHostPipexN.sv` checks that the two agree |
 | serial (`pcieVHost.v`, `Serialiser.v`) | constant 0 | electrical idle |
 | | a symbol of ten equal bits | idle seen: symbol sync dropped, and the core told the partner is idle. No 8b/10b symbol runs past five bits; a symbol of 1s is idle too, as with the lane's polarity inverted |
 | | K28.5 (`` `PCOMMA ``, `` `NCOMMA ``) | symbol sync; the symbol count restarts there (issue 49) |

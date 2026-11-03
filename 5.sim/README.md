@@ -307,6 +307,7 @@ Make options (`make help` lists them too):
 |---|---|---|
 | `RC` | `hm` (default), `model` | the RC: the RC_opensource DUT with the hard macro (`tb.sv`), or the [Artix-7 RC model](#the-rc-model) (`tb_rc.sv`; `VARIANT=direct`, x1 or x4) |
 | `IFACE` | `pipe` (default), `serial` | with `RC=model`: where the model meets the endpoint, the PIPE or the serial line, 8b/10b and scrambling on ([`tb_rc_serial.sv`](#on-the-serial-line)) |
+| `PHY` | `none` (default), `core`, `hm` | with `RC=model IFACE=pipe`, a PIPE PHY between the models, the RC model its MAC ([`models/pipe_mac_adapter.sv`](models/pipe_mac_adapter.sv)): `core`, [`models/pipe_phy_core.sv`](models/pipe_phy_core.sv); `hm`, the hard macro's socket ([`tb_socket.sv`](tb_socket.sv), [`models/pcie_core.RC-model.sv`](models/pcie_core.RC-model.sv)): its PIPE registers, `clk_rst_gen` and `phy_top`; no SOC. Not with `SIM_LANE_REVERSE`; `make mutants` runs without a PHY |
 | `A7RC` | `0` (default), `1` | with `RC=model`: the tester, which also sweeps the config space and sends back-to-back requests, or literal, only what the lab RC sends ([drive and check](#drive-and-check)) |
 | `SEED` | `1` (default), any | with `RC=model`: the seed of the tester's random stimulus, read at run time (no rebuild) |
 | `SEEDS` | `10` (default) | `make regress RC=model`: seeds 1 to `SEEDS` |
@@ -326,6 +327,7 @@ Make options (`make help` lists them too):
 | `SIM_RC_GEN` | `SIM_GEN` (default), `1`, `2` | with `RC=model`: the rates the RC advertises; `SIM_RC_GEN=1 SIM_GEN=2` is a Gen1 RC and a Gen2 endpoint |
 | `SIM_SPEED_TEST` | `0` (default), `1` | with `SIM_GEN=2`: the endpoint then changes the link to Gen1 and back to Gen2 (a Gen1 RC keeps it at Gen1) |
 | `SIM_FAULT` | `none` (default), `crs`, `nocpl`, `late`, `linkdown` | the endpoint misbehaves, for the firmware's error paths ([fault tests](#fault-tests-the-firmwares-error-paths)) |
+| `PLUSARGS` | none (default) | run-time options, no rebuild: `BUS_TRACE_N=<n>` (the SOC's first bus accesses, default 60; with `USRSIMOPTS="--define CPU_TRACE"`), `PIPE_DUMP_FROM=<ps>` (with `USRSIMOPTS="--define PIPE_RAW_DUMP"`) |
 | `CPU` | `rtl` (default), `vproc`, `iss` | the SOC CPU on node 0: RTL, the firmware compiled for the host, or the rv32 ISS ([the three CPU options](#the-three-cpu-options)) |
 | `COUNTERS` | `1` (default), `0` | the CPU's cycle counter, and the firmware's waits time themselves with it (`rdcycle`); `0`: neither, the waits count loops ([firmware](../4.build/sw_build/README.md#timing-the-waits)) |
 | `HM_PROBE` | `0` (default), `1` | the endpoint puts Data Link faults to the RC, then retrains the link and changes its speed, and measures it: the hard macro (`RC=hm`) or the RC model (`RC=model`); direct, x1; [results](#the-hard-macro-under-data-link-faults-and-in-recovery) |
@@ -811,6 +813,7 @@ Command line configurable variables:
   USRCODEDIR:   directory containing user source code (default $(CURDIR)/usercode)
   OPTFLAG:      Optimisation flag for user VProc code (default -O2 -g)
   USRSIMOPTS:   additional simulator analysis flags, such as setting defines (default blank)
+  PLUSARGS:     run-time options, no rebuild: BUS_TRACE_N=<n>, PIPE_DUMP_FROM=<ps> (default blank)
   CPU:          CPU model on VProc node 0 (default rtl)
      rtl    the RTL core (CORE), executing firmware.hex
      vproc  the 3.sw firmware, compiled for the host (usercode/VUserMain0.cpp)
@@ -818,6 +821,7 @@ Command line configurable variables:
   CORE:         edubos5, edubos5_3stg or picorv32: the RTL core, or the ISS timing model (default edubos5, at x4 Gen2 edubos5_3stg)
   RC:           hm (the RC_opensource DUT, tb.sv) or model (the Artix-7 RC model, tb_rc.sv; direct) (default hm)
   IFACE:        with RC=model: pipe, or serial (the serial line, 8b/10b and scrambling on; tb_rc_serial.sv) (default pipe)
+  PHY:          with RC=model IFACE=pipe: none; core (the RC model as the MAC of pipe_phy_core, through pipe_mac_adapter); hm (the same in the hard macro's socket, tb_socket.sv) (default none)
   A7RC:         1 with RC=model: literal, only what the lab RC sends; 0 (default): the tester, also back-to-back requests
   SEED:         with RC=model: the seed of the tester's random stimulus, no rebuild (default 1)
   SEEDS:        make regress RC=model: seeds 1 to SEEDS, REGRESS_S seconds each (default 10, 900)
@@ -940,8 +944,8 @@ One model (the same core, C model and patches) with an adapter for what it talks
 | Adapter | The model plays | It talks to | Files | PIPE |
 |---|---|---|---|---|
 | **Line** | a whole node on the wire | another model | `pcieVHostPipex1.v`, `pcieVHostPipexN.sv`; `Serialiser.v` with `IFACE=serial` | not PIPE: it models the line. Idle is `NOSIG` ([special values](models/pcievhost/README.md#special-values-on-the-line)). The fastest with `IFACE=pipe`: a symbol per clock, no 8b/10b, no scrambling; the regression runs on it. `IFACE=serial` steps every bit, 8b/10b and scrambling on, so it is slower |
-| **PIPE-PHY** | the PHY and the far node | an RTL MAC directly, with no SerDes | `models/pipe_phy_core.sv`, wrapped by `models/phy_top.EP-PIPE-BFM.sv` (the hard macro's MAC); in openCologne-PCIE by `phy_vproc_rc.sv` (its EP's MAC) | the PHY side of PIPE with its handshakes: PhyStatus on power-state and rate changes (and in PIPE reset, but not for the hard macro: `RST_LAT = 0`), receiver detection; TxElecIdle in, RxElecIdle and RxValid out. Shortcuts: a receiver is always present (`rcvr_present` tied to 1), PCLK switches at once on a rate change |
-| **PIPE-MAC** (planned) | the MAC | a PIPE PHY: the Artix-7 GTP socket, the GateMate PHY with the SerDes BFM | none yet | the MAC side of PIPE, with its handshakes: receiver detection, rate change, power states |
+| **PIPE-PHY** | the PHY and the far node | an RTL MAC directly, with no SerDes | `models/pipe_phy_core.sv`, wrapped by `models/phy_top.EP-PIPE-BFM.sv` (the hard macro's MAC); in openCologne-PCIE by `phy_vproc_rc.sv` (its EP's MAC) | the PHY side of PIPE with its handshakes: PhyStatus on power-state and rate changes (and in PIPE reset, but not for the hard macro: `RST_LAT = 0`), receiver detection; TxElecIdle in, RxElecIdle and RxValid out. Shortcuts: a receiver is always present for the hard macro (`rcvr_present` tied to 1; `PHY=core` ties it to the endpoint's reset, so the first detection fails), PCLK switches at once on a rate change |
+| **PIPE-MAC** | the MAC | a PIPE PHY | `models/pipe_mac_adapter.sv`; on `pipe_phy_core.sv` (`RC=model PHY=core`), and in the hard macro's socket (`PHY=hm`, `models/pcie_core.RC-model.sv`): x1 and x4, Gen1 and Gen2 pass as without it | the MAC side of PIPE, with its handshakes: PIPE reset, receiver detection in P1 (again after a quiet time if none), P0, rate change; idle per lane. Its rules are assertions that end the run |
 
 The SerDes BFM stays below all three, at the level of the GateMate silicon.
 
@@ -1348,7 +1352,7 @@ make run SIM_FAULT=crs RUN_US=2000   # also with RC=model; RUN_US=3000 for nocpl
 | `crs` | answers CRS to the first 3 config requests | re-issued 373.9 µs apart; PASS at 1491 µs | the same; PASS |
 | `nocpl` | no Completion for the request after the RC's BAR0 write | `0xBAD00002` 2.18 ms after the request | the same |
 | `late` | electrically idle for 200 µs after reset | PASS at 575 µs: the SOC leaves reset at DL_Active | PASS: the first request 80.958 µs after its L0 |
-| `linkdown` | electrically idle for good at the RC's BAR0 write | no result: the link drop resets the SOC | not modelled: the model would retrain forever |
+| `linkdown` | electrically idle for good at the RC's BAR0 write | no result: the link drop resets the SOC | not modelled, so the Makefile refuses it: the model would retrain forever |
 
 What they showed, and the firmware fixes ([`3.sw/common/pcie.h`](../3.sw/common/pcie.h)):
 

@@ -7,6 +7,9 @@
 | `soc_cpu.VPROC.native.sv` | _VProc_ as the SOC's CPU, on its **native** memory bus. The one in use: `make CPU=vproc` or `make CPU=iss` ([The three CPU options](../README.md#the-three-cpu-options)) |
 | `soc_cpu.VPROC.sv` | inherited _VProc_ `soc_cpu` on the `soc_if` bus. Reference only, not instantiated |
 | `phy_top.EP-PIPE-BFM.sv` | behavioural PIPE PHY in place of `2.rtl/0.common.opensource/src/pcie/phy_top.sv`; carries the _pcieVHost_ endpoint ([The PIPE PHY model](../README.md#the-pipe-phy-model)) |
+| `pipe_sym_pkg.sv` | the symbol values on our PIPE links (`NOSIG_SYM`), for our models in place of upstream's header (master here; openCologne-PCIE has an identical copy, with `pipe_phy_core.sv`) |
+| `pipe_mac_adapter.sv` | the MAC side of PIPE with its handshakes, for a pcieVHost above a PIPE PHY; `tb_rc.sv` with `PHY=core`, `pcie_core.RC-model.sv` (master here) |
+| `pcie_core.RC-model.sv` | the Artix-7 RC model in the hard macro's socket: `pcie_core`'s ports, the model and `pipe_mac_adapter.sv` inside (`tb_socket.sv`, `PHY=hm`) |
 | `pipe_phy_core.sv` | the PHY side of PIPE with its handshakes; `phy_top.EP-PIPE-BFM.sv` wraps it here, `phy_vproc_rc.sv` in openCologne-PCIE (master here) |
 | `PIPExN__pcieVHost.sv` | that endpoint in our wrapper: PIPE link, TLPs and DLLPs on one WaveCrux decoder page, x1 or x4 ([transaction taps](../README.md#every-layer-at-the-endpoint-transaction-taps)) |
 | `pcieVHostPipexN.sv` | upstream's x1 PIPE wrapper `pcieVHostPipex1`, for any number of lanes; the x4 link |

@@ -318,15 +318,16 @@ module tb;
   end
 
   // First bus accesses after reset release, to see where the CPU actually goes.
-  // Override the count with +define+BUS_TRACE_N=<n>.
-`ifndef BUS_TRACE_N
-  `define BUS_TRACE_N 60
-`endif
+  // make PLUSARGS=BUS_TRACE_N=<n> for another count (default 60).
   integer first_n;
-  initial first_n = 0;
+  int     bus_trace_n;
+  initial begin
+    first_n = 0;
+    if (!$value$plusargs("BUS_TRACE_N=%d", bus_trace_n)) bus_trace_n = 60;
+  end
 
   always @(posedge dut.user_clk) begin
-    if (dut.u_soc.mem.valid && dut.u_soc.mem.ready && first_n < `BUS_TRACE_N) begin
+    if (dut.u_soc.mem.valid && dut.u_soc.mem.ready && first_n < bus_trace_n) begin
       first_n = first_n + 1;
       $display("%t  BUS  %2d  addr=%08h %s data=%08h", $time, first_n,
                dut.u_soc.mem.addr,
