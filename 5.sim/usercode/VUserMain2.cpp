@@ -62,9 +62,11 @@ extern "C"
 // hard macro runs use
 #define A7RC_POLL_ACTIVE_TS1  17
 #define A7RC_N_FTS            255
-// Disable Scrambling: our hard macro runs scramble only on hardware
-// (SIM_PIPE_CODING); on the serial line the model scrambles, as hardware does
-#ifdef SIM_SERIAL
+// Scrambling, as the lab RC: on the serial line, and at the PIPE against an
+// endpoint that scrambles there (A7RC_PIPE_SCRAMBLE: openCologne-PCIE's EP
+// RTL). Our hard macro and the pcieVHost endpoint scramble at the PIPE only on
+// hardware (SIM_PIPE_CODING): against them the RC sets Disable Scrambling
+#if defined(SIM_SERIAL) || defined(A7RC_PIPE_SCRAMBLE)
 #define A7RC_TS_CTL           0x00
 #else
 #define A7RC_TS_CTL           0x08
@@ -1420,7 +1422,9 @@ extern "C" void VUserMain2(int node)
     vp2->write(LINK_STATE, 0xffff);
 #ifndef SIM_SERIAL
     pcie->configurePcie(CONFIG_DISABLE_8B10B);
+#ifndef A7RC_PIPE_SCRAMBLE
     pcie->configurePcie(CONFIG_DISABLE_SCRAMBLING);
+#endif
 #endif
 
     // The Artix-7 RC profile

@@ -107,10 +107,10 @@ Three simulation-only defines, set only by `5.sim/Makefile`, never by a synthesi
 
 ### The PIPE PHY model
 
-`models/phy_top.EP-PIPE-BFM.sv` replaces the transceiver, with the link partner behind it. It gives the `PCIE_2_1` LTSSM what it needs from a PHY:
+`models/phy_top.EP-PIPE-BFM.sv` replaces the transceiver, with the link partner behind it. It gives the `PCIE_2_1` LTSSM what it needs from a PHY, through `models/pipe_phy_core.sv` (shared with openCologne-PCIE):
 
-* **PHYSTATUS pulses** on exit from PIPE reset, and on every power-state and rate change
-* **Receiver detection**: a PHYSTATUS pulse with `RXSTATUS = 3'b011` in answer to `TXDETECTRX`, so the LTSSM can leave Detect
+* **PHYSTATUS pulses**, 8 PCLK after every power-state and rate change. Low in PIPE reset: high there, the hard macro falls back from Polling.Active to Detect.Quiet 3 times
+* **Receiver detection** in P1: 16 PCLK after `TXDETECTRX`, a PHYSTATUS pulse with `RXSTATUS = 3'b011` (or `000` with no receiver)
 * **RXVALID / RXELECIDLE** from the first K character the partner sends, standing in for a squelch detector
 
 It also makes the clocks. `TXOUTCLK` is a behavioural 100 MHz oscillator; everything after it is the real `clk_rst_gen` MMCM. PCLK runs at 125 MHz (Gen1) or 250 MHz (Gen2), USERCLK1/2 at 62.5 MHz (x1), 125 MHz (x4 Gen1) or 250 MHz (x4 Gen2).
@@ -940,7 +940,7 @@ One model (the same core, C model and patches) with an adapter for what it talks
 | Adapter | The model plays | It talks to | Files | PIPE |
 |---|---|---|---|---|
 | **Line** | a whole node on the wire | another model | `pcieVHostPipex1.v`, `pcieVHostPipexN.sv`; `Serialiser.v` with `IFACE=serial` | not PIPE: it models the line. Idle is `NOSIG` ([special values](models/pcievhost/README.md#special-values-on-the-line)). The fastest with `IFACE=pipe`: a symbol per clock, no 8b/10b, no scrambling; the regression runs on it. `IFACE=serial` steps every bit, 8b/10b and scrambling on, so it is slower |
-| **PIPE-PHY** | the PHY and the far node | an RTL MAC directly, with no SerDes | `models/phy_top.EP-PIPE-BFM.sv` (the hard macro's MAC); in openCologne-PCIE `phy_vproc_rc.sv` (its EP's MAC) | the PHY side of PIPE: TxElecIdle in, RxElecIdle and RxValid out. Shortcuts: a receiver is always present, a rate change takes effect at once |
+| **PIPE-PHY** | the PHY and the far node | an RTL MAC directly, with no SerDes | `models/pipe_phy_core.sv`, wrapped by `models/phy_top.EP-PIPE-BFM.sv` (the hard macro's MAC); in openCologne-PCIE by `phy_vproc_rc.sv` (its EP's MAC) | the PHY side of PIPE with its handshakes: PhyStatus on power-state and rate changes (and in PIPE reset, but not for the hard macro: `RST_LAT = 0`), receiver detection; TxElecIdle in, RxElecIdle and RxValid out. Shortcuts: a receiver is always present (`rcvr_present` tied to 1), PCLK switches at once on a rate change |
 | **PIPE-MAC** (planned) | the MAC | a PIPE PHY: the Artix-7 GTP socket, the GateMate PHY with the SerDes BFM | none yet | the MAC side of PIPE, with its handshakes: receiver detection, rate change, power states |
 
 The SerDes BFM stays below all three, at the level of the GateMate silicon.
@@ -1329,7 +1329,7 @@ The Artix-7's own serial timing (its GTP: latency, electrical idle, receiver det
 
 #### Driving another project's EP
 
-openCologne-PCIE runs this model as the only host of its co-simulation, against its GateMate EP RTL (`make run EP=rtl`) and its EP model (`EP=model`), at the PIPE or, with `IFACE=serial`, on the serial line, through Cologne Chip's PIPE logic and the GateMate SerDes BFM ([its 5.sim README](https://github.com/chili-chips-ba/openCologne-PCIE/tree/main/5.sim#the-host-openpcies-artix-7-rc-model)). It takes from here `usercode/VUserMain2.cpp`, `a7rc_check.cpp` and `.h`, `ltssm.c`, `pcievhost-speed.patch` and `models/cosim/vproc-coroutine.patch`; what it expects of that EP, IDs and BAR sizes, comes from there (`-DA7RC_EP_EXPECT`).
+openCologne-PCIE runs this model as the only host of its co-simulation, against its GateMate EP RTL (`make run EP=rtl`) and its EP model (`EP=model`), at the PIPE or, with `IFACE=serial`, on the serial line, through Cologne Chip's PIPE logic and the GateMate SerDes BFM ([its 5.sim README](https://github.com/chili-chips-ba/openCologne-PCIE/tree/main/5.sim#the-host-openpcies-artix-7-rc-model)). It takes from here `usercode/VUserMain2.cpp`, `a7rc_check.cpp` and `.h`, `ltssm.c`, `pcievhost-speed.patch` and `models/cosim/vproc-coroutine.patch`; what it expects of that EP, IDs and BAR sizes, comes from there (`-DA7RC_EP_EXPECT`). With `-DA7RC_PIPE_SCRAMBLE` it scrambles at the PIPE too, as the lab RC: openCologne-PCIE sets it for its EP RTL.
 
 - The model starts the change to Gen2 only when the EP advertised Gen2, as the Artix-7 RC does; the GateMate EP is Gen1.
 - Its first run found two EP issues: one InitFC set of each kind (legal; the model completes FC init on it, upstream's pcieVHost hangs), and an UpdateFC-NP that lowered the header limit from 32 to 9 after the first Configuration Read (the model stops, PCIe 2.1, 2.6.1). With the second fixed there, the run passes, at the PIPE and on the serial line.

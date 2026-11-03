@@ -23,8 +23,8 @@
 //   therefore provides:
 //
 //     1. a behavioural PIPE PHY -- the sideband handshake the PCIE_2_1 LTSSM
-//        needs from a PHY: PHYSTATUS pulses, receiver detection, RXVALID,
-//        RXELECIDLE and the PCLK/rate handling
+//        needs from a PHY: PHYSTATUS, receiver detection, RXVALID, RXELECIDLE
+//        (models/pipe_phy_core.sv), and the PCLK/rate handling
 //     2. the link partner itself -- a pcieVHost in our wrapper
 //        PIPExN__pcieVHost, configured as an ENDPOINT, so the openPCIE Root
 //        Complex has something to enumerate. x1 or x4, as PCIE_LANES
@@ -123,55 +123,83 @@ module phy_top
   assign pipe_clk_sel_out = pipe_mac.tx_ctrl.rate;
 
   //------------------------------------------------------------------
-  // PHY ready
-  //------------------------------------------------------------------
-  // In hardware phy_rdy_n drops once the GT reset FSM has finished and the
-  // MMCM has locked. Here it waits for the MMCM only.
-  logic [7:0] rdy_cnt;
-
-  always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
-    if (!pipe_rst_n) begin
-      rdy_cnt       <= '0;
-      phy_rdy_n <= 1'b1;
-    end
-    else begin
-      if (rdy_cnt != 8'hFF) begin
-        rdy_cnt <= rdy_cnt + 8'd1;
-      end
-      else begin
-        phy_rdy_n <= 1'b0;
-      end
-    end
-  end
-
-  //------------------------------------------------------------------
   // pcievhost endpoint, connected over a 16-bit PIPE, one lane per lane of
   // the hard macro (PCIE_LANES: 1 or 4, make SIM_LANES)
   //------------------------------------------------------------------
   // What we transmit is what the model receives, and vice versa. Lane l is
   // bits [16*l +: 16] (data) and [2*l +: 2] (K flags).
-  bit   [16*PCIE_LANES-1:0] ep_rx_data;      // -> model
-  bit   [ 2*PCIE_LANES-1:0] ep_rx_datak;
+  logic [16*PCIE_LANES-1:0] ep_rx_data;      // -> model
+  logic [ 2*PCIE_LANES-1:0] ep_rx_datak;
   logic [16*PCIE_LANES-1:0] ep_tx_data;      // <- model
   logic [ 2*PCIE_LANES-1:0] ep_tx_datak;
 
-  // Register the outgoing symbols on PCLK so the model sees a clean bus. While
-  // the MAC holds TxElecIdle the lane is electrically idle: NOSIG (the K flag
-  // and 0xFF: no 8b/10b code), which the model sees as idle
-  // (pcievhost-speed.patch); the data under it never reaches a line
-  localparam logic [8:0] NOSIG_SYM = {1'b1, `NOSIG};   // {K, byte}
+  //------------------------------------------------------------------
+  // The PHY: PIPE handshakes and electrical idle, for the hard macro's
+  // PIPE (models/pipe_phy_core.sv, shared with openCologne-PCIE). The
+  // hard macro's lanes are packed for it: lane l is [16*l +: 16], [2*l +: 2]
+  //------------------------------------------------------------------
+  logic [16*PCIE_LANES-1:0] mac_tx_data,  mac_rx_data;
+  logic [ 2*PCIE_LANES-1:0] mac_tx_datak, mac_rx_datak;
+  logic [   PCIE_LANES-1:0] mac_tx_elec_idle, mac_rx_valid, mac_rx_elec_idle;
+  logic                     phy_status;
+  logic [              2:0] rx_status;
+  logic                     phy_rdy;
 
-  always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
-    if (!pipe_rst_n) begin
-      ep_rx_data  <= {2*PCIE_LANES{`NOSIG}};   // idle in reset
-      ep_rx_datak <= '1;
-    end
-    else begin
-      for (int l = 0; l < PCIE_LANES; l++) begin
-        ep_rx_data [16*l +: 16] <= pipe_mac.tx[l].elec_idle ? {2{NOSIG_SYM[7:0]}} : pipe_mac.tx[l].data;
-        ep_rx_datak[ 2*l +:  2] <= pipe_mac.tx[l].elec_idle ? {2{NOSIG_SYM[8]}}   : pipe_mac.tx[l].char_is_k;
-      end
-    end
+  pipe_phy_core #(
+    .LANES         (PCIE_LANES),
+    .BYTES         (2),     // the 7-series 2-symbol PIPE
+    .TX_FLOP       (1),     // the model sees a registered bus
+    .RDY_LAT       (256),   // in hardware: the GT reset FSM and the MMCM lock
+    .RST_LAT       (0),     // PhyStatus low in PIPE reset: high there, the hard
+                            // macro falls back from Polling.Active to
+                            // Detect.Quiet 3 times after the reset
+    .PHYSTATUS_LAT (8),
+    .RCVRDET_LAT   (16)
+  ) u_phy (
+    .pclk          (pipe_clk),
+    .rst_n         (pipe_rst_n),
+    .phy_rdy       (phy_rdy),
+
+    .mac_reset     (pipe_mac.tx_ctrl.reset),
+    .powerdown     (pipe_mac.tx[0].powerdown),
+    .rate          (pipe_mac.tx_ctrl.rate),
+    .tx_detect_rx  (pipe_mac.tx_ctrl.rcvr_det),
+    .tx_elec_idle  (mac_tx_elec_idle),
+    .tx_data       (mac_tx_data),
+    .tx_datak      (mac_tx_datak),
+
+    .phy_status    (phy_status),
+    .rx_status     (rx_status),
+    .rx_valid      (mac_rx_valid),
+    .rx_elec_idle  (mac_rx_elec_idle),
+    .rx_data       (mac_rx_data),
+    .rx_datak      (mac_rx_datak),
+
+    .rcvr_present  (1'b1),
+    .host_rxdata   (ep_rx_data),
+    .host_rxdatak  (ep_rx_datak),
+    .host_txdata   (ep_tx_data),
+    .host_txdatak  (ep_tx_datak)
+  );
+
+  assign phy_rdy_n = ~phy_rdy;
+
+  // The squelch, per lane, under its old name for the dumps (tb.sv, DUMP_VCD)
+  logic [PCIE_LANES-1:0] rx_active;
+  assign rx_active = mac_rx_valid;
+
+  for (genvar l = 0; l < PCIE_LANES; l++) begin : g_lane
+    assign mac_tx_data     [16*l +: 16]   = pipe_mac.tx[l].data;
+    assign mac_tx_datak    [ 2*l +:  2]   = pipe_mac.tx[l].char_is_k;
+    assign mac_tx_elec_idle[l]            = pipe_mac.tx[l].elec_idle;
+
+    assign pipe_mac.rx[l].data          = mac_rx_data [16*l +: 16];
+    assign pipe_mac.rx[l].char_is_k     = mac_rx_datak[ 2*l +:  2];
+    assign pipe_mac.rx[l].valid         = mac_rx_valid[l];
+    assign pipe_mac.rx[l].chanisaligned = mac_rx_valid[l];
+    assign pipe_mac.rx[l].status        = rx_status;
+    assign pipe_mac.rx[l].phy_status    = phy_status;
+    assign pipe_mac.rx[l].elec_idle     = mac_rx_elec_idle[l];
   end
 
   // make SIM_LANE_REVERSE=1: lane l of the hard macro goes to lane
@@ -237,133 +265,6 @@ module phy_top
     .up   (64'(ep_tx_data)),
     .upk  ( 8'(ep_tx_datak))
   );
-
-  //------------------------------------------------------------------
-  // PIPE sideband handshake towards PCIE_2_1
-  //------------------------------------------------------------------
-  // The hard macro's LTSSM will not move unless the PHY answers three things:
-  //
-  //   a) a PHYSTATUS pulse whenever it is told to change power state, change
-  //      rate, or come out of PIPE reset
-  //   b) a receiver-detection result: PHYSTATUS pulse together with
-  //      RXSTATUS = 3'b011 while TXDETECTRX is asserted in P1
-  //   c) RXVALID / RXELECIDLE that reflect whether the partner is driving
-  //
-  // Anything more elaborate (8b/10b error reporting, elastic buffer status)
-  // is not modelled -- the link is ideal.
-
-  localparam logic [2:0] RXSTATUS_RCVR_DETECTED = 3'b011;
-
-  // Latency, in PCLK cycles, before the PHY answers. Any small non-zero value
-  // works; these are picked to keep link training quick in simulation.
-  localparam int PHYSTATUS_LAT = 8;
-  localparam int RCVRDET_LAT   = 16;
-
-  logic [1:0] powerdown_q;
-  logic       rate_q;
-  logic       pipe_reset_q;
-  logic       rcvr_det_q;
-
-  logic [7:0] phystat_cnt;      // counts down to a PHYSTATUS pulse
-  logic       phystat_is_det;   // that pulse is a receiver-detect result
-  logic       phy_status_r;
-  logic [2:0] rx_status_r;
-
-  logic pipe_reset_fall, powerdown_chg, rate_chg, rcvr_det_rise;
-  assign pipe_reset_fall = pipe_reset_q & ~pipe_mac.tx_ctrl.reset;
-  assign powerdown_chg   = (powerdown_q != pipe_mac.tx[0].powerdown);
-  assign rate_chg        = (rate_q      != pipe_mac.tx_ctrl.rate);
-  assign rcvr_det_rise   = ~rcvr_det_q  &  pipe_mac.tx_ctrl.rcvr_det;
-
-  always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
-    if (!pipe_rst_n) begin
-      powerdown_q    <= 2'b10;          // P1 out of reset
-      rate_q         <= 1'b0;
-      pipe_reset_q   <= 1'b1;
-      rcvr_det_q     <= 1'b0;
-
-      phystat_cnt    <= 8'd0;
-      phystat_is_det <= 1'b0;
-      phy_status_r   <= 1'b0;
-      rx_status_r    <= 3'b000;
-    end
-    else begin
-      powerdown_q  <= pipe_mac.tx[0].powerdown;
-      rate_q       <= pipe_mac.tx_ctrl.rate;
-      pipe_reset_q <= pipe_mac.tx_ctrl.reset;
-      rcvr_det_q   <= pipe_mac.tx_ctrl.rcvr_det;
-
-      phy_status_r <= 1'b0;
-      rx_status_r  <= 3'b000;
-
-      // Arm the response. Receiver detection wins -- it is the one the LTSSM
-      // is waiting for in Detect, and it carries a status code with it.
-      if (rcvr_det_rise) begin
-        phystat_cnt    <= RCVRDET_LAT;
-        phystat_is_det <= 1'b1;
-      end
-      else if (powerdown_chg || rate_chg || pipe_reset_fall) begin
-        phystat_cnt    <= PHYSTATUS_LAT;
-        phystat_is_det <= 1'b0;
-      end
-      else if (phystat_cnt != 8'd0) begin
-        phystat_cnt <= phystat_cnt - 8'd1;
-
-        if (phystat_cnt == 8'd1) begin
-          phy_status_r <= 1'b1;
-          rx_status_r  <= phystat_is_det ? RXSTATUS_RCVR_DETECTED : 3'b000;
-        end
-      end
-    end
-  end
-
-  //------------------------------------------------------------------
-  // Receive side
-  //------------------------------------------------------------------
-  // A lane is considered to be driving from the first K character the partner
-  // sends on it -- link training always opens with COM (K28.5) -- until the
-  // partner goes electrically idle again, which the model shows as NOSIG on
-  // both symbols of the lane (Recovery.Speed, L0s, Disabled). A stand-in for a
-  // squelch detector.
-  logic [PCIE_LANES-1:0] rx_active;
-  logic [PCIE_LANES-1:0] ep_tx_idle;
-
-  genvar i;
-  generate
-    for (i = 0; i < PCIE_LANES; i = i + 1) begin : g_lane
-        // NOSIG only: an X from the model is a bug, and must reach the RC
-        assign ep_tx_idle[i] = ({ep_tx_datak[2*i+1], ep_tx_data[16*i+8 +: 8]} === NOSIG_SYM) &&
-                               ({ep_tx_datak[2*i],   ep_tx_data[16*i   +: 8]} === NOSIG_SYM);
-
-        always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin
-          if (!pipe_rst_n) begin
-            rx_active[i] <= 1'b0;
-          end
-          else if (ep_tx_idle[i]) begin
-            rx_active[i] <= 1'b0;
-          end
-          else if (|ep_tx_datak[2*i +: 2]) begin
-            rx_active[i] <= 1'b1;
-          end
-        end
-
-        // each NOSIG symbol goes to the hard macro as 0, so a word half idle
-        // (the endpoint leaving idle on its second symbol) carries no K + 0xFF
-        logic [1:0] nosig_b;
-        assign nosig_b = {({ep_tx_datak[2*i+1], ep_tx_data[16*i+8 +: 8]} === NOSIG_SYM),
-                          ({ep_tx_datak[2*i],   ep_tx_data[16*i   +: 8]} === NOSIG_SYM)};
-
-        assign pipe_mac.rx[i].data          = {nosig_b[1] ? 8'h00 : ep_tx_data[16*i+8 +: 8],
-                                               nosig_b[0] ? 8'h00 : ep_tx_data[16*i   +: 8]};
-        assign pipe_mac.rx[i].char_is_k     = {nosig_b[1] ? 1'b0  : ep_tx_datak[2*i+1],
-                                               nosig_b[0] ? 1'b0  : ep_tx_datak[2*i]};
-        assign pipe_mac.rx[i].valid         = rx_active[i];
-        assign pipe_mac.rx[i].chanisaligned = rx_active[i];
-        assign pipe_mac.rx[i].status        = rx_status_r;
-        assign pipe_mac.rx[i].phy_status    = phy_status_r;
-        assign pipe_mac.rx[i].elec_idle     = ~rx_active[i];
-    end
-  endgenerate
 
   //------------------------------------------------------------------
   // Ordered-set monitor
@@ -461,7 +362,7 @@ module phy_top
   `define PIPE_DUMP_FROM 0
 `endif
   int     dump_n;     // 0 at time 0
-  always @(posedge pipe_clk) if (pipe_rst_n && rx_active[0] && dump_n < 40 && $time > `PIPE_DUMP_FROM) begin
+  always @(posedge pipe_clk) if (pipe_rst_n && mac_rx_valid[0] && dump_n < 40 && $time > `PIPE_DUMP_FROM) begin
     $display("%t  RAW  tx=%02h%s %02h%s   rx=%02h%s %02h%s", $time,
              pipe_mac.tx[0].data[7:0],  pipe_mac.tx[0].char_is_k[0] ? "K" : "d",
              pipe_mac.tx[0].data[15:8], pipe_mac.tx[0].char_is_k[1] ? "K" : "d",

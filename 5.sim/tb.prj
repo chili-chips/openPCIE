@@ -28,6 +28,7 @@ sv work models/pcievhost/verilog/pcieVHost/pcieVHost.v
 sv work models/pcievhost/verilog/pcieVHost/pcieVHostPipex1.v
 sv work models/pcieVHostPipexN.sv
 sv work models/PIPExN__pcieVHost.sv
+sv work models/pipe_phy_core.sv
 sv work models/pipe_x4_view.sv
 
 # ---------------------------------------------------------------------

@@ -7,6 +7,7 @@
 | `soc_cpu.VPROC.native.sv` | _VProc_ as the SOC's CPU, on its **native** memory bus. The one in use: `make CPU=vproc` or `make CPU=iss` ([The three CPU options](../README.md#the-three-cpu-options)) |
 | `soc_cpu.VPROC.sv` | inherited _VProc_ `soc_cpu` on the `soc_if` bus. Reference only, not instantiated |
 | `phy_top.EP-PIPE-BFM.sv` | behavioural PIPE PHY in place of `2.rtl/0.common.opensource/src/pcie/phy_top.sv`; carries the _pcieVHost_ endpoint ([The PIPE PHY model](../README.md#the-pipe-phy-model)) |
+| `pipe_phy_core.sv` | the PHY side of PIPE with its handshakes; `phy_top.EP-PIPE-BFM.sv` wraps it here, `phy_vproc_rc.sv` in openCologne-PCIE (master here) |
 | `PIPExN__pcieVHost.sv` | that endpoint in our wrapper: PIPE link, TLPs and DLLPs on one WaveCrux decoder page, x1 or x4 ([transaction taps](../README.md#every-layer-at-the-endpoint-transaction-taps)) |
 | `pcieVHostPipexN.sv` | upstream's x1 PIPE wrapper `pcieVHostPipex1`, for any number of lanes; the x4 link |
 | `pipe_x4_view.sv` | the four lanes of an x4 link, both directions, under the names the multi-lane PIPE and DLL decoders bind; dumped only at x4 |
