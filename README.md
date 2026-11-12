@@ -1,13 +1,13 @@
 [![NLnet:Funded](https://badgen.net/badge/NLnet/Funded/08C)](https://nlnet.nl/)
-[![Stars](https://badgen.net/github/stars/chili-chips-ba/openPCIE?label=Stars)](https://github.com/chili-chips-ba/openPCIE/stargazers)
+[![Stars](https://badgen.net/github/stars/chili-chips/openPCIE?label=Stars)](https://github.com/chili-chips/openPCIE/stargazers)
 [![License:BSD-3/CC-BY-SA](https://badgen.net/badge/License/BSD-3%2FCC-BY-SA/blue)](LICENSES)
 [![KiBot:Pass](https://badgen.net/badge/KiBot/Pass/green)](1.pcb/openpci2-backplane/openpci2-backplane.kibot.yaml)
 [![eduBOS5:Pass](https://badgen.net/badge/eduBOS5/Pass/green)](2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md#riscv-formal-every-instruction-against-the-isa)
-[![Lint](https://badgen.net/github/checks/chili-chips-ba/openPCIE/main/run-lint?label=Lint)](https://github.com/chili-chips-ba/openPCIE/actions/workflows/lint.yml)
-[![Verible](https://badgen.net/github/checks/chili-chips-ba/openPCIE/main/verible?label=Verible)](https://github.com/chili-chips-ba/openPCIE/actions/workflows/verible.yml)
+[![Lint](https://badgen.net/github/checks/chili-chips/openPCIE/main/run-lint?label=Lint)](https://github.com/chili-chips/openPCIE/actions/workflows/lint.yml)
+[![Verible](https://badgen.net/github/checks/chili-chips/openPCIE/main/verible?label=Verible)](https://github.com/chili-chips/openPCIE/actions/workflows/verible.yml)
 [![Sim:Pass](https://badgen.net/badge/Sim/Pass/green)](5.sim)
 [![openXC7:Pass](https://badgen.net/badge/openXC7/Pass/green)](4.build/hw_build.openXC7)
-[![PCIE:Pass](https://badgen.net/badge/PCIE/Pass/green)](https://github.com/chili-chips-ba/openPCIE#bench-validation-results)
+[![PCIE:Pass](https://badgen.net/badge/PCIE/Pass/green)](https://github.com/chili-chips/openPCIE#bench-validation-results)
 
 <p align="center" width="100%">
   <img alt="openPCIE Root Complex project logo" width="25%" src="0.doc/artwork/pcie2rootc.hex.png">
@@ -96,7 +96,7 @@ The **SQRL Acorn CLE-215+**, a former crypto-accelerator, is two boards:
   <b>The fully assembled Acorn CLE-215+ development board, ready for use in a PCIE slot.</b>
 </p>
 
-The Acorn CLE-215+ is a NiteFury with 1 GB of DDR3 instead of 512 MB, so the [NiteFury schematic](https://github.com/chili-chips-ba/openPCIE/blob/main/0.doc/Reference-SCH/Schematic.FPGA-NiteFury.pdf) is an accurate reference. Its **Xilinx Artix-7 XC7A200T-FBG484** hosts the RC, and on the other card the EP:
+The Acorn CLE-215+ is a NiteFury with 1 GB of DDR3 instead of 512 MB, so the [NiteFury schematic](https://github.com/chili-chips/openPCIE/blob/main/0.doc/Reference-SCH/Schematic.FPGA-NiteFury.pdf) is an accurate reference. Its **Xilinx Artix-7 XC7A200T-FBG484** hosts the RC, and on the other card the EP:
 
 <div align="center">
 
@@ -522,7 +522,7 @@ Want to help the open PCIE community grow? See [Contributions](CONTRIBUTING.md).
 | TX-PROTO-004: the TX state machine tests `tready` a cycle early; a stalling sink loses the TLP header | TX state machine rewritten in `2d810aa` to hold each beat until `tvalid && tready`; not re-run with its tests |
 | REG-004: register writes ignore address bit 5 | the registers are now generated from SystemRDL (`soc_csr.sv`); not re-checked |
 
-Questions are welcome ===> [![issues](https://badgen.net/github/open-issues/chili-chips-ba/openPCIE?label=issues)](https://github.com/chili-chips-ba/openPCIE/issues).
+Questions are welcome ===> [![issues](https://badgen.net/github/open-issues/chili-chips/openPCIE?label=issues)](https://github.com/chili-chips/openPCIE/issues).
 
 --------------------
 

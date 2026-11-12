@@ -4,7 +4,7 @@
 
 ## Found something?
 
-Open an [Issue](https://github.com/chili-chips-ba/openPCIE/issues). For bugs, include how to reproduce it: a modified [co-sim](5.sim), a waveform, or logs.
+Open an [Issue](https://github.com/chili-chips/openPCIE/issues). For bugs, include how to reproduce it: a modified [co-sim](5.sim), a waveform, or logs.
 
 ## Want to change something?
 
