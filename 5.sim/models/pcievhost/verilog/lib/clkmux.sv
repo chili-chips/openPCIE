@@ -22,7 +22,7 @@
 //=============================================================
 
 `ifdef VPROC_SV
-`include "allheaders.v"
+`include "allheaders.svh"
 `endif
 
 `WsTimeScale

@@ -57,7 +57,8 @@ module lane_xcvr
     input  logic gt_rxn
 );
 
-  localparam bit MULTILANE       = (PCIE_LANES > 1);
+  localparam bit MULTILANE = (PCIE_LANES > 1);
+  localparam logic [2:0] TXOUTCLK_SEL = (LANE == 0) ? 3'd3 : 3'd0;  // lane 0: TXOUTCLK from the PLL
   // PCIE_LANES <= 4: one GTP quad, channel bonding chain lane 0 -> 1 -> 2 -> 3
   localparam int CLK_COR_MIN_LAT = (PCIE_LANES == 1) ? 13 : (PCIE_LANES == 4) ? 19 : 18;
 
@@ -474,7 +475,7 @@ module lane_xcvr
       .RXUSRCLK2  (pipe_clk),
       .TXSYSCLKSEL(2'd0),
       .RXSYSCLKSEL(2'd0),
-      .TXOUTCLKSEL((LANE == 0) ? 3'd3 : 3'd0),
+      .TXOUTCLKSEL(TXOUTCLK_SEL),
       .RXOUTCLKSEL(3'd0),
       .CLKRSVD0   (1'd0),
       .CLKRSVD1   (1'd0),

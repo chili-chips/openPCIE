@@ -21,7 +21,7 @@
 //
 // ====================================================================
 
-`include "extradefs.v"
+`include "extradefs.svh"
 
 `VProcTimeScale
 

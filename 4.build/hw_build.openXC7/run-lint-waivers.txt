@@ -90,3 +90,8 @@ verible ^csr_pkg\.sv:[0-9:-]+ .*\((CSR_DATA_WIDTH|CSR_MIN_ADDR_WIDTH|CSR_SIZE)\)
 # PCIE_2_1 attribute names (vendor names, kept as is: 2.rtl/README.md coding
 # rules) (reviewed 2026-10-14)
 verible ^src/pcie/pcie_core\.sv:[0-9:-]+ .*\(got: DISABLE_(ASPM_L1_TIMER|BAR_FILTERING|ERR_MSG|ID_CHECK|LANE_REVERSAL|LOCKED_FILTER|PPM_FILTER|RX_POISONED_RESP|RX_TC_FILTER|SCRAMBLING)\) .*\[positive-meaning-parameter-name\]$
+
+# eduBOS5: every unique case has a default, also a full one (an illegal opcode
+# halts, an unknown store width writes nothing): unique checks that the items
+# never overlap, the default that no value goes unhandled
+slang ^src/CPU\.eduBOS5/edubos5(_alu)?\.sv:[0-9]+:[0-9]+: warning: .case. marked .unique. has .default. label

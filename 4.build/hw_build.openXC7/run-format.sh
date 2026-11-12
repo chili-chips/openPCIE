@@ -9,7 +9,9 @@
 #      positions come from the verible-verilog-syntax tree);
 #   2. verible-verilog-format: Verible defaults (100-column limit) plus every
 #      alignment option set to align, end and else on separate lines, LF line
-#      endings. It does not wrap lines over the limit: wrap those by hand.
+#      endings. It does not wrap lines over the limit: wrap those by hand;
+#   0. no CR (^M) in these files (removed unless --check);
+#   3. no ?: in a port connection (reported, not fixed).
 #
 # usage:  bash run-format.sh            format every RTL file in place
 #         bash run-format.sh --check    only report the files that are not
@@ -129,6 +131,18 @@ PY
 
 FILES=("$SRC"/*.sv "$SRC"/pcie/*.sv "$SRC"/CPU.eduBOS5/*.sv)
 bad=0
+
+# Step 0: CR (^M) in these files: reported with --check, removed otherwise
+CR_FILES=($(grep -l $'\r' "${FILES[@]}"))
+for f in "${CR_FILES[@]}"; do
+  if [ $MODE = check ]; then echo "CR line endings: ${f##*/}"; else sed -i 's/\r//g' "$f"; fi
+done
+ncr=${#CR_FILES[@]}
+if [ $MODE = check ]; then
+  echo "-- CR: $ncr file(s) with CR"
+else
+  echo "-- CR: removed from $ncr file(s)"; ncr=0
+fi
 if [ $MODE = check ]; then
   explicit_begin --count "${FILES[@]}" || bad=$((bad + 1))
 else
@@ -171,7 +185,27 @@ fi
 awk 'length > 100 { sub(".*/src/", "", FILENAME); print "over 100 columns: " FILENAME ":" FNR }' "${FILES[@]}"
 nc=$(awk 'length > 100' "${FILES[@]}" | wc -l)
 echo "-- line length: $nc line(s) over 100 columns"
-[ $bad -eq 0 ] && [ $nf -eq 0 ] && [ $nl -eq 0 ] && [ $nc -eq 0 ]
+
+# A ?: in a port connection: give it a signal and a continuous assign instead
+# (as VHDL port maps require). Reported in both modes; the fix needs a name,
+# so it is not automatic.
+port_out=$(perl -e '
+  for my $f (@ARGV) {
+    open my $h, "<", $f or next; my $s = do { local $/; <$h> };
+    $s =~ s{//[^\n]*}{}g; $s =~ s{/\*.*?\*/}{ my $c = $&; $c =~ s/[^\n]//g; $c }gse;
+    while ($s =~ /\.\w+\s*\(/g) {
+      my ($start, $d, $i) = ($-[0], 1, pos $s);
+      $d += (substr($s, $i, 1) eq "(") - (substr($s, $i, 1) eq ")"), $i++ while $d && $i < length $s;
+      next unless substr($s, pos($s), $i - pos($s)) =~ /\?/;
+      my $line = 1 + (substr($s, 0, $start) =~ tr/\n//);
+      (my $r = $f) =~ s{.*/}{};
+      print "?: in a port connection: $r:$line\n";
+    }
+  }' "${FILES[@]}")
+[ -n "$port_out" ] && printf '%s\n' "$port_out"
+np=$(printf '%s' "$port_out" | grep -c '?:')
+echo "-- port connections: $np with ?:"
+[ $bad -eq 0 ] && [ $ncr -eq 0 ] && [ $nf -eq 0 ] && [ $nl -eq 0 ] && [ $nc -eq 0 ] && [ $np -eq 0 ]
 
 # -----------------------------------------------------------------------------
 # Project:     openPCIE

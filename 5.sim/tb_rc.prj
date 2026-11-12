@@ -6,9 +6,9 @@
 # tb_rc.sv): models only, no RTL.
 
 sv work models/cosim/mem_model.sv
-sv work models/cosim/f_VProc.v
-sv work models/pcievhost/verilog/pcieVHost/pcieVHost.v
-sv work models/pcievhost/verilog/pcieVHost/pcieVHostPipex1.v
+sv work models/cosim/f_VProc.sv
+sv work models/pcievhost/verilog/pcieVHost/pcieVHost.sv
+sv work models/pcievhost/verilog/pcieVHost/pcieVHostPipex1.sv
 sv work ../2.rtl/0.common.opensource/src/pcie/link_pkg.sv
 sv work models/pipe_sym_pkg.sv
 sv work models/pcieVHostPipexN.sv

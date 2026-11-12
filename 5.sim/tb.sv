@@ -495,7 +495,7 @@ module tb;
   endtask
 
 // Top level fatal task, which can be called from anywhere in verilog code
-// via the `fatal definition in pciedispheader.v.
+// via the `fatal definition in pciedispheader.svh.
 task Fatal;
 begin
     $fatal(1, "pcieVHost fatal: a model's FAIL, or a bad VProc access");

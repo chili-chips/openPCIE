@@ -49,7 +49,7 @@ module PIPExN__pcieVHost #(
     output logic                     Gen2ClkSel, // GEN2_CLK register: the test bench's clocks are Gen2
 
     // the PIPE link of this node: electrical idle is NOSIG (K flag, 0xFF) per
-    // symbol, on every simulator (pcieVHostPipex1.v)
+    // symbol, on every simulator (pcieVHostPipex1.sv)
     input  logic [  Lanes*DataWidth-1:0] RxData,
     input  logic [Lanes*DataWidth/8-1:0] RxDataK,
     output logic [  Lanes*DataWidth-1:0] TxData,
@@ -250,7 +250,7 @@ module PIPExN__pcieVHost #(
   int         dll_tlps;     // whole TLPs in dll_q: 0 at time 0
   // Plain always below: dll_q and dll_tlps are filled on pcieclk and drained
   // on dll_clk, two processes, which always_ff does not allow (as the taps
-  // in pcieVHost.v)
+  // in pcieVHost.sv)
 
   always @(posedge pcieclk) begin
     if (tlp_dn_valid) begin

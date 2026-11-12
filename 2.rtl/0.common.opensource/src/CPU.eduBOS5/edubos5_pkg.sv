@@ -17,17 +17,16 @@ package edubos5_pkg;
 
   typedef logic [31:0] cpu_data_t;
   typedef logic [31:2] cpu_pc_t;  // program counter for up to 4GByte code space in 4-byte words
-  typedef logic [31:0] cpu_addr_t; // CPU address type, 2048 locations for now, 2LSB for byte-select
+  typedef logic [31:0] cpu_addr_t;  // data address for up to 4GByte, 2 LSBs select the byte
 
   //instruction opcode with corresponding decode
   typedef enum logic [6:0] {
     ALUREG = 7'b0110011,  //-\ ALU Data
     ALUIMM = 7'b0010011,  //-/ instructions
 
-    BRNCH = 7'b1100011
-    ,                     //-\
-    JALR  = 7'b1100111,  // | Code flow
-    JAL   = 7'b1101111,  // | instructions
+    BRNCH = 7'b1100011,  //-\ Code flow
+    JALR  = 7'b1100111,  // | instructions
+    JAL   = 7'b1101111,  // |
     AUIPC = 7'b0010111,  //-/
 
     LUI   = 7'b0110111,  //-\ Load/Store

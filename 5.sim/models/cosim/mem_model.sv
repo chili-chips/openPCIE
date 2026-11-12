@@ -34,5 +34,5 @@
 // verilator lint_off BLKSEQ
 // verilator lint_off GENUNNAMED
 // verilator lint_off DECLFILENAME
-`include "f_mem_model.v"
+`include "f_mem_model.sv"
 // verilator lint_restore

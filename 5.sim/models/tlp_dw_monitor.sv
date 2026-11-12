@@ -33,9 +33,9 @@ module tlp_dw_monitor (
 );
 
     typedef struct packed {
-        logic [31:0] dw;
-        logic        sop;
-        logic        eop;
+        logic [31:0] dw;   // [33:2]
+        logic        sop;  // [1]
+        logic        eop;  // [0]
     } dw_t;
 
     dw_t  queue [$];

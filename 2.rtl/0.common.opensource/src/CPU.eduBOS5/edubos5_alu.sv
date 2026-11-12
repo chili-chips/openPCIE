@@ -163,6 +163,7 @@ module edubos5_alu
   // ALU output mux
   //---------------
   always_comb begin : _alu_output_mux
+    alu_out = alu_plus_reg;
     unique case (funct3_alu_reg)
       ADD_SUB: begin
         if (aluimm_dec | (funct7_5 == 1'b0) | jalr_dec) begin
@@ -181,9 +182,10 @@ module edubos5_alu
       SRL_SRA: alu_out = shifter;
 
       //logic operations
-      XOR: alu_out = alu_xor_reg;
-      OR:  alu_out = alu_or_reg;
-      AND: alu_out = alu_and_reg;
+      XOR:     alu_out = alu_xor_reg;
+      OR:      alu_out = alu_or_reg;
+      AND:     alu_out = alu_and_reg;
+      default: ;
     endcase
   end : _alu_output_mux
 endmodule : edubos5_alu

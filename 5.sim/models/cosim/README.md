@@ -39,11 +39,11 @@ User code runs in zero simulation time. Time advances on each transaction, or wi
 
 ## VProc and mem_model integration into _openPCIE_
 
-This directory holds the HDL and libraries of both components. Compile `f_VProc.v` and `mem_model.sv`; they `` `include`` the rest (`f_mem_model.v`, the Verilog headers). Add the directory to the include path, as [`5.sim/tb.prj`](../../tb.prj) does:
+This directory holds the HDL and libraries of both components. Compile `f_VProc.sv` and `mem_model.sv`; they `` `include`` the rest (`f_mem_model.sv`, the Verilog headers). Add the directory to the include path, as [`5.sim/tb.prj`](../../tb.prj) does:
 
 ```
 sv work models/cosim/mem_model.sv
-sv work models/cosim/f_VProc.v
+sv work models/cosim/f_VProc.sv
 ```
 
 The DPI software is pre-compiled into `lib/libcosimlnx.a`; headers are in `include/`. Natively compiled test code includes:

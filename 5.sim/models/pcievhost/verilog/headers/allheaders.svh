@@ -21,8 +21,8 @@
 //
 //=============================================================
 
-`include "test_defs.v"
-`include "timescale.v"
-`include "pciedispheader.v"
-`include "pciexpress_header.v"
-`include "pcie_vhost_map.v"
+`include "test_defs.svh"
+`include "timescale.svh"
+`include "pciedispheader.svh"
+`include "pciexpress_header.svh"
+`include "pcie_vhost_map.svh"
