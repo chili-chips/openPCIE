@@ -460,6 +460,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 <p align="center">
   <a href="https://wavecrux.app"><img alt="WaveCrux logo" width="35%" src="0.doc/artwork/WaveCrux.logo.png"></a>
   <a href="https://verilator.org"><img alt="Verilator logo" width="25%" src="0.doc/artwork/Verilator.logo.png"></a>
+  <a href="https://que.no/janushdl/"><img alt="JanusHDL logo" width="25%" src="0.doc/artwork/JanusHDL.logo.png"></a>
 </p>
 
 <p align="center">

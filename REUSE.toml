@@ -143,6 +143,7 @@ path = [
   "0.doc/artwork/PeakRDL.logo.png",
   "0.doc/artwork/RISC-V-logo.svg",
   "0.doc/artwork/Verible.logo.png",
+  "0.doc/artwork/JanusHDL.logo.png",
   "0.doc/artwork/Verilator.logo.png",
   "0.doc/artwork/WaveCrux.logo.png",
   "0.doc/artwork/YosysHQ.logo.png",
