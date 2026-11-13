@@ -1,6 +1,6 @@
 [![NLnet:Funded](https://badgen.net/badge/NLnet/Funded/08C)](https://nlnet.nl/)
 [![Stars](https://badgen.net/github/stars/chili-chips/openPCIE?label=Stars)](https://github.com/chili-chips/openPCIE/stargazers)
-[![GitLab:Mirror](https://badgen.net/badge/GitLab/Mirror/orange)](https://gitlab.com/chili-chips/openPCIE)
+[![GitLab:Mirror](https://badgen.net/badge/GitLab/Mirror/green)](https://gitlab.com/chili-chips/openPCIE)
 [![License:BSD-3/CC-BY-SA](https://badgen.net/badge/License/BSD-3%2FCC-BY-SA/blue)](LICENSES)
 [![KiBot:Pass](https://badgen.net/badge/KiBot/Pass/green)](1.pcb/openpci2-backplane/openpci2-backplane.kibot.yaml)
 [![eduBOS5:Pass](https://badgen.net/badge/eduBOS5/Pass/green)](2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md#riscv-formal-every-instruction-against-the-isa)
