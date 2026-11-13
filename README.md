@@ -7,6 +7,8 @@
 [![Lint](https://badgen.net/github/checks/chili-chips/openPCIE/main/run-lint?label=Lint)](https://github.com/chili-chips/openPCIE/actions/workflows/lint.yml)
 [![Verible](https://badgen.net/github/checks/chili-chips/openPCIE/main/verible?label=Verible)](https://github.com/chili-chips/openPCIE/actions/workflows/verible.yml)
 [![Sim:Pass](https://badgen.net/badge/Sim/Pass/green)](5.sim)
+[![WaveCrux:Pass](https://badgen.net/badge/WaveCrux/Pass/green)](https://wavecrux.app)
+[![JanusHDL:WIP](https://badgen.net/badge/JanusHDL/WIP/orange)](https://que.no/janushdl/)
 [![openXC7:Pass](https://badgen.net/badge/openXC7/Pass/green)](4.build/hw_build.openXC7)
 [![PCIE:Pass](https://badgen.net/badge/PCIE/Pass/green)](https://github.com/chili-chips/openPCIE#bench-validation-results)
 
