@@ -143,7 +143,7 @@ This scenario is the bread-and-butter, the meat of this project. That's what it 
 
 > **Note:** x4 can only be tested in this Direct topology. Behind the switch (Usecase 2) the link is x1. Both the opensource and the AMD RC designs have trained an x4 link; the AMD design is checked in at x1.
 
-This same scenario is also envisioned for testing the interoperability of our [openCologne-PCIE](https://github.com/chili-chips-ba/openCologne-PCIE) EndPoint with Xilinx Artix-7 RootComplex.
+This same scenario is also envisioned for testing the interoperability of our [openCologne-PCIE](https://github.com/chili-chips/openCologne-PCIE) EndPoint with Xilinx Artix-7 RootComplex.
 
 ### Usecase 2: Switched FPGA_RC to FPGA_EP (Gen2 x1)
 
@@ -165,7 +165,7 @@ This same scenario is also envisioned for testing the interoperability of our [o
 The RootComplex has also been tested with EndPoints behind the on-board ASM1184e PCIE Switch, over a **Gen2 x1** link. This was a bonus deliverable, beyond the original plan - see [RC-switched](../2.rtl/3.Bonus--RC-switched.opensource) for the design.
 
 ### Usecase 3: PCIE Expansion or Extension
-By using our _"PCIE Jumper Cable"_, the backplane can be connected to a standard PC serving as a RootComplex, such as for the expansion of its I/O Slot capacity, or for the extension of its physical reach. We also intend to use it for [openCologne-PCIE](https://github.com/chili-chips-ba/openCologne-PCIE) EndPoint validation, specifically to assess and compare the strength of GateMate SerDes to others, Xilinx Artix-7 and off-the-shelf ASICs in particular.
+By using our _"PCIE Jumper Cable"_, the backplane can be connected to a standard PC serving as a RootComplex, such as for the expansion of its I/O Slot capacity, or for the extension of its physical reach. We also intend to use it for [openCologne-PCIE](https://github.com/chili-chips/openCologne-PCIE) EndPoint validation, specifically to assess and compare the strength of GateMate SerDes to others, Xilinx Artix-7 and off-the-shelf ASICs in particular.
 
 > **Planned for openPCIE3.** This use case is the main purpose of our next backplane, [openPCIE3](../README.md#future-outlook), which introduces OCuLink: one or two PCs, each over an x4 OCuLink cable, to four x4 EP connectors. Design input is welcome in [#9](https://github.com/chili-chips-ba/openPCIE/issues/9) and [#13](https://github.com/chili-chips-ba/openPCIE/issues/13).
 

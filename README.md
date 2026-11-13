@@ -18,7 +18,7 @@
 
 **openPCIE is an open-source PCIE Root Complex (RC) for the Artix-7 FPGA**, driven by a soft RISC-V SoC. It wraps the Xilinx Series-7 PCIE and GTP hard macros in open RTL, adds a bare-metal driver with a demo app, full HW/SW co-simulation, and an open backplane PCB to plug it all into. Gen2 link up on hardware; builds with Vivado or the fully open openXC7 toolchain.
 
-Open PCIE peripherals for Artix-7 exist, but they are always controlled by a proprietary RC: a PC, or a Raspberry Pi. openPCIE lets makers drive PCIE peripherals from their own soft RISC-V SoC. It answers the call for open critical IP in _"Recommendations and Roadmap for European Sovereignty in open source HW, SW and RISC-V Technologies (2021)"_. Looking for an open soft PCIE EndPoint (EP)? See [openCologne-PCIE](https://github.com/chili-chips-ba/openCologne-PCIE).
+Open PCIE peripherals for Artix-7 exist, but they are always controlled by a proprietary RC: a PC, or a Raspberry Pi. openPCIE lets makers drive PCIE peripherals from their own soft RISC-V SoC. It answers the call for open critical IP in _"Recommendations and Roadmap for European Sovereignty in open source HW, SW and RISC-V Technologies (2021)"_. Looking for an open soft PCIE EndPoint (EP)? See [openCologne-PCIE](https://github.com/chili-chips/openCologne-PCIE).
 
 | Where | What |
 |---|---|
@@ -439,7 +439,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 </div>
 
 <div align="center">
-  <a href="https://github.com/chili-chips-ba/openCologne-PCIE"><img alt="openCologne-PCIE logo" width="15%" src="0.doc/artwork/openCologne-PCIE.hex.png"></a>
+  <a href="https://github.com/chili-chips/openCologne-PCIE"><img alt="openCologne-PCIE logo" width="15%" src="0.doc/artwork/openCologne-PCIE.hex.png"></a>
 </div>
 
 **KiCad** turns electrical idea into a manufacturable board. **openXC7**, with **Yosys** at its core, turns RTL into a loadable FPGA bitfile. **PeakRDL** turns our SystemRDL file into CSR RTL+headers+RegMap docs. **WaveCrux** greatly facilitates waveform decoding and viewing. But, that's not everything that made this project possible -- Thank you all for these wonderful opensource tools :sparkles:.

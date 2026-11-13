@@ -557,7 +557,7 @@ A data credit is 16 bytes (4 DW): room for 16 KB of posted data at the Endpoint,
 * every TLP with its sequence number and LCRC check, the TLP type (`CfgRd0`, `CplD`, `MWr32`, ...), Length, TC, TD and EP
 * replays, sequence-number errors and nullified TLPs
 
-So the pictures show the protocol between the two ends, not how the hard macro reached its decisions. For that, take an open-source Data Link Layer in RTL, where every internal signal can be dumped: [openCologne-PCIE `2.rtl/4.dll`](https://github.com/chili-chips-ba/openCologne-PCIE/tree/main/2.rtl/4.dll).
+So the pictures show the protocol between the two ends, not how the hard macro reached its decisions. For that, take an open-source Data Link Layer in RTL, where every internal signal can be dumped: [openCologne-PCIE `2.rtl/4.dll`](https://github.com/chili-chips/openCologne-PCIE/tree/main/2.rtl/4.dll).
 
 **A clean bill of health.** Checks you can run on any PCIE dump; this run passes all four:
 - **No replay.** The Root Complex sent 21 TLPs, seq 0 to 20, the Endpoint 20, seq 0 to 19: no gap and no repeat.
@@ -594,7 +594,7 @@ The PIPE shows the link as symbols. The Endpoint model also reports each TLP and
 
 So the dump now has two TLP views, one at each end of the link: `tb.tlp_view` at the Root Complex's AXI-Stream, `u_pcie_ep` at the Endpoint. Same TLPs (21 down, 20 up), the hard macro and the link apart. The run also shows 67 DLLPs down and 92 up.
 
-The C side is [`models/pcievhost/pcievhost-taps.patch`](models/pcievhost/pcievhost-taps.patch), applied by [`tools/vip-upgrade.sh`](tools/vip-upgrade.sh). The wrapper is the one [openCologne-PCIE](https://github.com/chili-chips-ba/openCologne-PCIE/tree/main/5.sim#transaction-taps-a-test-platform-at-every-layer) uses for its host and its Endpoint model; [how it works](https://github.com/chili-chips-ba/openCologne-PCIE/blob/main/0.doc/5.sim/pcievhost-taps.drawio.png).
+The C side is [`models/pcievhost/pcievhost-taps.patch`](models/pcievhost/pcievhost-taps.patch), applied by [`tools/vip-upgrade.sh`](tools/vip-upgrade.sh). The wrapper is the one [openCologne-PCIE](https://github.com/chili-chips/openCologne-PCIE/tree/main/5.sim#transaction-taps-a-test-platform-at-every-layer) uses for its host and its Endpoint model; [how it works](https://github.com/chili-chips/openCologne-PCIE/blob/main/0.doc/5.sim/pcievhost-taps.drawio.png).
 
 ### How long a TLP spends in the hard macro
 
@@ -1034,7 +1034,7 @@ This test bench is the only open place where a real Artix-7 RC, the `PCIE_2_1` h
 
 Two levels:
 
-1. **Serial SerDes line, the most usable.** pcieVHost does its own 8b/10b and scrambling and drives the serial lanes, so the EP's PHY is in the loop. [openCologne-PCIE](https://github.com/chili-chips-ba/openCologne-PCIE/tree/main/5.sim) runs it this way (`PHY=rtl`), against an open-source BFM of the GateMate SerDes.
+1. **Serial SerDes line, the most usable.** pcieVHost does its own 8b/10b and scrambling and drives the serial lanes, so the EP's PHY is in the loop. [openCologne-PCIE](https://github.com/chili-chips/openCologne-PCIE/tree/main/5.sim) runs it this way (`PHY=rtl`), against an open-source BFM of the GateMate SerDes.
 2. **PIPE**, the faster one, for EPs tested without their PHY.
 
 The model, its profile and its documentation live here; other projects point to it.
@@ -1334,7 +1334,7 @@ The Artix-7's own serial timing (its GTP: latency, electrical idle, receiver det
 
 #### Driving another project's EP
 
-openCologne-PCIE runs this model as the only host of its co-simulation, against its GateMate EP RTL (`make run EP=rtl`) and its EP model (`EP=model`), at the PIPE or, with `IFACE=serial`, on the serial line, through Cologne Chip's PIPE logic and the GateMate SerDes BFM ([its 5.sim README](https://github.com/chili-chips-ba/openCologne-PCIE/tree/main/5.sim#the-host-openpcies-artix-7-rc-model)). It takes from here `usercode/VUserMain2.cpp`, `a7rc_check.cpp` and `.h`, `ltssm.c`, `pcievhost-speed.patch` and `models/cosim/vproc-coroutine.patch`; what it expects of that EP, IDs and BAR sizes, comes from there (`-DA7RC_EP_EXPECT`). With `-DA7RC_PIPE_SCRAMBLE` it scrambles at the PIPE too, as the lab RC: openCologne-PCIE sets it for its EP RTL.
+openCologne-PCIE runs this model as the only host of its co-simulation, against its GateMate EP RTL (`make run EP=rtl`) and its EP model (`EP=model`), at the PIPE or, with `IFACE=serial`, on the serial line, through Cologne Chip's PIPE logic and the GateMate SerDes BFM ([its 5.sim README](https://github.com/chili-chips/openCologne-PCIE/tree/main/5.sim#the-host-openpcies-artix-7-rc-model)). It takes from here `usercode/VUserMain2.cpp`, `a7rc_check.cpp` and `.h`, `ltssm.c`, `pcievhost-speed.patch` and `models/cosim/vproc-coroutine.patch`; what it expects of that EP, IDs and BAR sizes, comes from there (`-DA7RC_EP_EXPECT`). With `-DA7RC_PIPE_SCRAMBLE` it scrambles at the PIPE too, as the lab RC: openCologne-PCIE sets it for its EP RTL.
 
 - The model starts the change to Gen2 only when the EP advertised Gen2, as the Artix-7 RC does; the GateMate EP is Gen1.
 - Its first run found two EP issues: one InitFC set of each kind (legal; the model completes FC init on it, upstream's pcieVHost hangs), and an UpdateFC-NP that lowered the header limit from 32 to 9 after the first Configuration Read (the model stops, PCIe 2.1, 2.6.1). With the second fixed there, the run passes, at the PIPE and on the serial line.
