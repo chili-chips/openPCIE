@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 Chili.CHIPS
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Once a day, open a GitHub pull request for every open GitLab merge request.
+# The merge request head is copied to the branch gitlab-mr/<number>, which this
+# job owns: it is force-updated from GitLab and deleted when the merge request
+# is no longer open. Merge the pull request with a merge commit (not squash):
+# the mirror then carries it to GitLab, which marks the merge request merged.
+# Needs the repo setting "Allow GitHub Actions to create and approve pull requests".
+
+name: Import GitLab merge requests
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: gitlab-mr-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    if: github.repository == 'chili-chips/openPCIE'
+    runs-on: ubuntu-24.04
+    env:
+      GITLAB_PROJECT: chili-chips/openPCIE
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Import merge requests
+        run: |
+          set -u
+          mrs="$RUNNER_TEMP/mrs.json"
+          curl -fsS --retry 3 \
+            "https://gitlab.com/api/v4/projects/${GITLAB_PROJECT//\//%2F}/merge_requests?state=opened&per_page=100" > "$mrs"
+          echo "open GitLab merge requests: $(jq length "$mrs")"
+          rc=0
+
+          for iid in $(jq -r '.[].iid' "$mrs"); do
+            branch="gitlab-mr/$iid"
+            base=$(jq -r --argjson i "$iid" '.[] | select(.iid == $i) | .target_branch' "$mrs")
+            title=$(jq -r --argjson i "$iid" '.[] | select(.iid == $i) | .title' "$mrs")
+            url=$(jq -r --argjson i "$iid" '.[] | select(.iid == $i) | .web_url' "$mrs")
+            author=$(jq -r --argjson i "$iid" '.[] | select(.iid == $i) | .author.username' "$mrs")
+
+            if ! git fetch -q "https://gitlab.com/$GITLAB_PROJECT.git" "refs/merge-requests/$iid/head"; then
+              echo "::warning::!$iid: cannot fetch from GitLab"; rc=1; continue
+            fi
+            if ! git push -q --force origin "FETCH_HEAD:refs/heads/$branch"; then
+              echo "::warning::!$iid: cannot push $branch (a change to .github/workflows needs a manual import)"; rc=1; continue
+            fi
+            if [ -n "$(gh pr list --head "$branch" --state open --json number -q '.[].number')" ]; then
+              echo "!$iid: pull request exists, $branch updated"; continue
+            fi
+            body="Imported from GitLab merge request $url, author \`$author\` on GitLab.
+
+          The branch \`$branch\` is updated daily from GitLab: do not push to it.
+          Merge with a merge commit, not squash. The mirror then closes the GitLab merge request."
+            if gh pr create --base "$base" --head "$branch" --title "GitLab !$iid: $title" --body "$body"; then
+              echo "!$iid: pull request opened"
+            else
+              echo "::warning::!$iid: cannot open a pull request"; rc=1
+            fi
+          done
+
+          # Remove branches of merge requests that are no longer open
+          for branch in $(git ls-remote --heads origin 'refs/heads/gitlab-mr/*' | sed 's#.*refs/heads/##'); do
+            iid=${branch#gitlab-mr/}
+            case $iid in ''|*[!0-9]*) continue ;; esac
+            if ! jq -e --argjson i "$iid" 'any(.[]; .iid == $i)' "$mrs" > /dev/null; then
+              git push -q origin --delete "$branch" && echo "removed $branch: !$iid is no longer open"
+            fi
+          done
+          exit $rc

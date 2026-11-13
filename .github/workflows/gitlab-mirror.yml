@@ -46,6 +46,6 @@ jobs:
           chmod 600 ~/.ssh/gitlab_mirror
           echo "gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf" > ~/.ssh/known_hosts
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/gitlab_mirror -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes"
-          specs=$(git for-each-ref --format='%(refname):refs/heads/%(refname:strip=3)' refs/remotes/origin | grep -v '/HEAD$')
+          specs=$(git for-each-ref --format='%(refname):refs/heads/%(refname:strip=3)' refs/remotes/origin | grep -vE '/HEAD$|^refs/remotes/origin/gitlab-mr/')
           git push "$GITLAB_URL" $specs
           git push "$GITLAB_URL" --tags
