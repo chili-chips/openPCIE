@@ -241,6 +241,9 @@ module picorv32 #(
   // pcpi_insn: registered only when WITH_PCPI (it feeds the PCPI cores
   // below), tied to 0 otherwise -- one driver either way.
   // picorv32.ORIG.sv registers it on every Stage-2 decode regardless.
+  // stage2_decode_trigger is declared here, ahead of its first use; it is
+  // assigned next to the decoder signals below.
+  logic stage2_decode_trigger;
   generate
     if (WITH_PCPI) begin : g_pcpi_insn_reg
       always_ff @(posedge clk) begin
@@ -883,8 +886,7 @@ module picorv32 #(
   // Stage-2 decode fire condition, computed once and reused everywhere
   // instead of repeating `decoder_trigger && !decoder_pseudo_trigger`
   // verbatim at each use site (the main FSM's Stage-2 decode block, and
-  // the pcpi_insn generate block below).
-  logic stage2_decode_trigger;
+  // the pcpi_insn generate block above, where it is declared).
   assign stage2_decode_trigger = decoder_trigger && !decoder_pseudo_trigger;
 
   logic is_lui_auipc_jal;
