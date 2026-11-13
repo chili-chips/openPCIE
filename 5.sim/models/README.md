@@ -37,4 +37,4 @@ Inherited from the sibling Chili.CHIPS SOC infrastructure. **Not used here**: th
 * `soc_if`: the main memory mapped bus to the rest of the logic.
 * `imem_we`, `imem_waddr[31:2]`, `imem_wdat[31:0]`: write-only port for program upload over UART. It feeds a [_mem_model_](https://github.com/wyvernSemi/mem_model) instance, _VProc_'s [main memory](../README.md#the-mem_model-co-simulation-sparse-memory-model), which uses the sparse C memory of [_pcieVHost_](https://github.com/wyvernSemi/pcievhost). The upload thus lands in the memory the virtual processor sees.
 
-<p align="center"><img alt="soc_cpu.VPROC component" width="600" src="images/soc_cpu_vproc.png"></p>
+<div align="center"><img alt="soc_cpu.VPROC component" width="600" src="images/soc_cpu_vproc.png"></div>

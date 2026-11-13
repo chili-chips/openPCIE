@@ -23,7 +23,7 @@ source set-env.csh      # tcsh, csh
 | 2. SW | [`sw_build`](./sw_build) | `firmware.elf`, `firmware.bin`, `firmware.hex` |
 | 3. HW | [`hw_build.openXC7`](./hw_build.openXC7) | `build_artifacts/top.x4g1.direct.bit` |
 
-<p align="center"><img src="../0.doc/4.build/build-flow.drawio.png" width="100%" alt="Build flow: csr.rdl through PeakRDL into the register RTL and the firmware and co-sim headers; the firmware build into firmware.hex; the bitstream build through Vivado or openXC7 (slang or sv2v, yosys, nextpnr, fasm2frames and xc7frames2bit) into top.<link>.<variant>.bit for the Acorn CLE-215+; co-simulation, lint and the formal equivalence check alongside"></p>
+<div align="center"><img src="../0.doc/4.build/build-flow.drawio.png" width="100%" alt="Build flow: csr.rdl through PeakRDL into the register RTL and the firmware and co-sim headers; the firmware build into firmware.hex; the bitstream build through Vivado or openXC7 (slang or sv2v, yosys, nextpnr, fasm2frames and xc7frames2bit) into top.<link>.<variant>.bit for the Acorn CLE-215+; co-simulation, lint and the formal equivalence check alongside"></div>
 
 Diagram source: [`0.doc/4.build/build-flow.drawio`](../0.doc/4.build/build-flow.drawio).
 

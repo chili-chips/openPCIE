@@ -1,8 +1,8 @@
 # eduBOS5
 
-<p align="center">
+<div align="center">
   <a href="https://github.com/tarik-ibrahimovic/eduBOS5"><img alt="eduBOS5 logo" width="25%" src="../../../../0.doc/artwork/eduBOS5.logo.png"></a>
-</p>
+</div>
 
 [eduBOS5](https://github.com/tarik-ibrahimovic/eduBOS5) is Chili.CHIPS' compact RV32I RISC-V core, open source under BSD-3-Clause. The openPCIE SOC runs eduBOS5 (default) or PicoRV32:
 
@@ -127,33 +127,33 @@ Then open [`5.sim/tb.x1g1.direct.RISCV-ISA.wavecrux`](../../../../5.sim/tb.x1g1.
 
 **The decoded instructions** (View -> Toggle Transactions Panel). eduBOS5 leaves reset at PC 0, sets the stack, jumps to `main` at `0x904` and builds its frame:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux: eduBOS5 retired instructions, decoded" src="wavecrux/wavecrux-riscv-transactions.png" width=1000>
-</p>
+</div>
 
 **The RVFI Commit Inspector** (View -> Toggle Stage Panel). Each commit with its effect: the register written, or the store `[0x0000_1ffc] <- 0x0000_0008`:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux RVFI Commit Inspector: commits of eduBOS5" src="wavecrux/wavecrux-rvfi-commits.png" width=1000>
-</p>
+</div>
 
 Its Registers tab rebuilds the register file from the RVFI writes: the state at the cursor, after 9 instructions, with the PC of the next one.
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux RVFI register file of eduBOS5 at the cursor" src="wavecrux/wavecrux-rvfi-registers.png" width=750>
-</p>
+</div>
 
 Its Memory tab lists every access up to the cursor, newest first, with address, data and size. Commit 7 is `sb zero, -0x618(a5)`: one byte at `0x9e8`.
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux RVFI memory log: eduBOS5 stores" src="wavecrux/wavecrux-rvfi-memory.png" width=750>
-</p>
+</div>
 
 Its Checks tab checks all 7,096 instructions of the dump (the 6,783 up to the firmware result, then the halt loop until the run ends) for consistency, memory access, retirement order and traps. No complaint:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux RVFI checks: 7096 retirements, no inconsistency" src="wavecrux/wavecrux-rvfi-checks.png" width=500>
-</p>
+</div>
 
 This checks the RVFI record of one firmware run. riscv-formal checks it against the ISA for every instruction sequence within its bound: [next section](#riscv-formal-every-instruction-against-the-isa).
 

@@ -2,7 +2,7 @@
 
 The **open-source driver** of the RISC-V Root Complex: C sources, startup assembly and linker script. It enumerates the link and runs memory transactions as the PCIE host. Build it in [`4.build/sw_build`](../4.build/sw_build) (`make`, or `make VARIANT=switched`).
 
-<p align="center"><img src="../0.doc/3.sw/sw-structure.drawio.png" width="100%" alt="Firmware layers: application, PCIE driver, HAL, register map and startup, talking to the CSR block over the CPU memory bus, then through pcie_top to a direct endpoint or a switch with up to 4 endpoints"></p>
+<div align="center"><img src="../0.doc/3.sw/sw-structure.drawio.png" width="100%" alt="Firmware layers: application, PCIE driver, HAL, register map and startup, talking to the CSR block over the CPU memory bus, then through pcie_top to a direct endpoint or a switch with up to 4 endpoints"></div>
 
 Diagram source: [`0.doc/3.sw/sw-structure.drawio`](../0.doc/3.sw/sw-structure.drawio).
 

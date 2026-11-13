@@ -12,9 +12,9 @@
 [![openXC7:Pass](https://badgen.net/badge/openXC7/Pass/green)](4.build/hw_build.openXC7)
 [![PCIE:Pass](https://badgen.net/badge/PCIE/Pass/green)](https://github.com/chili-chips/openPCIE#bench-validation-results)
 
-<p align="center" width="100%">
+<div align="center" width="100%">
   <img alt="openPCIE Root Complex project logo" width="25%" src="0.doc/artwork/pcie2rootc.hex.png">
-</p>
+</div>
 
 **openPCIE is an open-source PCIE Root Complex (RC) for the Artix-7 FPGA**, driven by a soft RISC-V SoC. It wraps the Xilinx Series-7 PCIE and GTP hard macros in open RTL, adds a bare-metal driver with a demo app, full HW/SW co-simulation, and an open backplane PCB to plug it all into. Gen2 link up on hardware; builds with Vivado or the fully open openXC7 toolchain.
 
@@ -40,17 +40,17 @@ Long-term goal: a full open PCIE stack, phasing out the Xilinx hard macros, mixe
 
 Our openPCIE Backplane, SQRL Acorn CLE-215+ FPGA modules and PCIE adapters form the test platform.
 
-<p align="center">
+<div align="center">
  <img alt="openPCIE hardware ecosystem" src="0.doc/pictures/openPCIE-hardware-ecosystem.jpg" width="60%">
-</p>
+</div>
 
 --------------------
 ### openBackplane PCB
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <a href="https://www.canva.com/design/DAHXSTcjxEc/odZj_VbgU20EEeZ1zuJlJA/watch?utm_content=DAHXSTcjxEc&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h8306e0024f" target="_blank" rel="noopener"><img alt="openPCIE backplane intro video (click to watch)" width="50%" src="0.doc/artwork/openPCIE-backplane.png"></a>
     <img alt="openPCIE backplane block diagram" width="50%" src="1.pcb/0.doc/openPCIE-BlockDiagram.jpg">
-</p>
+</div>
 
 Details: [1.pcb](1.pcb). KiCad library: [1.pcb/KiCad-library](1.pcb/KiCad-library/README.md). Plain-text versions of the PDF and slide documents: [0.doc/1.pcb](0.doc/1.pcb/README.md).
 
@@ -93,11 +93,11 @@ The **SQRL Acorn CLE-215+**, a former crypto-accelerator, is two boards:
 </table>
 
 
-<p align="center">
+<div align="center">
   <img alt="Fully assembled Acorn CLE-215+" src="0.doc/pictures/The fully assembled Acorn CLE-215+.png" width="60%">
   <br>
   <b>The fully assembled Acorn CLE-215+ development board, ready for use in a PCIE slot.</b>
-</p>
+</div>
 
 The Acorn CLE-215+ is a NiteFury with 1 GB of DDR3 instead of 512 MB, so the [NiteFury schematic](https://github.com/chili-chips/openPCIE/blob/main/0.doc/Reference-SCH/Schematic.FPGA-NiteFury.pdf) is an accurate reference. Its **Xilinx Artix-7 XC7A200T-FBG484** hosts the RC, and on the other card the EP:
 
@@ -133,9 +133,9 @@ The Acorn CLE-215+ is a NiteFury with 1 GB of DDR3 instead of 512 MB, so the [Ni
 
 A chain of blocks joined by SystemVerilog interfaces: the RISC-V SoC hands TLPs over AXI-Stream to the PCIE stack, which converts them for the `PCIE_2_1` hard block and drives the GTP transceiver over PIPE.
 
-<p align="center">
+<div align="center">
  <img alt="RTL blocks of the opensource Root Complex and the SystemVerilog interfaces between them" src="0.doc/2.rtl/block-diagram.drawio.png" width="100%">
-</p>
+</div>
 
 Details: [RTL README](2.rtl/README.md#systemverilog-interfaces). Per design: [common RTL](2.rtl/0.common.opensource/README.md), [EP](2.rtl/1.EP.opensource/README.md), [RC-direct](2.rtl/2.RC-direct.opensource/README.md), [RC-switched](2.rtl/3.Bonus--RC-switched.opensource/README.md). AMD/Vivado-IP references: [2.amd-rtl-with-Vivado-build](2.amd-rtl-with-Vivado-build/README.md) ([EP](2.amd-rtl-with-Vivado-build/1.EP.amd/README.md), [RC-direct](2.amd-rtl-with-Vivado-build/2.RC-direct.amd/README.md), [RC-switched](2.amd-rtl-with-Vivado-build/3.Bonus--RC-switched.amd/README.md)).
 
@@ -154,9 +154,9 @@ Details: [RTL README](2.rtl/README.md#systemverilog-interfaces). Per design: [co
 
 The driver runs **bare-metal** on the soft RISC-V SoC and does every enumeration step itself, the job an OS does on a PC.
 
-<p align="center">
+<div align="center">
  <img alt="Firmware layers: application, PCIE driver, HAL, register map and startup, talking to the CSR block over the CPU memory bus, then through pcie_top to a direct endpoint or a switch with up to 4 endpoints" src="0.doc/3.sw/sw-structure.drawio.png" width="100%">
-</p>
+</div>
 
 | Layer | Does |
 |---|---|
@@ -176,9 +176,9 @@ Details: [SW README](3.sw/README.md).
 
 One [test bench](5.sim/README.md), three interchangeable CPUs: the RTL core that goes into the bitstream (eduBOS5 by default, or PicoRV32), or the [_VProc_ virtual processor](https://github.com/wyvernSemi/vproc), which runs the firmware much faster.
 
-<p align="center">
+<div align="center">
 <img alt="openPCIE Root Complex test bench structure" src="0.doc/5.sim/tb-structure.drawio.png" width="100%">
-</p>
+</div>
 
 * CPU: [`make CPU=rtl|vproc|iss`](5.sim/README.md#the-three-cpu-options), all running the same firmware source and reaching the same result over the same link ([measured](5.sim/README.md#what-they-cost))
   * `vproc`: a [_VProc_](https://github.com/wyvernSemi/vproc)-based [`soc_cpu.VPROC.native`](5.sim/models/README.md#soc_cpuvprocnative), firmware compiled for the host
@@ -192,9 +192,9 @@ One [test bench](5.sim/README.md), three interchangeable CPUs: the RTL core that
 
 Follow the co-simulation at TLP level in [WaveCrux](https://wavecrux.app), with the [open-source PCIE TLP decoder plugin](https://github.com/Ferrite-Engineering/wavecrux-decoders/tree/main/decoders/pcie-tlp) and a ready-made session. Here the firmware sizes BAR0 by read-back and places it at `0x80000000` ([more](5.sim/README.md#viewing-the-tlps-in-wavecrux)):
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: firmware sizing BAR0" src="5.sim/images/wavecrux-tlp-bar-sizing.png" width="75%">
-</p>
+</div>
 
 One level down, Ferrite's [PCIe PIPE and Data Link Layer decoders](https://github.com/Ferrite-Engineering/wavecrux-decoders) show link training, flow-control credits, and every TLP with its sequence number and Ack ([more](5.sim/README.md#viewing-the-pipe-in-wavecrux)). With all three layers in one view, a TLP spends about 0.4 µs each way inside the hard macro ([more](5.sim/README.md#how-long-a-tlp-spends-in-the-hard-macro)).
 
@@ -207,9 +207,9 @@ One level down, Ferrite's [PCIe PIPE and Data Link Layer decoders](https://githu
 
 # Implementation Workflow
 
-<p align="center">
+<div align="center">
  <img alt="Build flow: CSR generation, firmware, bitstream through Vivado or openXC7, co-simulation, lint and formal equivalence" src="0.doc/4.build/build-flow.drawio.png" width="100%">
-</p>
+</div>
 
 | Step | Do | Details |
 |---|---|---|
@@ -249,46 +249,46 @@ The board's JTAG connector does not fit the Xilinx Platform Cable's 14-pin plug.
 
 The board has a **Molex Pico-Lock 1.50 mm pitch male header**; DuPont cables do not fit. Buy **[Molex 0369200603 on Digi-Key](https://www.digikey.com/en/products/detail/molex/0369200603/10233020)** (female on both ends), cut it in half, and splice one end onto the Xilinx programmer's wires per this diagram:
 
-<p align="center">
+<div align="center">
   <img alt="Acorn JTAG wiring diagram" src="0.doc/pictures/acorn-jtag-wiring-diagram.PNG" width="60%">
   <br><em>JTAG Connection Guide: Physical Pinout and Wiring Diagram.</em>
-</p>
+</div>
 
 #### 2. External 12V Power Supply
 
 Slot power is not enough to program or run the board. Feed 12 V through a 6-pin PCIE connector from an ATX supply.
 
-<p align="center">
+<div align="center">
   <img alt="External 12 V power connection" src="0.doc/pictures/External 12V power connection.jpg" width="40%">
   <br><em>External 12V power connection.</em>
-</p>
+</div>
 
 #### 3. Final Assembly
 
-<p align="center">
+<div align="center">
   <img alt="Complete FPGA system mounted in a PCIE slot" src="0.doc/pictures/The complete FPGA system mounted in a PCIe slot.jpg" width="50%">
   <br><em>The complete FPGA system mounted in a PCIE slot.</em>
-</p>
+</div>
 
 #### 4. JTAG Connectivity Test
 
 **Vivado Hardware Manager** must detect the programmer and the `xc7a200t_0` FPGA:
 
-<p align="center">
+<div align="center">
   <img alt="Successful device detection in Vivado Hardware Manager" src="0.doc/pictures/Successful device detection in Vivado Hardware Manager.png" width="50%">
   <br><em>Successful device detection in Vivado Hardware Manager.</em>
-</p>
+</div>
 
 ### Test Jig
 - **PCB:** **openPCIE Backplane** ([1.pcb](1.pcb/)), with slots for RC, EP and the switch, on external 12 V.
 - **FPGA boards:** two **SQRL Acorn CLE-215+**, one RC, one EP.
 - **JTAG:** two **Xilinx Platform Cable USB**, each with the custom adapter.
 
-<p align="center">
+<div align="center">
   <img alt="Validation environment for the direct connection" src="0.doc/pictures/openPCIE-direct-connection-validation-environment.jpg" width="60%">
   <br>
   <em>The complete hardware validation environment for the Direct connection test.</em>
-</p>
+</div>
 
 #### The "Dual-PC" JTAG Approach
 **PC 1** drives the RC's JTAG, **PC 2** the EP's. No cable swapping, no flashing per iteration, and two **Vivado Hardware Manager** ILAs triggering at once show a transaction from both sides of the link.
@@ -409,63 +409,63 @@ The design now builds with [_openXC7_ 1.0.0](https://lnkd.in/p/gsDArjSt), what _
 ### Academia Outreach
 openPCIE is the basis of several Master's theses at the Faculty of Electrical Engineering, University of Sarajevo (ETF Sarajevo), among them those of Anes Vrce and [Aladin Brdar](https://www.linkedin.com/posts/abrdar1_proud-to-share-that-i-have-successfully-share-7512945056492904448-Ugtq/), shown here presenting his work on its hardware, software and simulation.
 
-<p align="center">
+<div align="center">
  <img alt="Aladin Brdar presenting his work on the openPCIE platform at ETF Sarajevo" src="0.doc/pictures/Aladin-Brdar-Master-Thesis-Oct2026.png" width="80%">
-</p>
+</div>
 
 --------------------
 
 ### Acknowledgements
 We are grateful to **NLnet Foundation** for their sponsorship of this development activity.
 
-<p align="center">
+<div align="center">
    <a href="https://nlnet.nl/project/openPCIe2-RootComplex"><img width="30%" alt="NLnet logo" src="0.doc/artwork/NLnet-logo.png"></a>
    <a href="https://nlnet.nl/core"><img width="15%" alt="NGI Zero, Next Gen Internet" src="0.doc/artwork/NGI0-logo.png"></a>
-</p>
+</div>
 
 This project was funded through the NGI0 Core Fund, a fund established by NLnet with financial support from the European Commission's Next Generation Internet programme, under the aegis of DG Communications Networks, Content and Technology under grant agreement No 101092990.
 
 
 The **wyvernSemi**'s wisdom and contribution made a great deal of difference -- Thank you, we are honored to have you on the project.
 
-<p align="center">
+<div align="center">
  <a href="https://github.com/wyvernSemi"><img width="15%" alt="wyvernSemi-Logo" src="0.doc/artwork/wyvernSemi-logo-rounded.png"></a>
-</p>
+</div>
 
 The **Envox**, our next-door buddy, is responsible for the birth of our backplane, which we like to call BB (not to be mistaken for their gorgeous blue beauty [BB3](https://www.envox.eu/eez-bb3))
 
-<p align="center">
+<div align="center">
   <a href="https://www.envox.eu"><img alt="EEZ / Envox logo" width="25%" src="0.doc/artwork/EEZ-web-logo.png"></a>
-</p>
+</div>
 
-<p align="center">
+<div align="center">
   <a href="https://github.com/chili-chips-ba/openCologne-PCIE"><img alt="openCologne-PCIE logo" width="15%" src="0.doc/artwork/openCologne-PCIE.hex.png"></a>
-</p>
+</div>
 
 **KiCad** turns electrical idea into a manufacturable board. **openXC7**, with **Yosys** at its core, turns RTL into a loadable FPGA bitfile. **PeakRDL** turns our SystemRDL file into CSR RTL+headers+RegMap docs. **WaveCrux** greatly facilitates waveform decoding and viewing. But, that's not everything that made this project possible -- Thank you all for these wonderful opensource tools :sparkles:.
 
-<p align="center">
+<div align="center">
   <a href="https://www.kicad.org"><img alt="KiCad logo" width="25%" src="0.doc/artwork/kicad_logo.png"></a>
   <a href="https://www.openems.de"><img alt="openEMS logo" width="15%" src="0.doc/artwork/openEMS.logo.short.noBG.png"></a>
-</p>
+</div>
 
-<p align="center">
+<div align="center">
   <a href="https://github.com/openXC7"><img alt="openXC7 logo" width="30%" src="0.doc/artwork/openXC7.logo.png"></a>
   <a href="https://www.symbioticeda.com"><img alt="Symbiotic EDA logo" width="25%" src="0.doc/artwork/symbioticeda.logo.png"></a>
-</p>
+</div>
 
-<p align="center">
+<div align="center">
   <a href="https://peakrdl.readthedocs.io"><img alt="PeakRDL logo" width="14%" src="0.doc/artwork/PeakRDL.logo.png"></a>
   <a href="https://www.yosyshq.com"><img alt="YosysHQ logo" width="25%" src="0.doc/artwork/YosysHQ.logo.png"></a>
-</p>
+</div>
 
-<p align="center">
+<div align="center">
   <a href="https://wavecrux.app"><img alt="WaveCrux logo" width="35%" src="0.doc/artwork/WaveCrux.logo.png"></a>
   <a href="https://verilator.org"><img alt="Verilator logo" width="25%" src="0.doc/artwork/Verilator.logo.png"></a>
   <a href="https://que.no/janushdl/"><img alt="JanusHDL logo" width="25%" src="0.doc/artwork/JanusHDL.logo.png"></a>
-</p>
+</div>
 
-<p align="center">
+<div align="center">
   <a href="https://github.com/MikePopoloski/slang"><img alt="MikePopoloski slang logo" width="25%" src="0.doc/artwork/slang.logo.png"></a>
   <a href="https://www.drawio.com"><img alt="draw.io logo" width="25%" src="0.doc/artwork/drawio.logo.png"></a>
   <a href="https://www.chipsalliance.org/projects"><img alt="Chips Alliance SV Tools logo" width="15%" src="0.doc/artwork/ChipsAlliance-SV-Tools.logo.png"></a>
@@ -477,7 +477,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
   <a href="https://www.cprover.org/ebmc/"><img alt="EBMC logo" width="20%" src="0.doc/artwork/EBMC.logo.png"></a>
   <a href="https://www.ngscopeclient.org"><img alt="ngscopeclient logo" width="20%" src="0.doc/artwork/ngscopeclient.logo.png"></a>
   <a href="https://github.com/enjoy-digital/litex"><img alt="LiteX logo" width="10%" src="0.doc/artwork/LiteX.logo.png"></a>
-</p>
+</div>
 
 
 ### Crowd Supply Campaign
@@ -485,16 +485,16 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
  - [Hackster](https://www.hackster.io/chili-chips-ba/openpcie-backplane-76fdb0)
  - [Elecrow](https://www.hackster.io/ElecrowOfficial/projects)
 
-<p align="center">
+<div align="center">
   <a href="https://www.crowdsupply.com"><img alt="Crowd Supply logo" width="50%" src="0.doc/artwork/CrowdSupply.logo.png"></a>
   <a href="https://www.oshwa.org"><img alt="Open Source Hardware logo" width="20%" src="0.doc/artwork/oshw-logo-filled-black.png"></a>
-</p>
+</div>
 
-<p align="center">
+<div align="center">
   <a href="https://www.hackster.io/chili-chips-ba/openpcie-backplane-76fdb0"><img alt="Hackster logo" width="25%" src="0.doc/artwork/Hackster-logo.png"></a>
   <a href="https://www.elecrow.com"><img alt="Elecrow logo" width="25%" src="0.doc/artwork/Elecrow-logo.png"></a>
   <a href="https://www.kickstarter.com"><img alt="Kickstarter logo" width="25%" src="0.doc/artwork/kickstarter.logo.png"></a>
-</p>
+</div>
 
 
 ### Community Outreach:

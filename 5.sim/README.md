@@ -59,9 +59,9 @@
 
 The test bench runs the real Root Complex RTL against [*pcievhost*](https://github.com/wyvernSemi/pcievhost), a PCIE 1.1/2.0 model written in C. The C model runs on [*VProc*](https://github.com/wyvernSemi/vproc), a virtual processor that runs a natively compiled program as if it were an HDL component. A Bus Functional Model (BFM) wrapper maps the PCIE ports into _VProc_'s memory-mapped bus, so software drives and reads them.
 
-<p align=center>
+<div align=center>
 <img alt="openPCIE Root Complex test bench structure" width=1000 src="../0.doc/5.sim/tb-structure.drawio.png">
-</p>
+</div>
 
 _pcievhost_ is a root complex model; a parameter turns it into the endpoint here, in our wrapper `PIPExN__pcieVHost.sv`: upstream's `pcieVHostPipex1.v` (our `.sv`) at x1, our `pcieVHostPipexN.sv` at x4. Its user code, [`usercode/VUserMain1.cpp`](usercode/VUserMain1.cpp), builds a Type 0 config space with PCIE, MSI and Power Management capabilities, calls `initFc()` to bring up flow control, and can generate traffic. The model answers every request that needs a completion by itself, and prints the traffic both ways to the console, as set in `ContDisps.hex`. Its endpoint features are [limited](#endpoint-feature-limitations).
 
@@ -412,21 +412,21 @@ Then open [`tb.x1g1.direct.TLP-DLL-PIPE.wavecrux`](tb.x1g1.direct.TLP-DLL-PIPE.w
 
 **BAR0 sizing.** The firmware writes all ones to BAR0 and reads back `0xFFFFF008`: a 4 KB, 32-bit, prefetchable BAR. Then it places it at `0x80000000`:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: firmware sizing BAR0" src="images/wavecrux-tlp-bar-sizing.png" width=1000>
-</p>
+</div>
 
 **A 64-bit BAR that does not fit.** BAR2 has read back `0x0000000C` (64-bit, prefetchable); BAR3, the upper half, reads back `0xFFFFFFFE`: 8 GB. That cannot fit below 4 GB, and this Root Complex sends only 32-bit addresses, so the firmware parks it at `0x2_0000_0000`:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: a 64-bit BAR that does not fit" src="images/wavecrux-tlp-bar-64bit.png" width=1000>
-</p>
+</div>
 
 **The self-test.** Memory Space and Bus Master on, then a posted Memory Write of `6` to `0x80000000`, and a Memory Read whose completion brings the `6` back: the `PASS (0x0000face)` of the summary. The write has no completion: it is *posted*, fire and forget, which makes writes cheap. Reads and Configuration requests are *non-posted*, and each waits for its completion:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: memory write and read-back self-test" src="images/wavecrux-tlp-mem-rw.png" width=1000>
-</p>
+</div>
 
 The firmware then writes `PASS` to `status.result`, a register that sends nothing, so this read is the last TLP of the run. (Writing `tx.data` launches a TLP, hence a separate result register.)
 
@@ -468,39 +468,39 @@ The switch is a model ([`usercode/pcie_switch.cpp`](usercode/pcie_switch.cpp)); 
 
 **1. Who is there?** As in RC-direct, a Type 0 Configuration Read of register 0, at bus 1, device 0. The answer is `0x11841B21`: vendor `0x1B21` (ASMedia), device `0x1184`, the switch. Type 0 means "the device at the other end of this link", here the switch's upstream port:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: the first Configuration Read finds the switch" src="images/wavecrux-switched-1-switch-id.png" width=1000>
-</p>
+</div>
 
 **2. The upstream port gets its bus numbers and its window.** Register `0x18` = `0x00060201`: primary bus 1 (towards the Root Complex), secondary bus 2 (the internal bus), subordinate bus 6 (the highest bus behind it). Register `0x20` = `0x10301000`: memory base `0x1000_0000`, limit `0x103F_FFFF`, in 1 MB steps. Then Command = `0x0006`: Memory Space and Bus Master on. From now on the port forwards only Type 1 requests for buses 2 to 6 and memory requests inside its window. The decoder names registers by the Endpoint (Type 0) layout: in a bridge header, `0x18` is Bus Numbers, not BAR2, and `0x20` is Memory Base/Limit, not BAR4:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: bus numbers and memory window of the upstream port" src="images/wavecrux-switched-2-upstream-port.png" width=1000>
-</p>
+</div>
 
 **3. Type 1: past the first bridge.** The downstream ports sit on bus 2, one bus beyond the link. The firmware sends the same Configuration Write as before, but the Root Complex sends it as Type 1 (`CfgWr1 02:01.0`), as the bus number is not 1 ([`riscv_pcie_soc.sv`](../2.rtl/0.common.opensource/src/riscv_pcie_soc.sv) picks the type from the bus number). The upstream port sees its own secondary bus and passes the request on as Type 0. Port 1 (device 1) gets bus 3 and the first 1 MB of the window, `0x1000_0000`. The Completer ID says who answered: `0x0208` = bus 2, device 1. Ports 2 to 4 follow the same way:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: Type 1 Configuration Writes to downstream port 1" src="images/wavecrux-switched-3-type1.png" width=1000>
-</p>
+</div>
 
 **4. The Endpoint behind port 1.** Bus 3 is port 1's secondary bus: the request crosses two bridges and becomes Type 0 at the last one. The Endpoint answers `0x000214FC`, and BAR0 sizing works as in RC-direct: all ones, read back `0xFFFFF008` (4 KB), then placed at `0x1000_0000`, the base of port 1's window. A BAR outside its port's window could never be reached: the bridge would not forward requests to it:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: Endpoint ID and BAR0 sizing through the switch" src="images/wavecrux-switched-4-ep-bar0.png" width=1000>
-</p>
+</div>
 
 **5. An empty slot.** Bus 4 belongs to port 2, which has no card. Port 2 answers the read itself with Unsupported Request, in red (Completer ID `0x0218`: bus 2, device 3). The firmware takes UR as "no device" and moves on to bus 5, where the second Endpoint answers:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: an empty slot answers Unsupported Request" src="images/wavecrux-switched-5-empty-slot.png" width=1000>
-</p>
+</div>
 
 **6. Memory goes by address, not by bus number.** A Memory request carries no bus number; the switch routes it by the windows of steps 2 and 3. `0x1000_0000` is in port 1's window and reaches the Endpoint on bus 3; `0x1020_0000` is in port 3's window and reaches bus 5. Each Memory Write is posted (no completion), and each Memory Read brings back the `6` just written, from its own Endpoint:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux TLP view: memory writes and reads routed by address" src="images/wavecrux-switched-6-mem-routing.png" width=1000>
-</p>
+</div>
 
 **Try it yourself:**
 - Fill slot 2: set `port_has_ep` in [`usercode/pcie_switch.cpp`](usercode/pcie_switch.cpp) to `{true, true, true, false}`. The firmware finds three Endpoints, and bus 4 now answers.
@@ -529,9 +529,9 @@ The rows follow the protocol stack, top to bottom: the LTSSM state, the TLP view
 
 **Link training.** Both sides have been sending TS2s with PAD for link and lane number (Polling). In Configuration, the Root Complex proposes link 0 in TS1s (`link=0 lane=PAD`) and the Endpoint echoes it; then lane 0 (`link=0 lane=0`). TS2s with both numbers close Configuration. Each side also advertises how many FTS ordered sets it needs to leave L0s: 255 for the Root Complex, 4 for the Endpoint. No DLLP goes out before the link is up. The Root Complex's LTSSM reaches L0 at 74.5 µs, just after this view:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux PIPE view: link training" src="images/wavecrux-pipe-training.png" width=1000>
-</p>
+</div>
 
 **Flow-control initialisation.** Once the link is up, each side advertises its receive buffer credits, in header (`H`) and data (`D`) units, for Posted (`P`), Non-Posted (`NP`) and Completion (`Cpl`) traffic: first in InitFC1 DLLPs, then in InitFC2 to confirm. No TLP goes before this is done. Each side repeats its set of three InitFC1s until it has the other's; the Endpoint sends four rounds, as the Root Complex starts 0.2 µs later. This 115 ns view catches them one step apart:
 - The Endpoint already sends InitFC2 (Data Link Layer `Tx` row): 32 posted headers with 1008 data credits, and 32 non-posted headers.
@@ -539,15 +539,15 @@ The rows follow the protocol stack, top to bottom: the LTSSM state, the TLP view
 
 A data credit is 16 bytes (4 DW): room for 16 KB of posted data at the Endpoint, 7 KB at the Root Complex. For non-posted requests, the Root Complex grants 12 headers (in its InitFC1-NP, outside this view), the Endpoint 32. `H=0 D=0` means infinite, not zero: both ends advertise infinite Completion credits, as the spec requires of an Endpoint, and of a Root Complex without peer-to-peer traffic between its ports. On the PIPE, each DLLP is framed SDP (`5c`) ... END (`fd`), both K symbols:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux PIPE view: flow-control initialisation" src="images/wavecrux-pipe-fc-init.png" width=1000>
-</p>
+</div>
 
 **The first TLP on the wire.** At 155.1 µs the firmware's first Configuration Read leaves the Root Complex as `TLP seq=0 CfgRd0`, framed STP ... END. The Endpoint answers with `TLP seq=0 CplD` (each direction numbers its own TLPs), then `Ack seq=0` for the read, so the Root Complex can drop it from its replay buffer, and `UpdateFC-NP`, returning the non-posted credit the read used. The Root Complex Acks the Completion at 155.73 µs, just outside this view: after 0.44 µs, where the Endpoint model took 0.13 µs. `Ack seq=N` acknowledges every TLP up to N, so a receiver may wait and Ack several at once; here the TLPs are too far apart, and each gets its own Ack.
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux PIPE view: first TLP and its Ack" src="images/wavecrux-pipe-tlp-ack.png" width=1000>
-</p>
+</div>
 
 **Why `UpdateFC-NP` says `H=33`, not `H=1`.** An UpdateFC carries the running total of credits granted since flow-control initialisation: the 32 of InitFC plus the 1 the read returned. It counts up by one header per non-posted TLP: 34, 35, 36, ... Its data credits go up only after a Configuration Write, which carries a DW of data. A total, not a delta, because DLLPs are never acknowledged or replayed: a lost one is repaired by the next. That is also why UpdateFCs repeat every 30 µs with unchanged values ([Viewing the TLPs](#viewing-the-tlps-in-wavecrux)).
 
@@ -571,15 +571,15 @@ So the pictures show the protocol between the two ends, not how the hard macro r
 
 **Training on four lanes.** Configuration numbers the lanes: TS1 `link=0 lanes=PAD,PAD,PAD,PAD`, then `lanes=0,1,2,3`, then TS2 with both numbers. The decoder deskews the lanes on these ordered sets and reports `Link width x4` and `Lanes aligned x4 (offsets 0,0,0,0)` at 73.97 µs. In each direction, the four lanes switch from training to data together, and the LTSSM reaches L0 (`16`) at 74.5 µs:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux x4 PIPE view: link training on four lanes" src="images/wavecrux-x4-pipe-training.png" width=1000>
-</p>
+</div>
 
 **The first TLP, striped.** The firmware's first Configuration Read leaves at 114.6 µs, earlier than at x1 because the SOC runs on the 125 MHz `user_clk`. Its 18 symbols are spread over the four lanes, starting with STP (`fb`) on lane 0, so they take 3 PIPE clocks instead of 9. The Endpoint answers with `CplD` (22 symbols), `Ack seq=0` and `UpdateFC-NP`, as at x1:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux x4 PIPE view: first TLP and its Ack" src="images/wavecrux-x4-pipe-tlp-ack.png" width=1000>
-</p>
+</div>
 
 ### Every layer at the Endpoint: transaction taps
 
@@ -600,9 +600,9 @@ The C side is [`models/pcievhost/pcievhost-taps.patch`](models/pcievhost/pcievho
 
 With all three layers in one view, you can time a request through the PCIE_2_1 hard macro. Open [`tb.x1g1.direct.TLP-DLL-PIPE.wavecrux`](tb.x1g1.direct.TLP-DLL-PIPE.wavecrux) (both plugins): the TLP view of the SOC's AXI-Stream at the top, the PIPE below, the decoders at the bottom. Here is the firmware's first Configuration Read and its Completion; the markers show where the TLP crosses from one layer to the next:
 
-<p align="center">
+<div align="center">
 <img alt="WaveCrux view of one request through the hard macro, markers a to d" src="images/wavecrux-hm-latency.png" width=1000>
-</p>
+</div>
 
 | Marker | What happens |
 |---|---|
@@ -758,9 +758,9 @@ C has no default parameters, so pass `little_endian` (non-zero: little endian) a
 
 Code compiled for the host or for the `rv32` ISS adds the [HAL](#hal) on top of these APIs. The software layers on the _VProc_ `soc_cpu`; "Native test code", top left, is the case above, and can use the HAL too:
 
-<p align="center">
+<div align="center">
 <img alt="Software layers on the VProc soc_cpu" src="../0.doc/5.sim/soc-cpu-vproc-stack.drawio.png" width=800>
-</p>
+</div>
 
 ### Other Software Use Cases
 
@@ -934,9 +934,9 @@ The `soc_cpu.VPROC.native` wrapper used here has no `mem_model` (the inherited `
 
 The _openPCIE_ logic has one PCIE PIPE downstream port, x1 or x4, Gen1 and Gen2. The test bench drives it with `pcieVHostPipex1` (x1) or our `pcieVHostPipexN` (x4), built on the _pcieVHost_ VIP. Configuring and driving the model: [`models/pcievhost/README.md`](models/pcievhost/README.md).
 
-<p align=center>
+<div align=center>
 <img alt="pcieVHost module" width=750 src="models/pcievhost/images/pcievhost_module.png">
-</p>
+</div>
 
 ### Three ways to attach pcieVHost
 

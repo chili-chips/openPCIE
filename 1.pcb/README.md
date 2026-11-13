@@ -4,9 +4,9 @@ The board is designed for flexible PCIE system development and testing, featurin
 - **(1-to-1) 4-lane Direct connection**
 - **(1-to-4) 1-lane Switched connection**.
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="openPCIE backplane block diagram" width="50%" src="0.doc/openPCIE-BlockDiagram.jpg">
-</p>
+</div>
 
 ####  Key Features
 
@@ -95,24 +95,24 @@ This pin-swapping allows the same physical FPGA plug-in card—always pinned as 
 ---
 ## PCB Views
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Backplane 3D view, from the left" width="70%" src="0.doc/images/PCIe_mini_Backplane_3D_viewer_left.JPG">
-</p>
+</div>
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Backplane 3D view, from the right" width="70%" src="0.doc/images/PCIe_mini_Backplane_3D_viewer_right.JPG">
-</p>
+</div>
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Bare backplane PCB" width="70%" src="0.doc/images/openPCIE-Bare-PCB.png">
-</p>
+</div>
 
 
 Impedance-controlled traces:
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Impedance-controlled traces on the backplane" width="70%" src="0.doc/images/Impedance-controlled-traces.png">
-</p>
+</div>
 
 
 ---
@@ -120,13 +120,13 @@ Impedance-controlled traces:
 
 ### Usecase 1: Direct FPGA_RC to FPGA_EP (x4)
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Direct FPGA RC to FPGA EP setup, view 1" width="70%" src="0.doc/images/Direct FPGA_RC to FPGA_EP 1.JPG">
-</p>
+</div>
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Direct FPGA RC to FPGA EP setup, view 2" width="70%" src="0.doc/images/Direct FPGA_RC to FPGA_EP 2.JPG">
-</p>
+</div>
 
 <table align="center" style="border: none; border-collapse: collapse;">
   <tr style="border: none;">
@@ -147,9 +147,9 @@ This same scenario is also envisioned for testing the interoperability of our [o
 
 ### Usecase 2: Switched FPGA_RC to FPGA_EP (Gen2 x1)
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Switched island with all slots populated" width="70%" src="0.doc/images/openPCIE-switched-all-slots-populated.jpg">
-</p>
+</div>
 
 <table align="center" style="border: none; border-collapse: collapse;">
   <tr style="border: none;">
@@ -169,9 +169,9 @@ By using our _"PCIE Jumper Cable"_, the backplane can be connected to a standard
 
 > **Planned for openPCIE3.** This use case is the main purpose of our next backplane, [openPCIE3](../README.md#future-outlook), which introduces OCuLink: one or two PCs, each over an x4 OCuLink cable, to four x4 EP connectors. Design input is welcome in [#9](https://github.com/chili-chips-ba/openPCIE/issues/9) and [#13](https://github.com/chili-chips-ba/openPCIE/issues/13).
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="PCIE male-to-male jumper cable" width="60%" src="0.doc/images/PCIE-Jumper-Cable-Male2Male.jpg">
-</p>
+</div>
 
 ## PCIE Layout Considerations
 
@@ -181,9 +181,9 @@ The number of vias or other impedance discontinuities on the path of `5Gbps sign
 
 The size of our vias is the standard **0.3mm**. The blind, buried, partial or any other advanced via technologies are not used. That makes for a less expensive PCB and final product, but it also stresses the need to be cautious about placing vias on the diff pairs. Such vias go through all layers, they are longer. They are also not with the smallest possible diameter, therefore overall bulkier and more of a disturbance.
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="PCIE trace impedance" width="65%" src="0.doc/images/PCIE-Trace-Impedance.jpg">
-</p>
+</div>
 
 Our stackup is **4-layer**:
 
@@ -192,30 +192,30 @@ Our stackup is **4-layer**:
 - `L3` - 3.3V Power plane
 - `Bottom` - Microstrip for diff pairs and ordinary lines 
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="4-layer PCB stackup" width="65%" src="0.doc/images/PCIE-stackup.jpg">
     <img alt="Differential trace geometry" width="65%" src="0.doc/images/PCIE-trace-geometry.jpg">
     <img alt="Differential pair symmetry" width="65%" src="0.doc/images/PCIE-symmetry.jpg">
     <img alt="Reference plane under the traces" width="65%" src="0.doc/images/PCIE-ref-plane.jpg">
     <img alt="Routing without stubs" width="65%" src="0.doc/images/PCIE-no-stubs.jpg">
-</p>
+</div>
 
 Check [this](0.doc/PCIE-Layout-Guidelines.SIG.pdf) link for additional physical and routing considerations.
 
 Since we have a unique feature with multiple connectors on the same line, special care is given to minimize the "stubs" at both the start and end of the transmission line. Here is an example of what not to do.
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="Example of stubs to avoid" width="65%" src="0.doc/images/PCB-Stubs-MustAvoid.png">
-</p>
+</div>
 
 
 ## The P and N Swaps
 
 While the PCIE requirements stipulate that, in order to simplify the PCB layout, the electronics should be capable of internally swapping the P and N leads of differential pairs, we did not want to take chances, and have taken extra steps not to depend on the plug-in electronics -- All Ps are routed to the Ps, and all Ns to the Ns, even if that called for a via. 
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="P and N routing without swaps" width="65%" src="0.doc/images/PCIE-P-and-N-swaps.png">
-</p>
+</div>
 
 ## PCIE Connection Model: Generators → Transport → Consumers
 
@@ -262,9 +262,9 @@ Since we feature multiple mechanical connectors ("Slot", M.2, RPi5 FPC) on the s
 ## SI Lab Measurements
 TODO
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="PCIE eye measurements" width="65%" src="0.doc/images/PCIE-Eye-Measurements.jpg">
-</p>
+</div>
 
 
 ## 30 Amp DC/DC Buck Layout Considerations
@@ -275,11 +275,11 @@ The layout of the PCIE backplane is not only about the 5Gbps differential pairs.
 
 The argument is that the digital logic can tolerate +/-10% voltage inaccuracy. Remote Sense, while allowing fine voltage tracking at the very load point, creates a long loop that opens the Pandora box of potential closed-loop instability. The digital logic is more sensitive to transients than to the absolute voltage levels. The argument goes that the design should therefore focus on providing fast dynamic response rather than the static accuracy. 
 
-<p align="center" width="100%">
+<div align="center" width="100%">
     <img alt="DC/DC buck remote sense, part 1" width="65%" src="0.doc/images/Buck-Remote-Sense.0.JPG">
     <img alt="DC/DC buck remote sense, part 2" width="65%" src="0.doc/images/Buck-Remote-Sense.1.JPG">
     <img alt="DC/DC buck remote sense, part 3" width="65%" src="0.doc/images/Buck-Remote-Sense.2.png">
-</p>
+</div>
 
 Check [here](https://e2e.ti.com/support/power-management-group/power-management/f/power-management-forum/1588097/tps54kc23-tps54kc23-remote-sense-stability-or-not) to see what the TI experts had to say on this question.
 
