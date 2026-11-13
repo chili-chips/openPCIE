@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 Chili.CHIPS
+#
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Mirror every push to GitLab: all branches and tags, plain (non-force) pushes.
+# Needs the repo secret GITLAB_MIRROR_SSH_KEY: the private half of a GitLab
+# deploy key with write access that may push to the protected main branch.
+# Without the secret the job does nothing. A branch deleted on GitHub stays on
+# GitLab, and a diverged GitLab branch fails the job instead of being overwritten.
+
+name: Mirror to GitLab
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitlab-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    if: github.repository == 'chili-chips/openPCIE'
+    runs-on: ubuntu-24.04
+    env:
+      GITLAB_URL: git@gitlab.com:chili-chips/openPCIE.git
+      GITLAB_MIRROR_SSH_KEY: ${{ secrets.GITLAB_MIRROR_SSH_KEY }}
+    steps:
+      - name: Checkout all branches and tags
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Push to GitLab
+        run: |
+          if [ -z "$GITLAB_MIRROR_SSH_KEY" ]; then
+            echo "::notice::GITLAB_MIRROR_SSH_KEY is not set: nothing mirrored"
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$GITLAB_MIRROR_SSH_KEY" > ~/.ssh/gitlab_mirror
+          chmod 600 ~/.ssh/gitlab_mirror
+          echo "gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/gitlab_mirror -o IdentitiesOnly=yes -o UserKnownHostsFile=~/.ssh/known_hosts -o StrictHostKeyChecking=yes"
+          specs=$(git for-each-ref --format='%(refname):refs/heads/%(refname:strip=3)' refs/remotes/origin | grep -v '/HEAD$')
+          git push "$GITLAB_URL" $specs
+          git push "$GITLAB_URL" --tags
