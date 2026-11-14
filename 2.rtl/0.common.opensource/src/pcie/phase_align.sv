@@ -40,11 +40,11 @@
 module phase_align
   import link_pkg::*;
 (
-    input logic clk,
-    input logic rst_n,
-    input logic slave,
-    input logic mmcm_lock,
-    input logic active_lane,
+    input  logic             clk,
+    input  logic             rst_n,
+    input  logic             slave,
+    input  logic             mmcm_lock,
+    input  logic             active_lane,
 
     input  logic             txsync_start,
     input  gtp_txsync_stat_t tx_stat,
@@ -106,11 +106,11 @@ module phase_align
     end
   end
 
-  logic dlyrst_done_edge;
-  assign dlyrst_done_edge = (!txdlyrst_r3 && txdlyrst_r2);
-  logic phinit_done_edge;
-  assign phinit_done_edge = (!txphinit_r3 && txphinit_r2);
-  logic phalign_done_edge;
+  logic  dlyrst_done_edge;
+  assign dlyrst_done_edge  = (!txdlyrst_r3 && txdlyrst_r2);
+  logic  phinit_done_edge;
+  assign phinit_done_edge  = (!txphinit_r3 && txphinit_r2);
+  logic  phalign_done_edge;
   assign phalign_done_edge = (!txphalign_r3 && txphalign_r2);
 
   logic txdlyen, txdlyen_nx;

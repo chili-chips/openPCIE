@@ -11,15 +11,15 @@ module edubos5_rf
 #(
     parameter bit TARGET_IS_ASIC = 1'b0  // 1: x0 forced to 0 by a read mux, not RAM init
 ) (
-    input logic            clk,
-    input logic      [4:0] rs1_addr,
-    input logic      [4:0] rs2_addr,
-    input logic      [4:0] rd_addr,
-    input logic            rf_we,
-    input cpu_data_t       rf_wdat,
+    input  logic            clk,
+    input  logic      [4:0] rs1_addr,
+    input  logic      [4:0] rs2_addr,
+    input  logic      [4:0] rd_addr,
+    input  logic            rf_we,
+    input  cpu_data_t       rf_wdat,
 
-    output cpu_data_t rs1,
-    output cpu_data_t rs2
+    output cpu_data_t       rs1,
+    output cpu_data_t       rs2
 );
 
   cpu_data_t rf[32]  /* synthesis syn_ramstyle = "distributed_ram" */;

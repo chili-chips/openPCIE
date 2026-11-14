@@ -202,6 +202,27 @@ ifeq ($(RC),model)
 endif
 
 # --------------------------------------------
+# Simulator
+# --------------------------------------------
+# SIM: xsim (default), or janushdl: JanusHDL (jhdl 0.17 or later; free, closed
+# source), for make, make run and make regress with RC=model PHY=none. It
+# compiles the sources at each run and loads VProc.so as a DPI-C library.
+# RC=hm needs the hard macro's secureip model; PHY=core and PHY=hm need
+# models/pipe_mac_adapter.sv, whose assertions jhdl 0.17 does not read.
+SIM               ?= xsim
+ifeq ($(filter xsim janushdl,$(SIM)),)
+  $(error SIM must be xsim or janushdl (got "$(SIM)"))
+endif
+ifeq ($(SIM),janushdl)
+  ifneq ($(RC)$(PHY),modelnone)
+    $(error SIM=janushdl needs RC=model PHY=none)
+  endif
+  ifneq ($(filter sim rungui gui wavecrux mutants,$(MAKECMDGOALS)),)
+    $(error SIM=janushdl has make, make run and make regress only)
+  endif
+endif
+
+# --------------------------------------------
 # CPU model for the SOC (VProc node 0)
 # --------------------------------------------
 #   rtl   the real RTL core (CORE below), executing the compiled firmware.hex
@@ -435,6 +456,19 @@ XVLOG           ?= xvlog
 XELAB           ?= xelab
 SIMEXE          ?= xsim
 
+# Flags for JanusHDL (SIM=janushdl): the defines of ANALYSEFLAGS and xvlog.defines
+# as +define+, and the source list of TB_PRJ with full paths (obj/jhdl.f), as
+# make regress runs it from obj/regress/<seed>/
+JHDL            ?= jhdl
+JHDL_F           = $(VOBJDIR)/jhdl.f
+JHDL_DEFS        = $(filter-out --define -i $(PCIEDIR)/verilog/headers -f xvlog.defines --prj $(TB_PRJ),$(ANALYSEFLAGS)) \
+                   PCIE_LANES=$(SIM_LANES) PCIE_GEN=$(SIM_GEN) $(if $(filter 4,$(SIM_LANES)),PIPE_X4)
+JHDLFLAGS        = --top $(TB_NAME) $(addprefix +define+,$(JHDL_DEFS)) +incdir+$(PCIEDIR)/verilog/headers -f $(JHDL_F) \
+                   --sv-lib $(CURDIR)/$(VPROC_PLI) $(addprefix +,$(PLUSARGS))
+
+# What make run and make regress start
+SIM_RUN          = $(if $(filter janushdl,$(SIM)),$(JHDL) $(JHDLFLAGS),$(SIMEXE) -R $(SIMFLAGS))
+
 #
 # Formatting
 #
@@ -519,11 +553,19 @@ $(VPROC_PLI): $(USERLIB) $(RV32LIB)
 # Compile simulation
 #
 # RC=model runs no firmware
+ifeq ($(SIM),janushdl)
+# No compile step. Left out of the list: mem_model.sv and pipe_mac_adapter.sv,
+# which nothing instantiates here (DPI-C functions that are not in VProc.so;
+# assertions)
+sysverilog: $(VPROC_PLI) | $(VOBJDIR)
+	@sed -n -e '/mem_model\.sv/d' -e '/pipe_mac_adapter\.sv/d' -e 's#^sv work #$(CURDIR)/#p' $(TB_PRJ) > $(JHDL_F)
+else
 sysverilog: $(VPROC_PLI) $(if $(filter hm,$(RC)),firmware.hex)
 	@echo "--define PCIE_LANES=$(SIM_LANES) --define PCIE_GEN=$(SIM_GEN)$(if $(filter 4,$(SIM_LANES)), --define PIPE_X4)" > xvlog.defines
 	@$(XVLOG) $(ANALYSEFLAGS)
 	@$(XVLOG) $(GLBL)
 	@$(XELAB) $(ELABFLAGS)
+endif
 
 # Built and copied on every build, not by date: a tree on a network share can
 # carry timestamps from the future, and a stale image would then look newer
@@ -561,14 +603,14 @@ sim: sysverilog run_us.cfg $(RUN_CFG)
 DUMP_TAG = $(if $(filter rtl,$(CPU)),$(filter-out $(CORE_DEF),$(CORE)),$(CPU))$(if $(filter 1,$(SIM_SPEED_TEST)),.speed)$(if $(filter-out none,$(SIM_FAULT)),.fault-$(SIM_FAULT))$(if $(filter 1,$(A7RC)),.a7rc)$(if $(filter-out 1,$(SEED)),.seed$(SEED))
 DUMP_FST = tb.x$(SIM_LANES)g$(SIM_GEN).$(if $(filter model,$(RC)),model$(if $(filter serial,$(IFACE)),.serial)$(if $(filter-out none,$(PHY)),.phy-$(PHY)),$(VARIANT))$(if $(filter 1,$(SIM_LANE_REVERSE)),.rev)$(if $(DUMP_TAG),.$(patsubst .%,%,$(DUMP_TAG))).fst
 run: sysverilog run_us.cfg $(RUN_CFG)
-	@rm -f xsim.log; A7RC_SEED=$(SEED) $(SIMEXE) -R $(SIMFLAGS); rc=$$?; grep -q '^Fatal:' xsim.log && rc=1; \
+	@rm -f xsim.log; A7RC_SEED=$(SEED) $(SIM_RUN); rc=$$?; $(if $(filter xsim,$(SIM)),grep -q '^Fatal:' xsim.log && rc=1;) \
 	$(if $(findstring DUMP_VCD,$(USRSIMOPTS)),bash tools/vcd2fst.sh tb.vcd $(DUMP_FST);) exit $$rc
 
 # The tester over seeds 1 to SEEDS, each in obj/regress/<seed>/ with its own
 # copy of the snapshot (xsim.dir), so seeds can run side by side
 regress: sysverilog run_us.cfg $(RUN_CFG)
 	@bash tools/regress.sh $(SEEDS) $(REGRESS_JOBS) $(REGRESS_S) $(REGRESS_TRIES) $(REGRESS_QUIET) \
-	    $(VOBJDIR)/regress "xsim.dir $(notdir $(VPROC_PLI)) run_us.cfg $(RUN_CFG)" -- $(SIMEXE) -R $(SIMFLAGS); s=$$?; \
+	    $(VOBJDIR)/regress "xsim.dir $(notdir $(VPROC_PLI)) run_us.cfg $(RUN_CFG)" -- $(SIM_RUN); s=$$?; \
 	$(if $(filter fail,$(REGRESS_DUMP)),for d in $(VOBJDIR)/regress/*/; do [ ! -e $$d/failed ] || \
 	    $(MAKE) --no-print-directory wavecrux RC=model SEED=$$(basename $$d) WCX_OPEN=0; done;) exit $$s
 
@@ -616,6 +658,7 @@ help:
 	@$(info $(SPC) $(SPC) $(SPC)   vproc  the 3.sw firmware, compiled for the host (usercode/VUserMain0.cpp))
 	@$(info $(SPC) $(SPC) $(SPC)   iss    the rv32 ISS, executing firmware.elf)
 	@$(info $(SPC) $(SPC) CORE:         edubos5, edubos5_3stg or picorv32: the RTL core, or the ISS timing model (default edubos5, at x4 Gen2 edubos5_3stg))
+	@$(info $(SPC) $(SPC) SIM:          xsim, or janushdl (JanusHDL, jhdl 0.17 or later) for make, run and regress with RC=model PHY=none (default xsim))
 	@$(info $(SPC) $(SPC) RC:           hm (the RC_opensource DUT, tb.sv) or model (the Artix-7 RC model, tb_rc.sv; direct) (default hm))
 	@$(info $(SPC) $(SPC) IFACE:        with RC=model: pipe, or serial (the serial line, 8b/10b and scrambling on; tb_rc_serial.sv) (default pipe))
 	@$(info $(SPC) $(SPC) PHY:          with RC=model IFACE=pipe: none; core (the RC model as the MAC of pipe_phy_core, through pipe_mac_adapter); hm (the same in the hard macro's socket, tb_socket.sv) (default none))

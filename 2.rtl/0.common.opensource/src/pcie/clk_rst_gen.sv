@@ -41,18 +41,18 @@ module clk_rst_gen
   import link_pkg::*;
   import pcie_pkg::*;
 (
-    input logic txoutclk,     // GT TXOUTCLK: the 100 MHz refclk, passed through
-    input logic perst_n,      // PERST# from the connector, active low
-    input logic pipe_clk_sel, // 1 = 250 MHz (Gen2), voted by all lanes (gtp_wrapper)
+    input  logic txoutclk,      // GT TXOUTCLK: the 100 MHz refclk, passed through
+    input  logic perst_n,       // PERST# from the connector, active low
+    input  logic pipe_clk_sel,  // 1 = 250 MHz (Gen2), voted by all lanes (gtp_wrapper)
 
-    output logic clk125,   // 125 MHz: GT DRP, PLL0 power-up, reset release
-    output logic rst125_n, // the design's reset, released on clk125
+    output logic clk125,        // 125 MHz: GT DRP, PLL0 power-up, reset release
+    output logic rst125_n,      // the design's reset, released on clk125
 
-    output logic user_clk,   // 62.5 / 125 / 250 MHz: PCIE_2_1 USERCLK, TRN bridge, SOC
-    output logic user_rst_n, // rst125_n, released on user_clk
+    output logic user_clk,      // 62.5 / 125 / 250 MHz: PCIE_2_1 USERCLK, TRN bridge, SOC
+    output logic user_rst_n,    // rst125_n, released on user_clk
 
-    output logic pipe_clk,    // PIPE clock: 125 MHz Gen1, 250 MHz Gen2
-    output logic pipe_rst_n,  // rst125_n, released on pipe_clk
+    output logic pipe_clk,      // PIPE clock: 125 MHz Gen1, 250 MHz Gen2
+    output logic pipe_rst_n,    // rst125_n, released on pipe_clk
     output logic mmcm_lock
 );
 
@@ -100,24 +100,24 @@ module clk_rst_gen
 
   (* ASYNC_REG = "TRUE" *)
   FDCE #(
-      .INIT(1'b0)
+      .INIT (1'b0)
   ) u_rst_sync0 (  // INIT = 0: reset asserted after configuration
-      .C  (clk125),
-      .CE (1'b1),
-      .CLR(~(perst_n & mmcm_lock)),  // PERST# or no MMCM lock: reset, asynchronously
-      .D  (1'b1),
-      .Q  (rst_sync[0])
+      .C   (clk125),
+      .CE  (1'b1),
+      .CLR (~(perst_n & mmcm_lock)),  // PERST# or no MMCM lock: reset, asynchronously
+      .D   (1'b1),
+      .Q   (rst_sync[0])
   );
 
   (* ASYNC_REG = "TRUE" *)
   FDCE #(
-      .INIT(1'b0)
+      .INIT (1'b0)
   ) u_rst_sync1 (  // INIT = 0: reset asserted after configuration
-      .C  (clk125),
-      .CE (1'b1),
-      .CLR(~(perst_n & mmcm_lock)),
-      .D  (rst_sync[0]),
-      .Q  (rst_sync[1])
+      .C   (clk125),
+      .CE  (1'b1),
+      .CLR (~(perst_n & mmcm_lock)),
+      .D   (rst_sync[0]),
+      .Q   (rst_sync[1])
   );
 
   assign rst125_n = rst_sync[1];
@@ -158,28 +158,28 @@ module clk_rst_gen
   assign pipe_rst_n = pipe_rst_q;
 
   BUFG u_txoutclk (
-      .I(txoutclk),
-      .O(refclk)
+      .I (txoutclk),
+      .O (refclk)
   );
 
   MMCME2_ADV #(
-      .BANDWIDTH           ("OPTIMIZED"),
-      .CLKOUT4_CASCADE     ("FALSE"),
-      .COMPENSATION        ("ZHOLD"),
-      .STARTUP_WAIT        ("FALSE"),
-      .DIVCLK_DIVIDE       (DIVCLK_DIVIDE),
-      .CLKFBOUT_MULT_F     (CLKFBOUT_MULT_F),
-      .CLKFBOUT_USE_FINE_PS("FALSE"),
-      .CLKOUT0_DIVIDE_F    (CLKOUT0_DIVIDE_F),
-      .CLKOUT0_USE_FINE_PS ("FALSE"),
-      .CLKOUT1_DIVIDE      (CLKOUT1_DIVIDE),
-      .CLKOUT1_USE_FINE_PS ("FALSE"),
-      .CLKOUT2_DIVIDE      (CLKOUT2_DIVIDE),
-      .CLKOUT2_USE_FINE_PS ("FALSE"),
-      .CLKOUT3_DIVIDE      (CLKOUT3_DIVIDE),
-      .CLKOUT3_USE_FINE_PS ("FALSE"),
-      .CLKOUT4_DIVIDE      (CLKOUT4_DIVIDE),
-      .CLKOUT4_USE_FINE_PS ("FALSE"),
+      .BANDWIDTH            ("OPTIMIZED"),
+      .CLKOUT4_CASCADE      ("FALSE"),
+      .COMPENSATION         ("ZHOLD"),
+      .STARTUP_WAIT         ("FALSE"),
+      .DIVCLK_DIVIDE        (DIVCLK_DIVIDE),
+      .CLKFBOUT_MULT_F      (CLKFBOUT_MULT_F),
+      .CLKFBOUT_USE_FINE_PS ("FALSE"),
+      .CLKOUT0_DIVIDE_F     (CLKOUT0_DIVIDE_F),
+      .CLKOUT0_USE_FINE_PS  ("FALSE"),
+      .CLKOUT1_DIVIDE       (CLKOUT1_DIVIDE),
+      .CLKOUT1_USE_FINE_PS  ("FALSE"),
+      .CLKOUT2_DIVIDE       (CLKOUT2_DIVIDE),
+      .CLKOUT2_USE_FINE_PS  ("FALSE"),
+      .CLKOUT3_DIVIDE       (CLKOUT3_DIVIDE),
+      .CLKOUT3_USE_FINE_PS  ("FALSE"),
+      .CLKOUT4_DIVIDE       (CLKOUT4_DIVIDE),
+      .CLKOUT4_USE_FINE_PS  ("FALSE"),
       // FIXME SYN_YOSYS_BUG (openPCIE #20): Yosys's SystemVerilog front end (read_slang / sv-elab)
       // cannot pass real-valued parameters to a primitive -- see
       // https://github.com/povik/sv-elab/issues/282 . The values below are all
@@ -201,61 +201,61 @@ module clk_rst_gen
 `endif
       .CLKIN1_PERIOD       (CLKIN1_PERIOD)
   ) u_mmcm (
-      .CLKIN1      (refclk),
-      .CLKIN2      (1'd0),
-      .CLKINSEL    (1'd1),
-      .CLKFBIN     (mmcm_fb),
-      .RST         (~perst_n),       // PERST#: re-lock on a stable refclk
-      .PWRDWN      (1'd0),
-      .CLKFBOUT    (mmcm_fb),
-      .CLKFBOUTB   (  /*LINT:OK*/),
-      .CLKOUT0     (clk_125mhz),
-      .CLKOUT0B    (  /*LINT:OK*/),
-      .CLKOUT1     (clk_250mhz),
-      .CLKOUT1B    (  /*LINT:OK*/),
-      .CLKOUT2     (user_clk_mmcm),
-      .CLKOUT2B    (  /*LINT:OK*/),
-      .CLKOUT3     (  /*LINT:OK*/),
-      .CLKOUT3B    (  /*LINT:OK*/),
-      .CLKOUT4     (  /*LINT:OK*/),
-      .CLKOUT5     (  /*LINT:OK*/),
-      .CLKOUT6     (  /*LINT:OK*/),
-      .LOCKED      (mmcm_lock),
-      .DCLK        (1'd0),
-      .DADDR       ('0),
-      .DEN         (1'd0),
-      .DWE         (1'd0),
-      .DI          ('0),
-      .DO          (  /*LINT:OK*/),
-      .DRDY        (  /*LINT:OK*/),
-      .PSCLK       (1'd0),
-      .PSEN        (1'd0),
-      .PSINCDEC    (1'd0),
-      .PSDONE      (  /*LINT:OK*/),
-      .CLKINSTOPPED(  /*LINT:OK*/),
-      .CLKFBSTOPPED(  /*LINT:OK*/)
+      .CLKIN1       (refclk),
+      .CLKIN2       (1'd0),
+      .CLKINSEL     (1'd1),
+      .CLKFBIN      (mmcm_fb),
+      .RST          (~perst_n),       // PERST#: re-lock on a stable refclk
+      .PWRDWN       (1'd0),
+      .CLKFBOUT     (mmcm_fb),
+      .CLKFBOUTB    (  /*LINT:OK*/),
+      .CLKOUT0      (clk_125mhz),
+      .CLKOUT0B     (  /*LINT:OK*/),
+      .CLKOUT1      (clk_250mhz),
+      .CLKOUT1B     (  /*LINT:OK*/),
+      .CLKOUT2      (user_clk_mmcm),
+      .CLKOUT2B     (  /*LINT:OK*/),
+      .CLKOUT3      (  /*LINT:OK*/),
+      .CLKOUT3B     (  /*LINT:OK*/),
+      .CLKOUT4      (  /*LINT:OK*/),
+      .CLKOUT5      (  /*LINT:OK*/),
+      .CLKOUT6      (  /*LINT:OK*/),
+      .LOCKED       (mmcm_lock),
+      .DCLK         (1'd0),
+      .DADDR        ('0),
+      .DEN          (1'd0),
+      .DWE          (1'd0),
+      .DI           ('0),
+      .DO           (  /*LINT:OK*/),
+      .DRDY         (  /*LINT:OK*/),
+      .PSCLK        (1'd0),
+      .PSEN         (1'd0),
+      .PSINCDEC     (1'd0),
+      .PSDONE       (  /*LINT:OK*/),
+      .CLKINSTOPPED (  /*LINT:OK*/),
+      .CLKFBSTOPPED (  /*LINT:OK*/)
   );
 
   BUFGCTRL u_pipe_clk (
-      .CE0    (1'd1),
-      .CE1    (1'd1),
-      .I0     (clk_125mhz),
-      .I1     (clk_250mhz),
-      .IGNORE0(1'd0),
-      .IGNORE1(1'd0),
-      .S0     (~pipe_clk_sel),
-      .S1     (pipe_clk_sel),
-      .O      (pipe_clk)
+      .CE0     (1'd1),
+      .CE1     (1'd1),
+      .I0      (clk_125mhz),
+      .I1      (clk_250mhz),
+      .IGNORE0 (1'd0),
+      .IGNORE1 (1'd0),
+      .S0      (~pipe_clk_sel),
+      .S1      (pipe_clk_sel),
+      .O       (pipe_clk)
   );
 
   BUFG u_clk125 (
-      .I(clk_125mhz),
-      .O(clk125)
+      .I (clk_125mhz),
+      .O (clk125)
   );
 
   BUFG u_user_clk (
-      .I(user_clk_mmcm),
-      .O(user_clk)
+      .I (user_clk_mmcm),
+      .O (user_clk)
   );
 
 

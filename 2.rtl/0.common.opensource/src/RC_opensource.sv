@@ -41,19 +41,19 @@ module RC_opensource
   import link_pkg::*;
   import pcie_pkg::*;
 (
-    input logic refclk_p,
-    input logic refclk_n,
+    input  logic                  refclk_p,
+    input  logic                  refclk_n,
 
     input  logic [PCIE_LANES-1:0] rxn,
     input  logic [PCIE_LANES-1:0] rxp,
     output logic [PCIE_LANES-1:0] txn,
     output logic [PCIE_LANES-1:0] txp,
 
-    input logic perst_n,  // PERST# from the connector (pin J1), active low
+    input  logic                  perst_n,      // PERST# from the connector (pin J1), active low
 
-    output logic [3:0] led_link_up,
+    output logic [3:0]            led_link_up,
 
-    output logic clk_req
+    output logic                  clk_req
 );
 
 
@@ -67,46 +67,46 @@ module RC_opensource
 
   // TLP streams between the SOC and the PCIE stack
   axis_if #(
-      .DATA_W(TRN_DATA_W),
-      .USER_W($bits(pcie_tx_tuser_t))
+      .DATA_W (TRN_DATA_W),
+      .USER_W ($bits(pcie_tx_tuser_t))
   ) s_axis_tx ();
   axis_if #(
-      .DATA_W(TRN_DATA_W),
-      .USER_W($bits(pcie_rx_tuser_t))
+      .DATA_W (TRN_DATA_W),
+      .USER_W ($bits(pcie_rx_tuser_t))
   ) m_axis_rx ();
 
   cfg_if cfg ();
 
   pcie_top u_pcie (
-      .pci_exp_txp(txp),
-      .pci_exp_txn(txn),
-      .pci_exp_rxp(rxp),
-      .pci_exp_rxn(rxn),
+      .pci_exp_txp (txp),
+      .pci_exp_txn (txn),
+      .pci_exp_rxp (rxp),
+      .pci_exp_rxn (rxn),
 
-      .refclk_p(refclk_p),
-      .refclk_n(refclk_n),
-      .perst_n (perst_n),
+      .refclk_p (refclk_p),
+      .refclk_n (refclk_n),
+      .perst_n  (perst_n),
 
-      .user_clk   (user_clk),
-      .core_rst_n (core_rst_n),
-      .trn_link_up(trn_link_up),
+      .user_clk    (user_clk),
+      .core_rst_n  (core_rst_n),
+      .trn_link_up (trn_link_up),
 
-      .s_axis_tx(s_axis_tx),
-      .m_axis_rx(m_axis_rx),
+      .s_axis_tx (s_axis_tx),
+      .m_axis_rx (m_axis_rx),
 
-      .cfg(cfg)
+      .cfg (cfg)
   );
 
   riscv_pcie_soc u_soc (
-      .clk   (user_clk),
-      .resetn(core_rst_n),
+      .clk    (user_clk),
+      .resetn (core_rst_n),
 
-      .s_axis_tx(s_axis_tx),
-      .m_axis_rx(m_axis_rx),
+      .s_axis_tx (s_axis_tx),
+      .m_axis_rx (m_axis_rx),
 
-      .cfg(cfg),
+      .cfg (cfg),
 
-      .fw_pass(fw_pass)
+      .fw_pass (fw_pass)
   );
 
   // LEDs are active low: [3] the firmware passed its self-test, [2] link up

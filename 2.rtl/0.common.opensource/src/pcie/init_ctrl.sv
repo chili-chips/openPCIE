@@ -40,15 +40,15 @@
 module init_ctrl
   import link_pkg::*;
 (
-    input logic pipe_clk,     // PIPE clock
-    input logic clk125,       // 125 MHz, runs before PLL0 is powered up
-    input logic pipe_rst_n,   // released on pipe_clk
-    input logic gtpll0_lock,  // PLL0LOCK of GTPE2_COMMON
-    input logic mmcm_lock,
+    input  logic       pipe_clk,         // PIPE clock
+    input  logic       clk125,           // 125 MHz, runs before PLL0 is powered up
+    input  logic       pipe_rst_n,       // released on pipe_clk
+    input  logic       gtpll0_lock,      // PLL0LOCK of GTPE2_COMMON
+    input  logic       mmcm_lock,
 
-    gtp_if.ctrl gtp,  // reads the lane status, drives gtp.rst
+           gtp_if.ctrl gtp,              // reads the lane status, drives gtp.rst
 
-    output logic gtpll0_reset_req  // hold PLL0 in reset (lane init and DRP)
+    output logic       gtpll0_reset_req  // hold PLL0 in reset (lane init and DRP)
 );
 
   localparam logic [5:0] CFG_WAIT_MAX = 6'd63;
@@ -113,24 +113,24 @@ module init_ctrl
     end
   end
 
-  logic resetdone_lo;
+  logic  resetdone_lo;
   assign resetdone_lo = &(~resetdone_r2);
-  logic resetdone_hi;
+  logic  resetdone_hi;
   assign resetdone_hi = &resetdone_r2;
-  logic drp_busy;
-  assign drp_busy = &(~drp_done_r2);
-  logic drp_ready;
-  assign drp_ready = &drp_done_r2;
-  logic rxpma_hi;
-  assign rxpma_hi = &rxpma_r2;
-  logic rxpma_lo;
-  assign rxpma_lo = &(~rxpma_r2);
-  logic phystatus_lo;
+  logic  drp_busy;
+  assign drp_busy     = &(~drp_done_r2);
+  logic  drp_ready;
+  assign drp_ready    = &drp_done_r2;
+  logic  rxpma_hi;
+  assign rxpma_hi     = &rxpma_r2;
+  logic  rxpma_lo;
+  assign rxpma_lo     = &(~rxpma_r2);
+  logic  phystatus_lo;
   assign phystatus_lo = &(~phystatus_r2);
-  logic txsync_lo;
-  assign txsync_lo = &(~txsyncdone_r2);
-  logic txsync_hi;
-  assign txsync_hi = &txsyncdone_r2;
+  logic  txsync_lo;
+  assign txsync_lo    = &(~txsyncdone_r2);
+  logic  txsync_hi;
+  assign txsync_hi    = &txsyncdone_r2;
 
   logic [5:0] cfg_wait_cnt;
 
@@ -145,7 +145,7 @@ module init_ctrl
       cfg_wait_cnt <= cfg_wait_cnt + 6'd1;
     end
   end
-  logic cfg_wait_done;
+  logic  cfg_wait_done;
   assign cfg_wait_done = (cfg_wait_cnt == CFG_WAIT_MAX);
 
   always_comb begin
@@ -178,7 +178,7 @@ module init_ctrl
   logic gtreset_d;
   assign gtreset_d = (state == ST_GTPLL0_HOLD)  || (state == ST_DRP16_REQ) ||
                      (state == ST_DRP16_ACK) || (state == ST_GTPLL0_LOCK);
-  logic userrdy_d;
+  logic  userrdy_d;
   assign userrdy_d = (state == ST_LOCK_WAIT) ? mmcm_locked : userrdy_q;
 
   always_ff @(posedge pipe_clk or negedge pipe_rst_n) begin

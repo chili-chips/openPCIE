@@ -84,65 +84,65 @@ module pcie_top
   logic pipe_rst_n;  // the same, released on pipe_clk
 
   clk_rst_gen u_clk_rst_gen (
-      .txoutclk    (pipe_txoutclk),
-      .perst_n     (perst_n),
-      .rst125_n    (rst125_n),
-      .user_rst_n  (user_rst_n),
-      .pipe_clk_sel(pipe_clk_sel),
+      .txoutclk     (pipe_txoutclk),
+      .perst_n      (perst_n),
+      .rst125_n     (rst125_n),
+      .user_rst_n   (user_rst_n),
+      .pipe_clk_sel (pipe_clk_sel),
 
-      .pipe_clk  (pipe_clk),
-      .pipe_rst_n(pipe_rst_n),
-      .clk125    (clk125),
-      .user_clk  (user_clk),
-      .mmcm_lock (clk_mmcm_lock)
+      .pipe_clk   (pipe_clk),
+      .pipe_rst_n (pipe_rst_n),
+      .clk125     (clk125),
+      .user_clk   (user_clk),
+      .mmcm_lock  (clk_mmcm_lock)
   );
 
   phy_top u_phy_top (
-      .pl_ltssm_state(pl_ltssm_state_int),
-      .pipe_mac      (pipe_mac),
+      .pl_ltssm_state (pl_ltssm_state_int),
+      .pipe_mac       (pipe_mac),
 
-      .pci_exp_txn(pci_exp_txn),
-      .pci_exp_txp(pci_exp_txp),
-      .pci_exp_rxn(pci_exp_rxn),
-      .pci_exp_rxp(pci_exp_rxp),
+      .pci_exp_txn (pci_exp_txn),
+      .pci_exp_txp (pci_exp_txp),
+      .pci_exp_rxn (pci_exp_rxn),
+      .pci_exp_rxp (pci_exp_rxp),
 
-      .refclk_p  (refclk_p),
-      .refclk_n  (refclk_n),
-      .rst125_n  (rst125_n),
-      .pipe_rst_n(pipe_rst_n),
+      .refclk_p   (refclk_p),
+      .refclk_n   (refclk_n),
+      .rst125_n   (rst125_n),
+      .pipe_rst_n (pipe_rst_n),
 
-      .pipe_clk_in      (pipe_clk),
-      .pipe_drp_clk_in  (clk125),
-      .pipe_mmcm_lock_in(clk_mmcm_lock),
-      .pipe_txoutclk_out(pipe_txoutclk),
-      .pipe_clk_sel_out (pipe_clk_sel),
+      .pipe_clk_in       (pipe_clk),
+      .pipe_drp_clk_in   (clk125),
+      .pipe_mmcm_lock_in (clk_mmcm_lock),
+      .pipe_txoutclk_out (pipe_txoutclk),
+      .pipe_clk_sel_out  (pipe_clk_sel),
 
-      .phy_rdy_n(phy_rdy_n)
+      .phy_rdy_n (phy_rdy_n)
   );
 
   pcie_core u_core (
-      .core_rst_n (core_rst_n),
-      .trn_link_up(trn_link_up),
+      .core_rst_n  (core_rst_n),
+      .trn_link_up (trn_link_up),
 
-      .s_axis_tx(s_axis_tx),
-      .m_axis_rx(m_axis_rx),
+      .s_axis_tx (s_axis_tx),
+      .m_axis_rx (m_axis_rx),
 
-      .tx_buf_avail(cfg.tx_buf_avail),
+      .tx_buf_avail (cfg.tx_buf_avail),
 
-      .cfg_dev_id        (CFG_DEV_ID),
-      .cfg_vend_id       (CFG_VEND_ID),
-      .cfg_rev_id        (CFG_REV_ID),
-      .cfg_subsys_id     (CFG_SUBSYS_ID),
-      .cfg_subsys_vend_id(CFG_SUBSYS_VEND_ID),
+      .cfg_dev_id         (CFG_DEV_ID),
+      .cfg_vend_id        (CFG_VEND_ID),
+      .cfg_rev_id         (CFG_REV_ID),
+      .cfg_subsys_id      (CFG_SUBSYS_ID),
+      .cfg_subsys_vend_id (CFG_SUBSYS_VEND_ID),
 
-      .cfg_msg_received_err_fatal(cfg.msg_err_fatal),
+      .cfg_msg_received_err_fatal (cfg.msg_err_fatal),
 
-      .pl_ltssm_state(pl_ltssm_state_int),
+      .pl_ltssm_state (pl_ltssm_state_int),
 
-      .pipe_mac (pipe_mac),
-      .phy_rdy_n(phy_rdy_n),
-      .pipe_clk (pipe_clk),
-      .user_clk (user_clk)
+      .pipe_mac  (pipe_mac),
+      .phy_rdy_n (phy_rdy_n),
+      .pipe_clk  (pipe_clk),
+      .user_clk  (user_clk)
   );
 
   // core_rst_n: the user_clk reset of the TRN modules and the SOC. PERST# (by

@@ -40,12 +40,12 @@
 module trn_tx
   import pcie_pkg::*;
 (
-    axis_if.slave s_axis_tx,
-    trn_if.user   trn,        // TX half: td ... tecrc_gen, tdst_rdy, link_up
+           axis_if.slave s_axis_tx,
+           trn_if.user   trn,           // TX half: td ... tecrc_gen, tdst_rdy, link_up
 
-    input logic tready_thrtl,
-    input logic user_clk,
-    input logic core_rst_n
+    input  logic         tready_thrtl,
+    input  logic         user_clk,
+    input  logic         core_rst_n
 );
 
 
@@ -61,9 +61,9 @@ module trn_tx
   logic                            reg_disable_trn;
   logic                            reg_tsrc_rdy;
 
-  logic                            axi_beat_live;
-  assign axi_beat_live = s_axis_tx.tvalid && s_axis_tx.tready;
-  logic axi_end_packet;
+  logic  axi_beat_live;
+  assign axi_beat_live  = s_axis_tx.tvalid && s_axis_tx.tready;
+  logic  axi_end_packet;
   assign axi_end_packet = axi_beat_live && s_axis_tx.tlast;
 
   assign trn.td         = {reg_tdata[31:0], reg_tdata[63:32]};

@@ -40,68 +40,68 @@
 module phy_top
   import link_pkg::*;
 (
-    input logic [5:0] pl_ltssm_state,
+    input  logic       [5:0]            pl_ltssm_state,
 
-    pipe_if.phy pipe_mac,
+           pipe_if.phy                  pipe_mac,
 
-    output logic [PCIE_LANES-1:0] pci_exp_txn,
-    output logic [PCIE_LANES-1:0] pci_exp_txp,
-    input  logic [PCIE_LANES-1:0] pci_exp_rxn,
-    input  logic [PCIE_LANES-1:0] pci_exp_rxp,
+    output logic       [PCIE_LANES-1:0] pci_exp_txn,
+    output logic       [PCIE_LANES-1:0] pci_exp_txp,
+    input  logic       [PCIE_LANES-1:0] pci_exp_rxn,
+    input  logic       [PCIE_LANES-1:0] pci_exp_rxp,
 
-    input logic refclk_p,   // 100 MHz PCIE REFCLK+
-    input logic refclk_n,   // REFCLK-
-    input logic rst125_n,   // released on clk125
-    input logic pipe_rst_n, // released on pipe_clk
+    input  logic                        refclk_p,           // 100 MHz PCIE REFCLK+
+    input  logic                        refclk_n,           // REFCLK-
+    input  logic                        rst125_n,           // released on clk125
+    input  logic                        pipe_rst_n,         // released on pipe_clk
 
-    input  logic pipe_clk_in,
-    input  logic pipe_drp_clk_in,
-    input  logic pipe_mmcm_lock_in,
-    output logic pipe_txoutclk_out,
-    output logic pipe_clk_sel_out,
+    input  logic                        pipe_clk_in,
+    input  logic                        pipe_drp_clk_in,
+    input  logic                        pipe_mmcm_lock_in,
+    output logic                        pipe_txoutclk_out,
+    output logic                        pipe_clk_sel_out,
 
-    output logic phy_rdy_n
+    output logic                        phy_rdy_n
 );
 
   logic [PCIE_LANES-1:0] phystatus_rst;
 
   // PIPE towards gtp_wrapper (GTP side, 32-bit per lane)
   pipe_if #(
-      .LANES (PCIE_LANES),
-      .DATA_W(32)
+      .LANES  (PCIE_LANES),
+      .DATA_W (32)
   ) pipe_phy ();
 
   logic all_phystatus_rst;
 
   mac2phy u_mac2phy (
-      .pipe_mac      (pipe_mac),
-      .pipe_phy      (pipe_phy),
-      .pl_ltssm_state(pl_ltssm_state),
-      .pipe_clk      (pipe_clk_in),
-      .pipe_rst_n    (pipe_rst_n),
-      .phy_rdy_n     (phy_rdy_n)
+      .pipe_mac       (pipe_mac),
+      .pipe_phy       (pipe_phy),
+      .pl_ltssm_state (pl_ltssm_state),
+      .pipe_clk       (pipe_clk_in),
+      .pipe_rst_n     (pipe_rst_n),
+      .phy_rdy_n      (phy_rdy_n)
   );
 
   gtp_wrapper u_gtp_wrapper (
-      .refclk_p  (refclk_p),
-      .refclk_n  (refclk_n),
-      .rst125_n  (rst125_n),
-      .pipe_rst_n(pipe_rst_n),
+      .refclk_p   (refclk_p),
+      .refclk_n   (refclk_n),
+      .rst125_n   (rst125_n),
+      .pipe_rst_n (pipe_rst_n),
 
-      .pipe(pipe_phy),
-      .txp (pci_exp_txp),
-      .txn (pci_exp_txn),
+      .pipe (pipe_phy),
+      .txp  (pci_exp_txp),
+      .txn  (pci_exp_txn),
 
-      .rxp(pci_exp_rxp),
-      .rxn(pci_exp_rxn),
+      .rxp (pci_exp_rxp),
+      .rxn (pci_exp_rxn),
 
-      .phystatus_rst(phystatus_rst),
+      .phystatus_rst (phystatus_rst),
 
-      .pipe_clk    (pipe_clk_in),
-      .clk125      (pipe_drp_clk_in),
-      .mmcm_lock   (pipe_mmcm_lock_in),
-      .txoutclk    (pipe_txoutclk_out),
-      .pipe_clk_sel(pipe_clk_sel_out)
+      .pipe_clk     (pipe_clk_in),
+      .clk125       (pipe_drp_clk_in),
+      .mmcm_lock    (pipe_mmcm_lock_in),
+      .txoutclk     (pipe_txoutclk_out),
+      .pipe_clk_sel (pipe_clk_sel_out)
   );
 
   assign all_phystatus_rst = &phystatus_rst;

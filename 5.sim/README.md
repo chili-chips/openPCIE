@@ -820,6 +820,7 @@ Command line configurable variables:
      vproc  the 3.sw firmware, compiled for the host (usercode/VUserMain0.cpp)
      iss    the rv32 ISS, executing firmware.elf
   CORE:         edubos5, edubos5_3stg or picorv32: the RTL core, or the ISS timing model (default edubos5, at x4 Gen2 edubos5_3stg)
+  SIM:          xsim, or janushdl (JanusHDL, jhdl 0.17 or later) for make, run and regress with RC=model PHY=none (default xsim)
   RC:           hm (the RC_opensource DUT, tb.sv) or model (the Artix-7 RC model, tb_rc.sv; direct) (default hm)
   IFACE:        with RC=model: pipe, or serial (the serial line, 8b/10b and scrambling on; tb_rc_serial.sv) (default pipe)
   PHY:          with RC=model IFACE=pipe: none; core (the RC model as the MAC of pipe_phy_core, through pipe_mac_adapter); hm (the same in the hard macro's socket, tb_socket.sv) (default none)
@@ -1165,7 +1166,10 @@ make run RC=model SIM_SPEED_TEST=1                 # the endpoint also takes the
 make run RC=model SIM_GEN=1                        # Gen1 only
 make run RC=model IFACE=serial                     # on the serial line, 8b/10b and scrambling on
 make run RC=model A7RC=1                           # literal: only what the lab RC sends
+make run RC=model SIM=janushdl                     # in JanusHDL; also make regress
 ```
+
+`SIM=janushdl` runs the models in [JanusHDL](https://que.no/janushdl/) (`jhdl` 0.17 or later; free, closed source), which loads the same `VProc.so` as a DPI-C library. Not yet: 0.17.0 stops at elaboration, on the four struct constants of `link_pkg.sv`. With those written as concatenations in a scratch copy, x1 at the PIPE gives XSIM's results at the same simulated times, in about 35 s a run (XSIM: 13 s with its build).
 
 #### Drive and check
 

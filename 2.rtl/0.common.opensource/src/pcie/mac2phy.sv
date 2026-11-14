@@ -41,14 +41,14 @@ module mac2phy
   import link_pkg::*;
 (
     // MAC side: 16-bit PIPE from pcie_core
-    pipe_if.phy pipe_mac,
+           pipe_if.phy       pipe_mac,
     // PHY side: 32-bit PIPE to gtp_wrapper
-    pipe_if.mac pipe_phy,
+           pipe_if.mac       pipe_phy,
 
-    input logic [5:0] pl_ltssm_state,  // gates the EIOS filter
-    input logic       pipe_clk,
-    input logic       pipe_rst_n,      // released on pipe_clk
-    input logic       phy_rdy_n        // reset of the EIOS filters
+    input  logic       [5:0] pl_ltssm_state,  // gates the EIOS filter
+    input  logic             pipe_clk,
+    input  logic             pipe_rst_n,      // released on pipe_clk
+    input  logic             phy_rdy_n        // reset of the EIOS filters
 );
 
   logic [5:0] pl_ltssm_state_q;
@@ -62,7 +62,7 @@ module mac2phy
     end
   end
 
-  logic plm_in_l0;
+  logic  plm_in_l0;
   assign plm_in_l0 = (pl_ltssm_state_q == 6'h16);
 
   genvar i;
@@ -82,11 +82,11 @@ module mac2phy
           };
 
       rx_eios_filter u_rx_eios_filter (
-          .user_rx  (pipe_mac.rx[i]),
-          .gt_rx    (gt_rx),
-          .plm_in_l0(plm_in_l0),
-          .pipe_clk (pipe_clk),
-          .reset    (phy_rdy_n)
+          .user_rx   (pipe_mac.rx[i]),
+          .gt_rx     (gt_rx),
+          .plm_in_l0 (plm_in_l0),
+          .pipe_clk  (pipe_clk),
+          .reset     (phy_rdy_n)
       );
 
       // TX: 16-bit MAC lane -> 32-bit GTP lane (upper half unused at 2.5/5 GT/s)

@@ -40,7 +40,8 @@ Validated versions. "Board": bitstream tested on hardware; "builds": completes, 
 | PeakRDL | 1.5.0 (3) | CSR RTL, headers, docs | generates |
 | xPack RISC-V GCC | 15.2.0-1 | firmware | board |
 | GCC, host | 10+ (4) | co-sim (VProc, pcievhost) | runs |
-| Verilator | 5.052 | `run-lint.sh` | checks |
+| Verilator | 5.055 (devel, `v5.054-219-g12ce8608`) | `run-lint.sh` | checks |
+| JanusHDL | 0.17.0 (preview) | co-sim of the RC model (`make SIM=janushdl RC=model run`); free, closed source | stops at elaboration: it does not read the struct constants of `link_pkg.sv` yet |
 | Verible | v0.0-4296-g0f262651 | `run-format.sh`, `run-lint.sh` | formats, checks |
 | ABC (`yosys-abc`) | 1.01, in openXC7's Yosys 0.69 | formal: eduBOS5 multicycle proof (`pdr`), bounded runs (`bmc3`) | proves |
 | SymbiYosys (`sby`) | v0.69 | formal: riscv-formal on eduBOS5, with ABC `bmc3` | checks |

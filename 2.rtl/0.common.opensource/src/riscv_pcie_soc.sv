@@ -40,15 +40,15 @@
 module riscv_pcie_soc
   import pcie_pkg::*;
 (
-    input logic clk,
-    input logic resetn,
+    input  logic          clk,
+    input  logic          resetn,
 
-    axis_if.master s_axis_tx,  // TLPs to the PCIE stack
-    axis_if.slave  m_axis_rx,  // TLPs from the PCIE stack
+           axis_if.master s_axis_tx,  // TLPs to the PCIE stack
+           axis_if.slave  m_axis_rx,  // TLPs from the PCIE stack
 
-    cfg_if.soc cfg,  // status sideband from the PCIE core
+           cfg_if.soc     cfg,        // status sideband from the PCIE core
 
-    output logic fw_pass  // the firmware has reported PASS, for an LED
+    output logic          fw_pass     // the firmware has reported PASS, for an LED
 );
 
   mem_if mem ();  // CPU memory bus
@@ -65,13 +65,13 @@ module riscv_pcie_soc
   // not (the RAM repeats within its region) and [1:0] are byte lanes, which
   // the word bus carries in wstrb -- both no-connect
   logic [ 7:0] addr_region;
-  assign addr_region = mem.addr[31:24];
+  assign       addr_region  = mem.addr[31:24];
   logic [10:0] NC_addr_mid;
-  assign NC_addr_mid = mem.addr[23:13];
+  assign       NC_addr_mid  = mem.addr[23:13];
   logic [10:0] addr_word;
-  assign addr_word = mem.addr[12:2];
-  logic [1:0] NC_addr_byte;
-  assign NC_addr_byte = mem.addr[1:0];
+  assign       addr_word    = mem.addr[12:2];
+  logic [1:0]  NC_addr_byte;
+  assign       NC_addr_byte = mem.addr[1:0];
 
   assign is_ram       = (addr_region == 8'h00);
   assign is_bridge    = (addr_region == 8'h30);
@@ -113,52 +113,52 @@ module riscv_pcie_soc
 `endif
 `ifdef SOC_CPU_VPROC
   soc_cpu_vproc #(
-      .NODE(4'd0)
+      .NODE (4'd0)
   ) cpu (
-      .clk      (clk),
-      .resetn   (resetn),
-      .mem_valid(mem.valid),
-      .mem_ready(mem.ready),
-      .mem_addr (mem.addr),
-      .mem_wdata(mem.wdata),
-      .mem_wstrb(mem.wstrb),
-      .mem_rdata(mem.rdata)
+      .clk       (clk),
+      .resetn    (resetn),
+      .mem_valid (mem.valid),
+      .mem_ready (mem.ready),
+      .mem_addr  (mem.addr),
+      .mem_wdata (mem.wdata),
+      .mem_wstrb (mem.wstrb),
+      .mem_rdata (mem.rdata)
   );
 `elsif SOC_CPU_PICORV32
   picorv32 #(
-      .PROGADDR_RESET (32'h0000_0000),
-      .STACKADDR      (32'h0000_2000),
-      .BARREL_SHIFTER (0),              // shifts by 4, then by 1, per cycle; the firmware has few
-      .ENABLE_COUNTERS(CPU_COUNTERS)    // rdcycle/rdinstret: the firmware's waits
+      .PROGADDR_RESET  (32'h0000_0000),
+      .STACKADDR       (32'h0000_2000),
+      .BARREL_SHIFTER  (0),              // shifts by 4, then by 1, per cycle; the firmware has few
+      .ENABLE_COUNTERS (CPU_COUNTERS)    // rdcycle/rdinstret: the firmware's waits
   ) cpu (
-      .clk         (clk),
-      .resetn      (resetn),
-      .trap        (  /*LINT:OK*/),  // not monitored
-      .mem_valid   (mem.valid),
-      .mem_instr   (  /*LINT:OK*/),  // one RAM holds both code and data (IMEM = DMEM)
-      .mem_ready   (mem.ready),
-      .mem_addr    (mem.addr),
-      .mem_wdata   (mem.wdata),
-      .mem_wstrb   (mem.wstrb),
-      .mem_rdata   (mem.rdata),
+      .clk          (clk),
+      .resetn       (resetn),
+      .trap         (  /*LINT:OK*/),  // not monitored
+      .mem_valid    (mem.valid),
+      .mem_instr    (  /*LINT:OK*/),  // one RAM holds both code and data (IMEM = DMEM)
+      .mem_ready    (mem.ready),
+      .mem_addr     (mem.addr),
+      .mem_wdata    (mem.wdata),
+      .mem_wstrb    (mem.wstrb),
+      .mem_rdata    (mem.rdata),
       // unused inputs are tied off (ENABLE_PCPI and ENABLE_IRQ are 0)
-      .mem_la_read (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
-      .mem_la_write(  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
-      .mem_la_addr (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
-      .mem_la_wdata(  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
-      .mem_la_wstrb(  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
-      .pcpi_valid  (  /*LINT:OK*/),  // ENABLE_PCPI is 0
-      .pcpi_insn   (  /*LINT:OK*/),  // ENABLE_PCPI is 0
-      .pcpi_rsrc1  (  /*LINT:OK*/),  // ENABLE_PCPI is 0
-      .pcpi_rsrc2  (  /*LINT:OK*/),  // ENABLE_PCPI is 0
-      .pcpi_wr     (1'b0),
-      .pcpi_rdst   ('0),
-      .pcpi_wait   (1'b0),
-      .pcpi_ready  (1'b0),
-      .irq         ('0),
-      .eoi         (  /*LINT:OK*/),  // ENABLE_IRQ is 0
-      .trace_valid (  /*LINT:OK*/),  // ENABLE_TRACE is 0
-      .trace_data  (  /*LINT:OK*/)   // ENABLE_TRACE is 0
+      .mem_la_read  (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
+      .mem_la_write (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
+      .mem_la_addr  (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
+      .mem_la_wdata (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
+      .mem_la_wstrb (  /*LINT:OK*/),  // look-ahead bus, the mem_* bus is used
+      .pcpi_valid   (  /*LINT:OK*/),  // ENABLE_PCPI is 0
+      .pcpi_insn    (  /*LINT:OK*/),  // ENABLE_PCPI is 0
+      .pcpi_rsrc1   (  /*LINT:OK*/),  // ENABLE_PCPI is 0
+      .pcpi_rsrc2   (  /*LINT:OK*/),  // ENABLE_PCPI is 0
+      .pcpi_wr      (1'b0),
+      .pcpi_rdst    ('0),
+      .pcpi_wait    (1'b0),
+      .pcpi_ready   (1'b0),
+      .irq          ('0),
+      .eoi          (  /*LINT:OK*/),  // ENABLE_IRQ is 0
+      .trace_valid  (  /*LINT:OK*/),  // ENABLE_TRACE is 0
+      .trace_data   (  /*LINT:OK*/)   // ENABLE_TRACE is 0
   );
 `else
   // eduBOS5 is Harvard: it fetches through a second, read-only port of the RAM
@@ -196,22 +196,22 @@ module riscv_pcie_soc
 `endif
 
   edubos5 #(
-      .EN_WAIT4REGS(EDUBOS5_WAIT4REGS),
-      .EN_COUNTERS (CPU_COUNTERS)
+      .EN_WAIT4REGS (EDUBOS5_WAIT4REGS),
+      .EN_COUNTERS  (CPU_COUNTERS)
   ) cpu (
-      .clk        (clk),
-      .arst_n     (resetn),
-      .imem_addr  (imem_addr),
-      .imem_rdat  (imem_rdat),
-      .imem_rdy   (1'b1),
-      .imem_vld   (  /*LINT:OK*/),  // the RAM read port needs no request
-      .dmem_addr  (mem.addr),
-      .dmem_we    (mem.wstrb),
-      .dmem_strobe(  /*LINT:OK*/),  // dmem_vld is the request
-      .dmem_wdat  (mem.wdata),
-      .dmem_rdat  (mem.rdata),
-      .dmem_rdy   (edubos5_rdy),
-      .dmem_vld   (mem.valid)
+      .clk         (clk),
+      .arst_n      (resetn),
+      .imem_addr   (imem_addr),
+      .imem_rdat   (imem_rdat),
+      .imem_rdy    (1'b1),
+      .imem_vld    (  /*LINT:OK*/),  // the RAM read port needs no request
+      .dmem_addr   (mem.addr),
+      .dmem_we     (mem.wstrb),
+      .dmem_strobe (  /*LINT:OK*/),  // dmem_vld is the request
+      .dmem_wdat   (mem.wdata),
+      .dmem_rdat   (mem.rdata),
+      .dmem_rdy    (edubos5_rdy),
+      .dmem_vld    (mem.valid)
   );
 `endif
 
@@ -314,18 +314,18 @@ module riscv_pcie_soc
   //=========================================================================
 
   soc_csr #(
-      .RD_FLOP(CSR_RD_FLOP)
+      .RD_FLOP (CSR_RD_FLOP)
   ) u_soc_csr (
-      .clk   (clk),
-      .resetn(resetn),
+      .clk    (clk),
+      .resetn (resetn),
 
-      .sel (is_bridge),
-      .mem (mem),
-      .rdat(bridge_rdat),
-      .rdy (bridge_rdy),
+      .sel  (is_bridge),
+      .mem  (mem),
+      .rdat (bridge_rdat),
+      .rdy  (bridge_rdy),
 
-      .csr_in (csr_in),
-      .csr_out(csr_out)
+      .csr_in  (csr_in),
+      .csr_out (csr_out)
   );
 
   // ---- Tx: the CPU-written registers feed the FSM -------------------------

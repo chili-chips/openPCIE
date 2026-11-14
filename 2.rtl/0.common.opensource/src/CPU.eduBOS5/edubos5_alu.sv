@@ -15,26 +15,26 @@ module edubos5_alu
     // pipeline: its inputs have 2 cycles). 0: after it, from registered inputs
     parameter bit SHIFT_PRE_REG = 1'b0
 ) (
-    input logic clk,
-    input logic reset,  // DSP reset, GOWIN_FAST_OP only
-    input logic ce,     // load enable for all ALU registers
+    input  logic              clk,
+    input  logic              reset,           // DSP reset, GOWIN_FAST_OP only
+    input  logic              ce,              // load enable for all ALU registers
 
-    input cpu_data_t aluin_1,
-    input cpu_data_t aluin_2,
+    input  cpu_data_t         aluin_1,
+    input  cpu_data_t         aluin_2,
 
-    input logic [4:0] shamt,
+    input  logic        [4:0] shamt,
 
-    input logic        aluimm_dec,
-    input logic        jalr_dec,        //uses alu_plus res
-    input logic        funct7_5,
-    input logic        funct7_5_instr,  // funct7_5 before its register, SHIFT_PRE_REG only
-    input funct3_alu_t funct3,
+    input  logic              aluimm_dec,
+    input  logic              jalr_dec,        //uses alu_plus res
+    input  logic              funct7_5,
+    input  logic              funct7_5_instr,  // funct7_5 before its register, SHIFT_PRE_REG only
+    input  funct3_alu_t       funct3,
 
-    output cpu_data_t alu_out,
+    output cpu_data_t         alu_out,
 
-    output logic eq,
-    output logic ltu,
-    output logic lt
+    output logic              eq,
+    output logic              ltu,
+    output logic              lt
 );
   //-----------------------------------------
   // Functions combo
@@ -81,30 +81,30 @@ module edubos5_alu
     logic [54:0] NC_caso_plus, NC_caso_minus;  // ALU54 cascade out, unused
 
     Gowin_ALU54plus u_alu54_plus_dsp (
-        .clk  (clk),           //i
-        .ce   (ce),            //i
-        .reset(reset),         //i
-        .a    (aluin_1),       //i
-        .b    (aluin_2),       //i
-        .dout (alu_dsp_plus),  //o
-        .caso (NC_caso_plus)   //o
+        .clk   (clk),           //i
+        .ce    (ce),            //i
+        .reset (reset),         //i
+        .a     (aluin_1),       //i
+        .b     (aluin_2),       //i
+        .dout  (alu_dsp_plus),  //o
+        .caso  (NC_caso_plus)   //o
     );
 
     Gowin_ALU54minus u_alu54_minus_dsp (
-        .clk  (clk),            //i
-        .ce   (ce),             //i
-        .reset(reset),          //i
-        .a    (aluin_1),        //i
-        .b    (aluin_2),        //i
-        .dout (alu_dsp_minus),  //o
-        .caso (NC_caso_minus)   //o
+        .clk   (clk),            //i
+        .ce    (ce),             //i
+        .reset (reset),          //i
+        .a     (aluin_1),        //i
+        .b     (aluin_2),        //i
+        .dout  (alu_dsp_minus),  //o
+        .caso  (NC_caso_minus)   //o
     );
 
     assign alu_plus_reg  = alu_dsp_plus[31:0];
     assign alu_minus_reg = alu_dsp_minus;
   end : g_dsp
   else begin : g_lut
-    logic NC_reset;  // no DSP to reset
+    logic  NC_reset;  // no DSP to reset
     assign NC_reset = reset;
 
     always_ff @(posedge clk) begin : _alu_add_sub
@@ -123,7 +123,7 @@ module edubos5_alu
 
   if (SHIFT_PRE_REG) begin : g_shift_pre
     // registered result: the shift is no longer on the write-back path
-    logic NC_funct7_5;  // the registered copy: not used here
+    logic  NC_funct7_5;  // the registered copy: not used here
     assign NC_funct7_5 = funct7_5;
 
     always_ff @(posedge clk) begin : _alu_shift
@@ -136,7 +136,7 @@ module edubos5_alu
     logic [31:0] shifter_in_reg;
     logic [ 4:0] shamt_reg;
     logic        NC_funct7_5_instr;  // the shift reads the registered copy
-    assign NC_funct7_5_instr = funct7_5_instr;
+    assign       NC_funct7_5_instr = funct7_5_instr;
 
     always_ff @(posedge clk) begin : _alu_shift_in
       if (ce) begin

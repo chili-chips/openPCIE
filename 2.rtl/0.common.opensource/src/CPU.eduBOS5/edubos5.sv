@@ -20,50 +20,50 @@ module edubos5
     // Any other SYSTEM instruction halts the core, as with 0
     parameter bit EN_COUNTERS     = 1'b0
 ) (
-    input logic clk,
-    input logic arst_n, // reset button
+    input  logic             clk,
+    input  logic             arst_n,          // reset button
 
 `ifdef RISCV_FORMAL
     // RVFI (riscv-formal): one retired instruction per rvfi_valid
-    output logic        rvfi_valid,
-    output logic [63:0] rvfi_order,
-    output logic [31:0] rvfi_insn,
-    output logic        rvfi_trap,
-    output logic        rvfi_halt,
-    output logic        rvfi_intr,
-    output logic [ 1:0] rvfi_mode,
-    output logic [ 1:0] rvfi_ixl,
-    output logic [ 4:0] rvfi_rs1_addr,
-    output logic [ 4:0] rvfi_rs2_addr,
-    output logic [31:0] rvfi_rs1_rdata,
-    output logic [31:0] rvfi_rs2_rdata,
-    output logic [ 4:0] rvfi_rd_addr,
-    output logic [31:0] rvfi_rd_wdata,
-    output logic [31:0] rvfi_pc_rdata,
-    output logic [31:0] rvfi_pc_wdata,
-    output logic [31:0] rvfi_mem_addr,
-    output logic [ 3:0] rvfi_mem_rmask,
-    output logic [ 3:0] rvfi_mem_wmask,
-    output logic [31:0] rvfi_mem_rdata,
-    output logic [31:0] rvfi_mem_wdata,
+    output logic             rvfi_valid,
+    output logic      [63:0] rvfi_order,
+    output logic      [31:0] rvfi_insn,
+    output logic             rvfi_trap,
+    output logic             rvfi_halt,
+    output logic             rvfi_intr,
+    output logic      [ 1:0] rvfi_mode,
+    output logic      [ 1:0] rvfi_ixl,
+    output logic      [ 4:0] rvfi_rs1_addr,
+    output logic      [ 4:0] rvfi_rs2_addr,
+    output logic      [31:0] rvfi_rs1_rdata,
+    output logic      [31:0] rvfi_rs2_rdata,
+    output logic      [ 4:0] rvfi_rd_addr,
+    output logic      [31:0] rvfi_rd_wdata,
+    output logic      [31:0] rvfi_pc_rdata,
+    output logic      [31:0] rvfi_pc_wdata,
+    output logic      [31:0] rvfi_mem_addr,
+    output logic      [ 3:0] rvfi_mem_rmask,
+    output logic      [ 3:0] rvfi_mem_wmask,
+    output logic      [31:0] rvfi_mem_rdata,
+    output logic      [31:0] rvfi_mem_wdata,
 `endif
 
     //Intruction Memory access
-    output cpu_pc_t   imem_addr,
-    input  cpu_data_t imem_rdat,
-    input  logic      imem_rdy,   // IMEM answers in one cycle: not used
-    output logic      imem_vld,
+    output cpu_pc_t          imem_addr,
+    input  cpu_data_t        imem_rdat,
+    input  logic             imem_rdy,        // IMEM answers in one cycle: not used
+    output logic             imem_vld,
 
 
     //Data Memory access
-    output cpu_addr_t dmem_addr,
-    output we_bs_t    dmem_we,
-    output logic      dmem_strobe,
-    output cpu_data_t dmem_wdat,
-    input  cpu_data_t dmem_rdat,
+    output cpu_addr_t        dmem_addr,
+    output we_bs_t           dmem_we,
+    output logic             dmem_strobe,
+    output cpu_data_t        dmem_wdat,
+    input  cpu_data_t        dmem_rdat,
 
-    input  logic dmem_rdy,
-    output logic dmem_vld
+    input  logic             dmem_rdy,
+    output logic             dmem_vld
 
 );
 
@@ -283,17 +283,17 @@ module edubos5
   // RF writeback, reset in a software handler
   //------------------------------------------
   edubos5_rf #(
-      .TARGET_IS_ASIC(TARGET_IS_ASIC)
+      .TARGET_IS_ASIC (TARGET_IS_ASIC)
   ) u_rf (
-      .clk     (clk),                    //i
-      .rs1_addr(instr.grp.reg2reg.rs1),  //i
-      .rs2_addr(instr.grp.reg2reg.rs2),  //i
-      .rd_addr (instr.grp.reg2reg.rd),   //i
-      .rf_we   (rf_we),                  //i
+      .clk      (clk),                    //i
+      .rs1_addr (instr.grp.reg2reg.rs1),  //i
+      .rs2_addr (instr.grp.reg2reg.rs2),  //i
+      .rd_addr  (instr.grp.reg2reg.rd),   //i
+      .rf_we    (rf_we),                  //i
 
-      .rf_wdat(rf_wdat),  //o
-      .rs1    (rs1),      //o
-      .rs2    (rs2)       //o
+      .rf_wdat (rf_wdat),  //o
+      .rs1     (rs1),      //o
+      .rs2     (rs2)       //o
   );
 
   //----------------------------
@@ -591,24 +591,24 @@ module edubos5
   end : _alu_inputs
 
   edubos5_alu #(
-      .GOWIN_FAST_OP(GOWIN_FAST_OP),     //0 for LUT sub/add, 1 for DSP sub/add
-      .SHIFT_PRE_REG(EN_WAIT4REGS == 1)  //3-stage: shift before the register
+      .GOWIN_FAST_OP (GOWIN_FAST_OP),     //0 for LUT sub/add, 1 for DSP sub/add
+      .SHIFT_PRE_REG (EN_WAIT4REGS == 1)  //3-stage: shift before the register
   ) u_alu (
-      .clk           (clk),                         //i
-      .reset         (1'b0),                        //i
-      .ce            (go2exec),                     //i
-      .aluin_1       (aluin_1),                     //i
-      .aluin_2       (aluin_2),                     //i
-      .shamt         (shamt),                       //i
-      .aluimm_dec    (instr_decode_reg.ALUIMM),     //i
-      .jalr_dec      (instr_decode_reg.JALR),       //i
-      .funct7_5      (funct7_alu),                  //i
-      .funct7_5_instr(instr.grp.reg2reg.func7[5]),  //i
-      .funct3        (instr.grp.reg2reg.func3),     //i
-      .alu_out       (alu_out),                     //o
-      .eq            (eq),                          //o
-      .ltu           (ltu),                         //o
-      .lt            (lt)                           //o
+      .clk            (clk),                         //i
+      .reset          (1'b0),                        //i
+      .ce             (go2exec),                     //i
+      .aluin_1        (aluin_1),                     //i
+      .aluin_2        (aluin_2),                     //i
+      .shamt          (shamt),                       //i
+      .aluimm_dec     (instr_decode_reg.ALUIMM),     //i
+      .jalr_dec       (instr_decode_reg.JALR),       //i
+      .funct7_5       (funct7_alu),                  //i
+      .funct7_5_instr (instr.grp.reg2reg.func7[5]),  //i
+      .funct3         (instr.grp.reg2reg.func3),     //i
+      .alu_out        (alu_out),                     //o
+      .eq             (eq),                          //o
+      .ltu            (ltu),                         //o
+      .lt             (lt)                           //o
   );
 
   //---------------------------------------------------------------------
@@ -811,7 +811,7 @@ module edubos5
   // instructions retired before it (rvfi_order). Insn bit 21: instret; 27: the
   // high half. riscv-formal has no Zicntr check of its own
   logic [63:0] fv_cycle, fv_cnt;
-  assign fv_cnt = rvfi_insn[21] ? rvfi_order : fv_cycle - 64'd1;
+  assign       fv_cnt = rvfi_insn[21] ? rvfi_order : fv_cycle - 64'd1;
 
   always_ff @(negedge arst_n or posedge clk) begin : _fv_cnt
     if (arst_n == LO) begin

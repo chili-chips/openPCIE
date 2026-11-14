@@ -158,24 +158,24 @@ module soc_csr
 
 
   csr u_csr (
-      .clk   (clk),
-      .arst_n(resetn),
+      .clk    (clk),
+      .arst_n (resetn),
 
-      .s_cpuif_req         (cpuif_req),
-      .s_cpuif_req_is_wr   (|mem.wstrb),
-      .s_cpuif_addr        ({mem.addr[CSR_MIN_ADDR_WIDTH-1:2], 2'b00}),
-      .s_cpuif_wr_data     (mem.wdata),
-      .s_cpuif_wr_biten    (cpuif_wr_biten),
-      .s_cpuif_req_stall_wr(),
-      .s_cpuif_req_stall_rd(),
-      .s_cpuif_rd_ack      (cpuif_rd_ack),
-      .s_cpuif_rd_err      (),
-      .s_cpuif_rd_data     (cpuif_rd_data),
-      .s_cpuif_wr_ack      (cpuif_wr_ack),
-      .s_cpuif_wr_err      (),
+      .s_cpuif_req          (cpuif_req),
+      .s_cpuif_req_is_wr    (|mem.wstrb),
+      .s_cpuif_addr         ({mem.addr[CSR_MIN_ADDR_WIDTH-1:2], 2'b00}),
+      .s_cpuif_wr_data      (mem.wdata),
+      .s_cpuif_wr_biten     (cpuif_wr_biten),
+      .s_cpuif_req_stall_wr (),
+      .s_cpuif_req_stall_rd (),
+      .s_cpuif_rd_ack       (cpuif_rd_ack),
+      .s_cpuif_rd_err       (),
+      .s_cpuif_rd_data      (cpuif_rd_data),
+      .s_cpuif_wr_ack       (cpuif_wr_ack),
+      .s_cpuif_wr_err       (),
 
-      .hwif_in (csr_in),
-      .hwif_out(csr_out)
+      .hwif_in  (csr_in),
+      .hwif_out (csr_out)
   );
 
   //=========================================

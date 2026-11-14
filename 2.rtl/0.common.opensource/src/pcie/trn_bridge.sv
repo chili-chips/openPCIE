@@ -54,28 +54,28 @@ module trn_bridge
   logic tready_thrtl;
 
   trn_rx u_trn_rx (
-      .m_axis_rx (m_axis_rx),
-      .trn       (trn),
-      .user_clk  (user_clk),
-      .core_rst_n(core_rst_n)
+      .m_axis_rx  (m_axis_rx),
+      .trn        (trn),
+      .user_clk   (user_clk),
+      .core_rst_n (core_rst_n)
   );
 
 
   trn_tx u_trn_tx (
-      .s_axis_tx   (s_axis_tx),
-      .trn         (trn),
-      .tready_thrtl(tready_thrtl),
-      .user_clk    (user_clk),
-      .core_rst_n  (core_rst_n)
+      .s_axis_tx    (s_axis_tx),
+      .trn          (trn),
+      .tready_thrtl (tready_thrtl),
+      .user_clk     (user_clk),
+      .core_rst_n   (core_rst_n)
   );
 
   trn_tx_throttle u_trn_tx_throttle (
-      .s_axis_tx          (s_axis_tx),
-      .trn                (trn),
-      .cfg_pcie_link_state(cfg_pcie_link_state),
-      .tready_thrtl       (tready_thrtl),
-      .user_clk           (user_clk),
-      .core_rst_n         (core_rst_n)
+      .s_axis_tx           (s_axis_tx),
+      .trn                 (trn),
+      .cfg_pcie_link_state (cfg_pcie_link_state),
+      .tready_thrtl        (tready_thrtl),
+      .user_clk            (user_clk),
+      .core_rst_n          (core_rst_n)
   );
 
 endmodule

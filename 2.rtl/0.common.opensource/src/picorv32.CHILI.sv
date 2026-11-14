@@ -106,13 +106,13 @@ module picorv32 #(
     parameter logic [0:0] CATCH_ILLINSN  = 1,  // Illegal Instruction
     parameter logic [0:0] TARGET_IS_ASIC = 0   // 1: x0 forced to 0 by a read mux, not RAM init
 ) (
-    input  logic clk,
+    input  logic        clk,
     resetn,
-    output logic trap,
+    output logic        trap,
 
-    output logic mem_valid,
-    output logic mem_instr,
-    input  logic mem_ready,
+    output logic        mem_valid,
+    output logic        mem_instr,
+    input  logic        mem_ready,
 
     output logic [31:0] mem_addr,
     output logic [31:0] mem_wdata,
@@ -132,10 +132,10 @@ module picorv32 #(
     output logic [31:0] pcpi_rsrc1,
     output logic [31:0] pcpi_rsrc2,
 
-    input logic [31:0] pcpi_rdst,
-    input logic        pcpi_wr,
-    input logic        pcpi_wait,
-    input logic        pcpi_ready,
+    input  logic [31:0] pcpi_rdst,
+    input  logic        pcpi_wr,
+    input  logic        pcpi_wait,
+    input  logic        pcpi_ready,
 
     // IRQ Interface
     input  logic [31:0] irq,
@@ -211,12 +211,12 @@ module picorv32 #(
   // Masked-pending IRQ vector, computed once and reused everywhere instead
   // of repeating `irq_pending & ~irq_mask` at each use site.
   logic [31:0] irq_pending_masked;
-  assign irq_pending_masked = irq_pending & ~irq_mask;
+  assign       irq_pending_masked = irq_pending & ~irq_mask;
 
   // Reduction to a provably 1-bit boolean ("is any unmasked IRQ pending?").
   // Built with the unary reduction-OR operator (not bitwise `|`), so it is
   // 1-bit by construction.
-  logic any_irq_pending_masked;
+  logic  any_irq_pending_masked;
   assign any_irq_pending_masked = |irq_pending_masked;
 
   logic [63:0] count_cycle, count_instr;  // used ENABLE_COUNTERS*
@@ -278,34 +278,34 @@ module picorv32 #(
   generate
     if (ENABLE_FAST_MUL) begin : g_enable_fast_mul
       picorv32_pcpi_fast_mul pcpi_mul (
-          .clk   (clk),    //i
-          .resetn(resetn), //i
+          .clk    (clk),    //i
+          .resetn (resetn), //i
 
-          .pcpi_valid(pcpi_valid),  //i
-          .pcpi_insn (pcpi_insn),   //i
-          .pcpi_rs1  (pcpi_rsrc1),  //i[31:0]
-          .pcpi_rs2  (pcpi_rsrc2),  //i[31:0]
+          .pcpi_valid (pcpi_valid),  //i
+          .pcpi_insn  (pcpi_insn),   //i
+          .pcpi_rs1   (pcpi_rsrc1),  //i[31:0]
+          .pcpi_rs2   (pcpi_rsrc2),  //i[31:0]
 
-          .pcpi_wr   (pcpi_mul_wr),    //o
-          .pcpi_rd   (pcpi_mul_rdst),  //o[31:0]
-          .pcpi_wait (pcpi_mul_wait),  //o
-          .pcpi_ready(pcpi_mul_ready)  //o
+          .pcpi_wr    (pcpi_mul_wr),    //o
+          .pcpi_rd    (pcpi_mul_rdst),  //o[31:0]
+          .pcpi_wait  (pcpi_mul_wait),  //o
+          .pcpi_ready (pcpi_mul_ready)  //o
       );
     end
     else if (ENABLE_MUL) begin : g_enable_mul
       picorv32_pcpi_mul pcpi_mul (
-          .clk   (clk),    //i
-          .resetn(resetn), //i
+          .clk    (clk),    //i
+          .resetn (resetn), //i
 
-          .pcpi_valid(pcpi_valid),  //i
-          .pcpi_insn (pcpi_insn),   //i
-          .pcpi_rs1  (pcpi_rsrc1),  //i[31:0]
-          .pcpi_rs2  (pcpi_rsrc2),  //i[31:0]
+          .pcpi_valid (pcpi_valid),  //i
+          .pcpi_insn  (pcpi_insn),   //i
+          .pcpi_rs1   (pcpi_rsrc1),  //i[31:0]
+          .pcpi_rs2   (pcpi_rsrc2),  //i[31:0]
 
-          .pcpi_wr   (pcpi_mul_wr),    //o
-          .pcpi_rd   (pcpi_mul_rdst),  //o[31:0]
-          .pcpi_wait (pcpi_mul_wait),  //o
-          .pcpi_ready(pcpi_mul_ready)  //o
+          .pcpi_wr    (pcpi_mul_wr),    //o
+          .pcpi_rd    (pcpi_mul_rdst),  //o[31:0]
+          .pcpi_wait  (pcpi_mul_wait),  //o
+          .pcpi_ready (pcpi_mul_ready)  //o
       );
     end
     else begin : g_no_hw_mul
@@ -320,18 +320,18 @@ module picorv32 #(
   generate
     if (ENABLE_DIV) begin : g_enable_div
       picorv32_pcpi_div pcpi_div (
-          .clk   (clk),    //i
-          .resetn(resetn), //i
+          .clk    (clk),    //i
+          .resetn (resetn), //i
 
-          .pcpi_valid(pcpi_valid),  //i
-          .pcpi_insn (pcpi_insn),   //i
-          .pcpi_rs1  (pcpi_rsrc1),  //i[31:0]
-          .pcpi_rs2  (pcpi_rsrc2),  //i[31:0]
+          .pcpi_valid (pcpi_valid),  //i
+          .pcpi_insn  (pcpi_insn),   //i
+          .pcpi_rs1   (pcpi_rsrc1),  //i[31:0]
+          .pcpi_rs2   (pcpi_rsrc2),  //i[31:0]
 
-          .pcpi_wr   (pcpi_div_wr),    //o
-          .pcpi_rdst (pcpi_div_rdst),  //o[31:0]
-          .pcpi_wait (pcpi_div_wait),  //o
-          .pcpi_ready(pcpi_div_ready)  //o
+          .pcpi_wr    (pcpi_div_wr),    //o
+          .pcpi_rdst  (pcpi_div_rdst),  //o[31:0]
+          .pcpi_wait  (pcpi_div_wait),  //o
+          .pcpi_ready (pcpi_div_ready)  //o
       );
     end
     else begin : g_no_hw_div
@@ -1381,7 +1381,7 @@ module picorv32 #(
 
   assign next_pc = (latched_store & latched_branch) ? reg_out[31:1] : reg_next_pc[31:1];
 `ifdef CPU_DEBUG
-  logic next_pc_0;
+  logic  next_pc_0;
   assign next_pc_0 = !(latched_store & latched_branch) & reg_next_pc[0];
 `endif
 
@@ -1400,20 +1400,20 @@ module picorv32 #(
   // both RD_REG2 case sites (default branches of the is_sb_sh_sw/
   // is_sll_srl_sra-vs-default unique case, and the plain default case a few
   // states later) instead of repeating this formula verbatim in two places.
-  logic alu_wait_needed;
+  logic  alu_wait_needed;
   assign alu_wait_needed = TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
 
-  logic alu_wait_2_needed;
+  logic  alu_wait_2_needed;
   assign alu_wait_2_needed = TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
 
   // Whether each maskable trap-IRQ is currently allowed to be raised.
   // Computed once and reused at every trap-raising site in the FSM below,
   // instead of repeating `ENABLE_IRQ && !irq_mask[IRQ_x] && !irq_active`
   // verbatim at each one (3 sites each for EBREAK and BUSERROR).
-  logic ebreak_irq_allowed;
+  logic  ebreak_irq_allowed;
   assign ebreak_irq_allowed = ENABLE_IRQ && !irq_mask[IRQ_EBREAK] && !irq_active;
 
-  logic buserror_irq_allowed;
+  logic  buserror_irq_allowed;
   assign buserror_irq_allowed = ENABLE_IRQ && !irq_mask[IRQ_BUSERROR] && !irq_active;
 
   // NOTE: the alu_out_0 case below uses is_slti_blt_slt / is_sltiu_bltu_sltu
@@ -1562,22 +1562,22 @@ module picorv32 #(
   logic [31:0] cpuregs_rdata2;
 
   logic [ 5:0] cpuregs_raddr1;
-  assign cpuregs_raddr1 = ENABLE_REGS_DUALPORT ? decoded_rsrc1 : decoded_rsrc;
-  logic [5:0] cpuregs_raddr2;
-  assign cpuregs_raddr2 = ENABLE_REGS_DUALPORT ? decoded_rsrc2 : '0;
+  assign       cpuregs_raddr1 = ENABLE_REGS_DUALPORT ? decoded_rsrc1 : decoded_rsrc;
+  logic [5:0]  cpuregs_raddr2;
+  assign       cpuregs_raddr2 = ENABLE_REGS_DUALPORT ? decoded_rsrc2 : '0;
 
   `PICORV32_REGS cpuregs (
-      .clk(clk),
+      .clk (clk),
 
-      .wen  (cpuregs_we),
-      .waddr(latched_rdst),
-      .wdata(cpuregs_wrdata),
+      .wen   (cpuregs_we),
+      .waddr (latched_rdst),
+      .wdata (cpuregs_wrdata),
 
-      .raddr1(cpuregs_raddr1),
-      .rdata1(cpuregs_rdata1),
+      .raddr1 (cpuregs_raddr1),
+      .rdata1 (cpuregs_rdata1),
 
-      .raddr2(cpuregs_raddr2),
-      .rdata2(cpuregs_rdata2)
+      .raddr2 (cpuregs_raddr2),
+      .rdata2 (cpuregs_rdata2)
   );
 
   always_comb begin

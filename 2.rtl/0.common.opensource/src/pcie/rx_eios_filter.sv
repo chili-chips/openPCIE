@@ -40,13 +40,13 @@
 module rx_eios_filter
   import link_pkg::*;
 (
-    output pipe_rx_lane_t user_rx,  // filtered lane, to the MAC
-    input  pipe_rx_lane_t gt_rx,    // lane from the GTP, 16 bits used
+    output pipe_rx_lane_t user_rx,    // filtered lane, to the MAC
+    input  pipe_rx_lane_t gt_rx,      // lane from the GTP, 16 bits used
 
-    input logic plm_in_l0,
+    input  logic          plm_in_l0,
 
-    input logic pipe_clk,
-    input logic reset
+    input  logic          pipe_clk,
+    input  logic          reset
 );
 
   typedef enum logic [4:0] {

@@ -40,15 +40,15 @@
 module speed_ctrl
   import link_pkg::*;
 (
-    input logic clk,
-    input logic rst_n,
-    input logic rate,            // 0 = Gen1, 1 = Gen2
-    input logic drp_done,
-    input logic rxpmaresetdone,
-    input logic txratedone,
-    input logic rxratedone,
-    input logic txsync_done,
-    input logic phystatus,
+    input  logic      clk,
+    input  logic      rst_n,
+    input  logic      rate,            // 0 = Gen1, 1 = Gen2
+    input  logic      drp_done,
+    input  logic      rxpmaresetdone,
+    input  logic      txratedone,
+    input  logic      rxratedone,
+    input  logic      txsync_done,
+    input  logic      phystatus,
 
     output gtp_rate_t rate_ctrl
 );
@@ -112,7 +112,7 @@ module speed_ctrl
   end
 
   logic [2:0] rate_sel;
-  assign rate_sel = rate_in_r2 ? 3'd1 : 3'd0;
+  assign      rate_sel = rate_in_r2 ? 3'd1 : 3'd0;
 
   logic [3:0] txdata_wait_cnt;
   always_ff @(posedge clk) begin
@@ -126,7 +126,7 @@ module speed_ctrl
       txdata_wait_cnt <= txdata_wait_cnt + 4'd1;
     end
   end
-  logic txdata_wait_done;
+  logic  txdata_wait_done;
   assign txdata_wait_done = (txdata_wait_cnt == TXDATA_WAIT_MAX);
 
   logic txratedone_q;
@@ -190,9 +190,9 @@ module speed_ctrl
   logic [2:0] rate_out;
 
   logic       pipe_clk_sel_d;
-  assign pipe_clk_sel_d = (state == ST_PIPE_CLK_SEL) ? rate_in_r2 : pipe_clk_sel;
+  assign      pipe_clk_sel_d = (state == ST_PIPE_CLK_SEL) ? rate_in_r2 : pipe_clk_sel;
   logic [2:0] rate_out_d;
-  assign rate_out_d = (state == ST_RATE_SEL) ? rate_sel : rate_out;
+  assign      rate_out_d     = (state == ST_RATE_SEL) ? rate_sel : rate_out;
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin

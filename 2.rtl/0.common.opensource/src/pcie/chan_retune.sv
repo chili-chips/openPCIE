@@ -40,10 +40,10 @@
 module chan_retune
   import link_pkg::*;
 (
-    input logic clk,
-    input logic rst_n,
-    input logic x16,
-    input logic start,
+    input  logic         clk,
+    input  logic         rst_n,
+    input  logic         x16,
+    input  logic         start,
 
     output gtp_drp_req_t drp_req,  // to the GTPE2_CHANNEL DRP
     input  gtp_drp_rsp_t drp_rsp,
@@ -101,7 +101,7 @@ module chan_retune
   end
 
   logic [15:0] data_rx_dw;
-  assign data_rx_dw = x16_r2 ? X16_RX_DW : X20_RX_DW;
+  assign       data_rx_dw = x16_r2 ? X16_RX_DW : X20_RX_DW;
 
   logic [1:0] load_cnt;
   always_ff @(posedge clk) begin
@@ -115,7 +115,7 @@ module chan_retune
       load_cnt <= load_cnt + 2'd1;
     end
   end
-  logic load_done;
+  logic  load_done;
   assign load_done = (load_cnt == LOAD_CNT_MAX);
 
   logic [4:0] index, index_nx;

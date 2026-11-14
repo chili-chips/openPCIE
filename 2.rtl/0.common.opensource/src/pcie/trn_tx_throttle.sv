@@ -40,15 +40,15 @@
 module trn_tx_throttle
   import pcie_pkg::*;
 (
-    axis_if.slave s_axis_tx,  // reads the header and the handshake
-    trn_if.user   trn,        // tbuf_av, tdst_rdy, link_up
+           axis_if.slave       s_axis_tx,            // reads the header and the handshake
+           trn_if.user         trn,                  // tbuf_av, tdst_rdy, link_up
 
-    input logic [2:0] cfg_pcie_link_state,
+    input  logic         [2:0] cfg_pcie_link_state,
 
 
-    output logic tready_thrtl,
-    input  logic user_clk,
-    input  logic core_rst_n
+    output logic               tready_thrtl,
+    input  logic               user_clk,
+    input  logic               core_rst_n
 );
 
   pcie_tlp_dw0_t  tx_dw0;  // header DW0 of the TX beat

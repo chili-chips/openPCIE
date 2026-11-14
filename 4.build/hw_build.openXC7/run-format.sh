@@ -10,6 +10,15 @@
 #   2. verible-verilog-format: Verible defaults (100-column limit) plus every
 #      alignment option set to align, end and else on separate lines, LF line
 #      endings. It does not wrap lines over the limit: wrap those by hand;
+#   2c. at least one space before the '(' of a named parameter or port
+#      connection: .NAME (signal) (run-format-conn.py; Verible puts the '('
+#      against the longest name of a block);
+#   2d. a logic declaration next to the assign that drives it: in a block of
+#      adjacent logic and assign lines the names share a column, and so do
+#      the '=' (run-format-align.py);
+#   2e. a module's port list is one alignment: the direction, type,
+#      dimension, name and comment columns are the same in every group of
+#      ports (run-format-align.py; Verible aligns each group on its own);
 #   0. no CR (^M) in these files (removed unless --check);
 #   3. no ?: in a port connection (reported, not fixed).
 #
@@ -154,11 +163,18 @@ fi
 nf=0
 for f in "${FILES[@]}"; do
   if [ $MODE = check ]; then
-    err=$("$VERIBLE_FORMAT" "${STYLE[@]}" --verify "$f" 2>&1 >/dev/null); rc=$?
-    if [ $rc -ne 0 ] || [ -n "$err" ]; then echo "not formatted: ${f#$SRC/}"; nf=$((nf + 1)); fi
+    # what steps 2 to 2e would make of it, compared with the file
+    tmp=$(mktemp --suffix=.sv)
+    err=$("$VERIBLE_FORMAT" "${STYLE[@]}" "$f" 2>&1 >"$tmp"); rc=$?
+    [ $rc -eq 0 ] && [ -z "$err" ] && python3 "$HERE/run-format-conn.py" "$tmp" &&
+      python3 "$HERE/run-format-align.py" "$tmp" && cmp -s "$f" "$tmp"
+    if [ $? -ne 0 ]; then echo "not formatted: ${f#$SRC/}"; nf=$((nf + 1)); fi
+    rm -f "$tmp"
   else
     err=$("$VERIBLE_FORMAT" "${STYLE[@]}" --inplace "$f" 2>&1); rc=$?
     if [ $rc -ne 0 ] || [ -n "$err" ]; then echo "failed: ${f#$SRC/}: $(echo "$err" | head -1)" >&2; nf=$((nf + 1)); fi
+    python3 "$HERE/run-format-conn.py" "$f"
+    python3 "$HERE/run-format-align.py" "$f"
   fi
 done
 
