@@ -514,6 +514,23 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 - [2025-07-22](https://www.linkedin.com/posts/simon-southwell-7684482_pcie-vhdl-nvc-activity-7354160318052220929-K0Ku?utm_source=share&utm_medium=member_desktop&rcm=ACoAAAJv-TcBSi_5ff0VNMrInrT-xg44YF3jnyU)
 - [2025-04-03](https://www.linkedin.com/feed/update/urn:li:activity:7313386031125303296?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7313386031125303296%2C7313594045216223236%29&dashCommentUrn=urn%3Ali%3Afsd_comment%3A%287313594045216223236%2Curn%3Ali%3Aactivity%3A7313386031125303296%29)
 
+**Issues filed upstream**, still open. Details, workarounds and the fixed ones: [openXC7 findings](4.build/hw_build.openXC7/README.md#openxc7-findings).
+
+| Tool / project | Issue | What | State |
+|---|---|---|---|
+| openXC7 nextpnr | [nextpnr#21](https://github.com/openXC7/nextpnr/issues/21) | GT attribute defaults differ from Xilinx's | open |
+| openXC7 nextpnr | [nextpnr#182](https://github.com/openXC7/nextpnr/issues/182) | `set_multicycle_path`: `-from` drops the constraint; inferred registers cannot be selected | open |
+| openXC7 nextpnr | [nextpnr#183](https://github.com/openXC7/nextpnr/issues/183) | `BEL` attribute: the reported name is rejected, an accepted one ignored | open |
+| fpga-assembler | [`282ef7c2`](https://github.com/lromor/fpga-assembler/commit/282ef7c2) | `fpga-as` writes `RXCDR_CFG` wrong on every GTP lane | fixed upstream, not yet in the toolchain |
+| Yosys | [yosys#6498](https://github.com/YosysHQ/yosys/issues/6498) | wrong `IBUFDS_GTE2.CLKSWING_CFG` default | open |
+| fpga-assembler | [lromor/fpga-assembler#66](https://github.com/lromor/fpga-assembler/issues/66) | compressed bitstreams (Multiple Frame Write), as Vivado makes | open |
+| Yosys, sv-elab | [yosys#6499](https://github.com/YosysHQ/yosys/issues/6499), [sv-elab#72](https://github.com/povik/sv-elab/issues/72) | `read_slang` rejects the `specify` blocks of `xilinx/cells_sim.v` | open |
+| sv-elab | [sv-elab#282](https://github.com/povik/sv-elab/issues/282) | no `real` parameters on primitives (`MMCME2_ADV`) | open |
+| EBMC | [hw-cbmc#2341](https://github.com/diffblue/hw-cbmc/issues/2341) | 6.2 rejects a 1-bit enum (eduBOS5 proofs) | open |
+| JanusHDL | [#1](https://github.com/chili-chips/openPCIE/issues/1) | 0.17.0: what simulates and what does not | open |
+
+Numbers without a link were filed from an account that is no longer available. JanusHDL has no public tracker (closed source, so it can read encrypted IP): its issues are in our repos, under the [`JanusHDL` label](https://github.com/issues?q=org%3Achili-chips+label%3AJanusHDL).
+
 ### Community Involvement
 
 Want to help the open PCIE community grow? See [Contributions](CONTRIBUTING.md).

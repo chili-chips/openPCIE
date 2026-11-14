@@ -12,7 +12,7 @@ Both share one RTL, [`2.rtl/0.common.opensource`](../../2.rtl/0.common.opensourc
 | SV front end | `yosys read_slang` (or `sv2v`) |
 | Synthesis | `yosys` -> `top.json` |
 | Place & route | `nextpnr-himbaechel` (via the `nextpnr-xilinx` shim) -> `top.fasm` |
-| Bitstream | `fasm2frames` + `xc7frames2bit` -> `top.<link>.<variant>.bit` (`ASSEMBLER=fpga-as` for the one-step assembler, row 27). Not compressed: neither can do it yet (lromor/fpga-assembler#59) |
+| Bitstream | `fasm2frames` + `xc7frames2bit` -> `top.<link>.<variant>.bit` (`ASSEMBLER=fpga-as` for the one-step assembler, row 27). Not compressed: neither can do it yet ([lromor/fpga-assembler#66](https://github.com/lromor/fpga-assembler/issues/66)) |
 
 ## Status: working on hardware
 
@@ -91,9 +91,9 @@ Since **Yosys 0.67**, Yosys has its own SystemVerilog front end, `read_slang`: t
 |---|---|
 | Primitives need declarations with parameters (a) | [`gen_xilinx_bb.py`](gen_xilinx_bb.py) writes them for the 9 primitives used |
 | No `real` parameters on primitives ([sv-elab#282](https://github.com/povik/sv-elab/issues/282)) | MMCM real settings behind `` `ifndef SYN_YOSYS_BUG `` (b) |
-| `IBUFDS_GTE2.CLKSWING_CFG` default is `"TRUE"`, not `2'b11` (yosys#6322) | `gen_xilinx_bb.py` writes `2'b11` |
+| `IBUFDS_GTE2.CLKSWING_CFG` default is `"TRUE"`, not `2'b11` ([yosys#6498](https://github.com/YosysHQ/yosys/issues/6498)) | `gen_xilinx_bb.py` writes `2'b11` |
 
-- (a) Yosys's blackboxes have no parameters, and its `cells_sim.v` fails slang's checks (yosys#6323). So the script takes the declarations from Yosys's own library; the Makefile runs it. Yosys main (after 0.70) adds `read_slang --target xilinx`, which loads that library itself ([yosys#6262](https://github.com/YosysHQ/yosys/pull/6262), [sv-elab#396](https://github.com/povik/sv-elab/pull/396)). On our design it still trips twice: `FDCE`'s `specify` block (6 errors, yosys#6323) and `MMCME2_ADV`'s `real` defaults (sv-elab#282). Patch both out, and it builds the same hard blocks, but `CLKSWING_CFG` comes out `"TRUE"` (yosys#6322).
+- (a) Yosys's blackboxes have no parameters, and its `cells_sim.v` fails slang's checks ([yosys#6499](https://github.com/YosysHQ/yosys/issues/6499)). So the script takes the declarations from Yosys's own library; the Makefile runs it. Yosys main (after 0.70) adds `read_slang --target xilinx`, which loads that library itself ([yosys#6262](https://github.com/YosysHQ/yosys/pull/6262), [sv-elab#396](https://github.com/povik/sv-elab/pull/396)). On our design it still trips twice: `FDCE`'s `specify` block (6 errors, [yosys#6499](https://github.com/YosysHQ/yosys/issues/6499)) and `MMCME2_ADV`'s `real` defaults (sv-elab#282). Patch both out, and it builds the same hard blocks, but `CLKSWING_CFG` comes out `"TRUE"` (yosys#6322).
 - (b) In `clk_rst_gen.sv`. The settings are all defaults, and this flow defines `SYN_YOSYS_BUG`.
 
 **Versus the sv2v build**, the FASM differs in only 9 `GTPE2_CHANNEL` fields our RTL leaves unset. `read_slang` passes Xilinx's defaults; sv2v leaves them to nextpnr. So the slang build is the closer one to Vivado. Not on the board yet.
@@ -334,12 +334,12 @@ Open stand-ins for Vivado libraries openXC7 lacks. The Vivado build does not use
 - openXC7: area is Yosys `synth_xilinx` (`stat`), Fmax nextpnr's report. Vivado: area after implementation (`report_utilization`).
 - Vivado reports no Fmax; its figure here is 1 / (period - WNS). Vivado optimises only until each target is met, so it undersells the design. Compare with care.
 - nextpnr's Fmax varies between builds: the same eduBOS5 2-stage SOC gave 158.4 MHz in another build.
-- The committed x4 bitstreams are later builds (2026-10-25), assembled with the prjxray pair, not tested on hardware yet. `top.x4g1.direct.bit` (x4 Gen1, 2-stage eduBOS5): `user_clk` 157.2 MHz (needs 125), `clk125` 337.0 MHz, pipe clock 283.9 MHz. `top.x4g2.direct.bit` (x4 Gen2, 3-stage eduBOS5): `user_clk` **181.1 MHz, misses 250 MHz** (nextpnr#110), `clk125` 348.6 MHz, pipe clock 285.1 MHz. The x1 builds pass: pipe clock 285.4 MHz (direct, 2026-10-25), 335.8 MHz (switched, 2026-10-21).
-- Both bitstreams were uncompressed, so size does not depend on the design; the 13 bytes of difference are header metadata. The Vivado build now compresses (`BITSTREAM.GENERAL.COMPRESS` in the common XDC); openXC7's assemblers cannot yet (lromor/fpga-assembler#59).
+- The committed x4 bitstreams are later builds (2026-10-25), assembled with the prjxray pair, not tested on hardware yet. `top.x4g1.direct.bit` (x4 Gen1, 2-stage eduBOS5): `user_clk` 157.2 MHz (needs 125), `clk125` 337.0 MHz, pipe clock 283.9 MHz. `top.x4g2.direct.bit` (x4 Gen2, 3-stage eduBOS5): `user_clk` **181.1 MHz, misses 250 MHz** (nextpnr#182), `clk125` 348.6 MHz, pipe clock 285.1 MHz. The x1 builds pass: pipe clock 285.4 MHz (direct, 2026-10-25), 335.8 MHz (switched, 2026-10-21).
+- Both bitstreams were uncompressed, so size does not depend on the design; the 13 bytes of difference are header metadata. The Vivado build now compresses (`BITSTREAM.GENERAL.COMPRESS` in the common XDC); openXC7's assemblers cannot yet ([lromor/fpga-assembler#66](https://github.com/lromor/fpga-assembler/issues/66)).
 
 ## CPU options compared
 
-`make` (eduBOS5 2-stage, default), `make CPU=edubos5_3stg` or `make CPU=picorv32`. At x4 Gen2 (`make GEN=2`, `user_clk` 250 MHz) the 3-stage is the default; there it reaches 181 MHz here, 250 MHz in Vivado, as nextpnr cannot apply its multicycle paths (nextpnr#110). A non-default CPU builds in its own work folder (`build_artifacts/work/x4g1.direct.picorv32/`). The three compared on the SOC (Fmax, area, IPC): [eduBOS5 README](../../2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md#cpu-options-compared-the-soc-only).
+`make` (eduBOS5 2-stage, default), `make CPU=edubos5_3stg` or `make CPU=picorv32`. At x4 Gen2 (`make GEN=2`, `user_clk` 250 MHz) the 3-stage is the default; there it reaches 181 MHz here, 250 MHz in Vivado, as nextpnr cannot apply its multicycle paths (nextpnr#182). A non-default CPU builds in its own work folder (`build_artifacts/work/x4g1.direct.picorv32/`). The three compared on the SOC (Fmax, area, IPC): [eduBOS5 README](../../2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md#cpu-options-compared-the-soc-only).
 
 ## Lint and formal equivalence of RTL changes
 
@@ -400,12 +400,12 @@ Every openXC7 issue this project hit, rechecked on v1.0.0 (nextpnr `3e5c2cdd`). 
 | # | Finding | Status | openPCIE | Upstream |
 |---|---|---|---|---|
 | 1 | GT attribute defaults differ from Xilinx's | open | [#4](https://github.com/chili-chips/openPCIE/issues/4) | [nextpnr#21](https://github.com/openXC7/nextpnr/issues/21) |
-| 8 | `BEL` attribute on non-IO cells | partly fixed: malformed names give an error, not an abort (main, [nextpnr#123](https://github.com/openXC7/nextpnr/pull/123)); the rest still broken (a) | - | nextpnr#89 |
-| 19 | Yosys: wrong `CLKSWING_CFG` default | new, Slang; still on main | [#5](https://github.com/chili-chips/openPCIE/issues/5) | yosys#6322 |
+| 8 | `BEL` attribute on non-IO cells | partly fixed: malformed names give an error, not an abort (main, [nextpnr#123](https://github.com/openXC7/nextpnr/pull/123)); the rest still broken (a) | - | [nextpnr#183](https://github.com/openXC7/nextpnr/issues/183) |
+| 19 | Yosys: wrong `CLKSWING_CFG` default | new, Slang; still on main | [#5](https://github.com/chili-chips/openPCIE/issues/5) | [yosys#6498](https://github.com/YosysHQ/yosys/issues/6498) |
 | 20 | sv-elab: no `real` primitive parameters | new, Slang; blocks `read_slang --target xilinx` on main (`MMCME2_ADV`) | [#6](https://github.com/chili-chips/openPCIE/issues/6) | [sv-elab#282](https://github.com/povik/sv-elab/issues/282) |
-| 22 | `read_slang` fails on `xilinx/cells_sim.v` | new, Slang (b); with `--target xilinx` on main, only `FDCE` fails (6 errors) | [#7](https://github.com/chili-chips/openPCIE/issues/7) | yosys#6323, [sv-elab#72](https://github.com/povik/sv-elab/issues/72) |
+| 22 | `read_slang` fails on `xilinx/cells_sim.v` | new, Slang (b); with `--target xilinx` on main, only `FDCE` fails (6 errors) | [#7](https://github.com/chili-chips/openPCIE/issues/7) | [yosys#6499](https://github.com/YosysHQ/yosys/issues/6499), [sv-elab#72](https://github.com/povik/sv-elab/issues/72) |
 | 24 | No XPM / UNIMACRO libraries | open; [shims](#shims) stand in | - | - |
-| 26 | `set_multicycle_path` cannot reach registers | new (c); merged on main 2 Nov, no release yet: sign fix (nextpnr#145), multicycle Fmax (nextpnr#150), Fmax skew fix (nextpnr#149), tag value check (nextpnr#154), XDC selectors (nextpnr#153), LUT-RAM tags (nextpnr#152) | [#9](https://github.com/chili-chips/openPCIE/issues/9) | nextpnr#110 |
+| 26 | `set_multicycle_path` cannot reach registers | new (c); merged on main 2 Nov, no release yet: sign fix (nextpnr#145), multicycle Fmax (nextpnr#150), Fmax skew fix (nextpnr#149), tag value check (nextpnr#154), XDC selectors (nextpnr#153), LUT-RAM tags (nextpnr#152) | [#9](https://github.com/chili-chips/openPCIE/issues/9) | [nextpnr#182](https://github.com/openXC7/nextpnr/issues/182) |
 | 27 | `fpga-as` writes `RXCDR_CFG` wrong on every GTP lane | new (d); the Makefile uses `fasm2frames` + `xc7frames2bit` until the toolchain ships the fix | [#12](https://github.com/chili-chips/openPCIE/issues/12) | nextpnr#88, fixed in [fpga-assembler `282ef7c2`](https://github.com/lromor/fpga-assembler/commit/282ef7c2) |
 
 - (a) The old error is gone, but the name nextpnr reports (`SLICE_X162Y177/A5FF`) is rejected, and an accepted one (`X250Y5/SLICE_X0Y0.AFF`) is ignored. Not used by openPCIE.
