@@ -40,15 +40,15 @@
 module riscv_pcie_soc
   import pcie_pkg::*;
 (
-    input  logic          clk,
-    input  logic          resetn,
+    input  logic   clk,
+    input  logic   resetn,
 
-           axis_if.master s_axis_tx,  // TLPs to the PCIE stack
-           axis_if.slave  m_axis_rx,  // TLPs from the PCIE stack
+    axis_if.master s_axis_tx,  // TLPs to the PCIE stack
+    axis_if.slave  m_axis_rx,  // TLPs from the PCIE stack
 
-           cfg_if.soc     cfg,        // status sideband from the PCIE core
+    cfg_if.soc     cfg,        // status sideband from the PCIE core
 
-    output logic          fw_pass     // the firmware has reported PASS, for an LED
+    output logic   fw_pass     // the firmware has reported PASS, for an LED
 );
 
   mem_if mem ();  // CPU memory bus

@@ -40,15 +40,15 @@
 module trn_bridge
   import pcie_pkg::*;
 (
-    axis_if.slave  s_axis_tx,
-    axis_if.master m_axis_rx,
+    axis_if.slave      s_axis_tx,
+    axis_if.master     m_axis_rx,
 
-    trn_if.user trn,  // TRN bus to PCIE_2_1 in pcie_core (see trn_if.sv)
+    trn_if.user        trn,                  // TRN bus to PCIE_2_1 in pcie_core (see trn_if.sv)
 
-    input logic [2:0] cfg_pcie_link_state,
+    input  logic [2:0] cfg_pcie_link_state,
 
-    input logic user_clk,
-    input logic core_rst_n
+    input  logic       user_clk,
+    input  logic       core_rst_n
 );
 
   logic tready_thrtl;

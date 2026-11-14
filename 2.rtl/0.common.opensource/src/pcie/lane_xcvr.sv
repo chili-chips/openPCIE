@@ -42,19 +42,19 @@ module lane_xcvr
 #(
     parameter int LANE = 0
 ) (
-    input  logic       pipe_clk,          // TXUSRCLK/TXUSRCLK2, PIPE clock
-    input  logic       clk125,            // DRP clock
-    input  logic       clk_mmcm_lock,
-    input  logic       gtpll0_outclk,     // from GTPE2_COMMON
-    input  logic       gtpll0_outrefclk,
+    input  logic pipe_clk,          // TXUSRCLK/TXUSRCLK2, PIPE clock
+    input  logic clk125,            // DRP clock
+    input  logic clk_mmcm_lock,
+    input  logic gtpll0_outclk,     // from GTPE2_COMMON
+    input  logic gtpll0_outrefclk,
 
-           pipe_if.phy pipe_phy,          // this lane's slice: pipe_phy.tx/rx[LANE]
-           gtp_if.lane gtp,               // to/from gtp_wrapper, slice [LANE]
+    pipe_if.phy  pipe_phy,          // this lane's slice: pipe_phy.tx/rx[LANE]
+    gtp_if.lane  gtp,               // to/from gtp_wrapper, slice [LANE]
 
-    output logic       gt_txp,
-    output logic       gt_txn,
-    input  logic       gt_rxp,
-    input  logic       gt_rxn
+    output logic gt_txp,
+    output logic gt_txn,
+    input  logic gt_rxp,
+    input  logic gt_rxn
 );
 
   localparam bit MULTILANE = (PCIE_LANES > 1);

@@ -40,11 +40,11 @@
 module trn_rx
   import pcie_pkg::*;
 (
-           axis_if.master m_axis_rx,
-           trn_if.user    trn,        // RX half: rd ... recrc_err, rdst_rdy
+    axis_if.master m_axis_rx,
+    trn_if.user    trn,        // RX half: rd ... recrc_err, rdst_rdy
 
-    input  logic          user_clk,
-    input  logic          core_rst_n
+    input  logic   user_clk,
+    input  logic   core_rst_n
 );
 
 

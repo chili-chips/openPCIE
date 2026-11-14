@@ -41,14 +41,14 @@ module mac2phy
   import link_pkg::*;
 (
     // MAC side: 16-bit PIPE from pcie_core
-           pipe_if.phy       pipe_mac,
+    pipe_if.phy        pipe_mac,
     // PHY side: 32-bit PIPE to gtp_wrapper
-           pipe_if.mac       pipe_phy,
+    pipe_if.mac        pipe_phy,
 
-    input  logic       [5:0] pl_ltssm_state,  // gates the EIOS filter
-    input  logic             pipe_clk,
-    input  logic             pipe_rst_n,      // released on pipe_clk
-    input  logic             phy_rdy_n        // reset of the EIOS filters
+    input  logic [5:0] pl_ltssm_state,  // gates the EIOS filter
+    input  logic       pipe_clk,
+    input  logic       pipe_rst_n,      // released on pipe_clk
+    input  logic       phy_rdy_n        // reset of the EIOS filters
 );
 
   logic [5:0] pl_ltssm_state_q;

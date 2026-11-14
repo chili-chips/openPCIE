@@ -40,27 +40,27 @@
 module phy_top
   import link_pkg::*;
 (
-    input  logic       [5:0]            pl_ltssm_state,
+    input  logic [5:0]            pl_ltssm_state,
 
-           pipe_if.phy                  pipe_mac,
+    pipe_if.phy                   pipe_mac,
 
-    output logic       [PCIE_LANES-1:0] pci_exp_txn,
-    output logic       [PCIE_LANES-1:0] pci_exp_txp,
-    input  logic       [PCIE_LANES-1:0] pci_exp_rxn,
-    input  logic       [PCIE_LANES-1:0] pci_exp_rxp,
+    output logic [PCIE_LANES-1:0] pci_exp_txn,
+    output logic [PCIE_LANES-1:0] pci_exp_txp,
+    input  logic [PCIE_LANES-1:0] pci_exp_rxn,
+    input  logic [PCIE_LANES-1:0] pci_exp_rxp,
 
-    input  logic                        refclk_p,           // 100 MHz PCIE REFCLK+
-    input  logic                        refclk_n,           // REFCLK-
-    input  logic                        rst125_n,           // released on clk125
-    input  logic                        pipe_rst_n,         // released on pipe_clk
+    input  logic                  refclk_p,           // 100 MHz PCIE REFCLK+
+    input  logic                  refclk_n,           // REFCLK-
+    input  logic                  rst125_n,           // released on clk125
+    input  logic                  pipe_rst_n,         // released on pipe_clk
 
-    input  logic                        pipe_clk_in,
-    input  logic                        pipe_drp_clk_in,
-    input  logic                        pipe_mmcm_lock_in,
-    output logic                        pipe_txoutclk_out,
-    output logic                        pipe_clk_sel_out,
+    input  logic                  pipe_clk_in,
+    input  logic                  pipe_drp_clk_in,
+    input  logic                  pipe_mmcm_lock_in,
+    output logic                  pipe_txoutclk_out,
+    output logic                  pipe_clk_sel_out,
 
-    output logic                        phy_rdy_n
+    output logic                  phy_rdy_n
 );
 
   logic [PCIE_LANES-1:0] phystatus_rst;

@@ -42,8 +42,8 @@ module buffer_bank #(
     parameter int NUM_BRAMS         = 4,
     parameter int RAM_RDATA_LATENCY = 2    // TL_*_RAM_RDATA_LATENCY of PCIE_2_1
 ) (
-    input  logic      user_clk_i,
-           mim_if.ram mim          // packet buffer port of PCIE_2_1 (see mim_if.sv)
+    input  logic user_clk_i,
+    mim_if.ram   mim          // packet buffer port of PCIE_2_1 (see mim_if.sv)
 );
   // PCIE_2_1 runs with TL_*_RAM_RADDR_LATENCY = TL_*_RAM_WRITE_LATENCY = 0, so
   // address and write data go straight to the BRAMs; a read data latency of 2

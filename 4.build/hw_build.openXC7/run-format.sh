@@ -19,6 +19,7 @@
 #   2e. a module's port list is one alignment: the direction, type,
 #      dimension, name and comment columns are the same in every group of
 #      ports (run-format-align.py; Verible aligns each group on its own);
+#      an interface port, which has no direction, starts in the direction column;
 #   0. no CR (^M) in these files (removed unless --check);
 #   3. no ?: in a port connection (reported, not fixed).
 #

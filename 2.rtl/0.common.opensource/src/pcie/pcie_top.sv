@@ -46,18 +46,18 @@ module pcie_top
     input  logic [PCIE_LANES-1:0] pci_exp_rxn,
 
 
-    output logic user_clk,    // 62.5 / 125 / 250 MHz, from clk_rst_gen
-    output logic core_rst_n,  // user_clk reset: low on PERST# or no data link
-    output logic trn_link_up, // data link up (TRNLNKUP), user_clk
+    output logic                  user_clk,     // 62.5 / 125 / 250 MHz, from clk_rst_gen
+    output logic                  core_rst_n,   // user_clk reset: low on PERST# or no data link
+    output logic                  trn_link_up,  // data link up (TRNLNKUP), user_clk
 
-    axis_if.slave  s_axis_tx,  // TLPs from the SOC (tuser: pcie_tx_tuser_t)
-    axis_if.master m_axis_rx,  // TLPs to the SOC   (tuser: pcie_rx_tuser_t)
+    axis_if.slave                 s_axis_tx,    // TLPs from the SOC (tuser: pcie_tx_tuser_t)
+    axis_if.master                m_axis_rx,    // TLPs to the SOC   (tuser: pcie_rx_tuser_t)
 
-    cfg_if.core cfg,  // status sideband to the SOC
+    cfg_if.core                   cfg,          // status sideband to the SOC
 
-    input logic refclk_p,  // 100 MHz PCIE REFCLK+
-    input logic refclk_n,  // REFCLK-
-    input logic perst_n
+    input  logic                  refclk_p,     // 100 MHz PCIE REFCLK+
+    input  logic                  refclk_n,     // REFCLK-
+    input  logic                  perst_n
 );
 
   localparam logic [15:0] CFG_VEND_ID        = 16'h10EE;

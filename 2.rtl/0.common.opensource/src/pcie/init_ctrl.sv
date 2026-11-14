@@ -40,15 +40,15 @@
 module init_ctrl
   import link_pkg::*;
 (
-    input  logic       pipe_clk,         // PIPE clock
-    input  logic       clk125,           // 125 MHz, runs before PLL0 is powered up
-    input  logic       pipe_rst_n,       // released on pipe_clk
-    input  logic       gtpll0_lock,      // PLL0LOCK of GTPE2_COMMON
-    input  logic       mmcm_lock,
+    input  logic pipe_clk,         // PIPE clock
+    input  logic clk125,           // 125 MHz, runs before PLL0 is powered up
+    input  logic pipe_rst_n,       // released on pipe_clk
+    input  logic gtpll0_lock,      // PLL0LOCK of GTPE2_COMMON
+    input  logic mmcm_lock,
 
-           gtp_if.ctrl gtp,              // reads the lane status, drives gtp.rst
+    gtp_if.ctrl  gtp,              // reads the lane status, drives gtp.rst
 
-    output logic       gtpll0_reset_req  // hold PLL0 in reset (lane init and DRP)
+    output logic gtpll0_reset_req  // hold PLL0 in reset (lane init and DRP)
 );
 
   localparam logic [5:0] CFG_WAIT_MAX = 6'd63;

@@ -40,26 +40,26 @@
 module gtp_wrapper
   import link_pkg::*;
 (
-    input  logic                        refclk_p,       // 100 MHz PCIE REFCLK+
-    input  logic                        refclk_n,       // REFCLK-
-    input  logic                        rst125_n,       // released on clk125
-    input  logic                        pipe_rst_n,     // released on pipe_clk
+    input  logic                  refclk_p,       // 100 MHz PCIE REFCLK+
+    input  logic                  refclk_n,       // REFCLK-
+    input  logic                  rst125_n,       // released on clk125
+    input  logic                  pipe_rst_n,     // released on pipe_clk
 
-           pipe_if.phy                  pipe,           // 32-bit PIPE from phy_top (see pipe_if.sv)
+    pipe_if.phy                   pipe,           // 32-bit PIPE from phy_top (see pipe_if.sv)
 
-    output logic       [PCIE_LANES-1:0] txp,
-    output logic       [PCIE_LANES-1:0] txn,
-    input  logic       [PCIE_LANES-1:0] rxp,
-    input  logic       [PCIE_LANES-1:0] rxn,
+    output logic [PCIE_LANES-1:0] txp,
+    output logic [PCIE_LANES-1:0] txn,
+    input  logic [PCIE_LANES-1:0] rxp,
+    input  logic [PCIE_LANES-1:0] rxn,
 
-    output logic       [PCIE_LANES-1:0] phystatus_rst,
+    output logic [PCIE_LANES-1:0] phystatus_rst,
 
-    input  logic                        pipe_clk,
-    input  logic                        clk125,
-    input  logic                        mmcm_lock,
+    input  logic                  pipe_clk,
+    input  logic                  clk125,
+    input  logic                  mmcm_lock,
 
-    output logic                        txoutclk,
-    output logic                        pipe_clk_sel    // 1 = 250 MHz (Gen2): all lanes voted
+    output logic                  txoutclk,
+    output logic                  pipe_clk_sel    // 1 = 250 MHz (Gen2): all lanes voted
 );
 
 

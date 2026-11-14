@@ -40,12 +40,12 @@
 module trn_tx
   import pcie_pkg::*;
 (
-           axis_if.slave s_axis_tx,
-           trn_if.user   trn,           // TX half: td ... tecrc_gen, tdst_rdy, link_up
+    axis_if.slave s_axis_tx,
+    trn_if.user   trn,           // TX half: td ... tecrc_gen, tdst_rdy, link_up
 
-    input  logic         tready_thrtl,
-    input  logic         user_clk,
-    input  logic         core_rst_n
+    input  logic  tready_thrtl,
+    input  logic  user_clk,
+    input  logic  core_rst_n
 );
 
 

@@ -28,9 +28,13 @@
 #
 #     output logic      o_en,  // enable            output logic      o_en,        // enable
 #     output dl_state_e o_st   // state             output dl_state_e o_st         // state
-# An interface port has no direction: its type goes in the type column, as
-# Verible puts it. A list with a default value, or one that would pass the
-# column limit, stays as Verible made it.
+# An interface port has no direction: its type starts in the direction column,
+# and its name is in the name column of the others:
+#     input  logic  clk,     // PCLK
+#     dll_if.tl     dll,
+#     trn_tx_if.dst trn_tx,  // TLPs from trn_bridge
+# A list with a default value, or one that would pass the column limit, stays
+# as Verible made it.
 #   usage: run-format-align.py [--check] file...   (--check: print the files it would change)
 import re, sys
 
@@ -146,16 +150,22 @@ def ports(src):
         ind = {r[1] for r in rows if r[1] is not None}
         if len(ind) == 1:
             rows = [(r[0], ind.copy().pop()) + r[2:] for r in rows]
-            wt = max(len(r[3]) for r in rows)
-            wd = max(len(r[4]) for r in rows)
-            new = []
+            dirs = [r for r in rows if r[2]]
+            wt = max(len(r[3]) for r in dirs)
+            wd = max(len(r[4]) for r in dirs)
+            pre = []  # all before the name: direction, type and dimensions, or the interface type
             for r in rows:
-                l = r[1] + r[2].ljust(6)
+                if not r[2]:
+                    pre.append(r[3])
+                    continue
+                l = r[2].ljust(6)
                 if wt:
                     l += ' ' + r[3].ljust(wt)
                 if wd:
                     l += ' ' + r[4].ljust(wd)
-                new.append(l + ' ' + r[5])
+                pre.append(l.rstrip())
+            wp = max(len(l) for l in pre)
+            new = [r[1] + l.ljust(wp) + ' ' + r[5] for l, r in zip(pre, rows)]
             wc = max(len(l) for l in new) + 2
             new = [l.ljust(wc) + r[6] if r[6] else l for l, r in zip(new, rows)]
             if all(len(l) <= LIMIT or l == src[r[0]] for l, r in zip(new, rows)):
