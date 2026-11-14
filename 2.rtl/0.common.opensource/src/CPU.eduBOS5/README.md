@@ -43,7 +43,7 @@ Cycles per instruction (`EN_WAIT4REGS` selects the pipeline):
 
 The 3-stage is built for Fmax: `FETCH_INSTR` fetches `pc + 1`, so the RAM address never waits for the ALU, and a jump refetches from its target (`FETCH_TARGET`, 1 cycle); the ALU registers the shift result, like add and sub. The 2-stage has neither.
 
-eduBOS5 registers `dmem_vld`, so a load requests in `WAIT_DATA`; the SOC adds one `WAIT_DATA` cycle (SOC figures measured on the RTL). Stores do not wait (`STORE_WAITS_RDY=0`: default, and the openPCIE SOC). With `STORE_WAITS_RDY=1`, each clock without `dmem_rdy` adds one ([#40](https://github.com/chili-chips-ba/openPCIE/issues/40)).
+eduBOS5 registers `dmem_vld`, so a load requests in `WAIT_DATA`; the SOC adds one `WAIT_DATA` cycle (SOC figures measured on the RTL). Stores do not wait (`STORE_WAITS_RDY=0`: default, and the openPCIE SOC). With `STORE_WAITS_RDY=1`, each clock without `dmem_rdy` adds one.
 
 The rv32 ISS models both (`-V EDUBOS5STG2`, `-V EDUBOS5STG3`, see [5.sim](../../../../5.sim/README.md)).
 
@@ -62,7 +62,7 @@ The rv32 ISS models both (`-V EDUBOS5STG2`, `-V EDUBOS5STG3`, see [5.sim](../../
 | Vivado | 2026.1 | timing with the multicycle constraint; Fmax, area | [`edubos5.3STG-ONLY.mcp.tcl`](edubos5.3STG-ONLY.mcp.tcl) |
 | openXC7 (nextpnr) | v1.0.0 | Fmax, area | [4.build/hw_build.openXC7](../../../../4.build/hw_build.openXC7/README.md) |
 | WaveCrux | 1.0.1 | retired instructions, decoded and cross-checked (RVFI) | [Watching the CPU in WaveCrux](#watching-the-cpu-in-wavecrux) |
-| EBMC | 6.1 | declarative SVA; cannot read eduBOS5 yet: a typed parameter bug ([diffblue/hw-cbmc#2274](https://github.com/diffblue/hw-cbmc/issues/2274), gotcha 6) | tried |
+| EBMC | 6.2 | declarative SVA; cannot read eduBOS5 yet: it rejects an enum assignment in `edubos5_pkg.sv` ([#10](https://github.com/chili-chips/openPCIE/issues/10), gotcha 6) | tried |
 | SymbiYosys (`sby`) + ABC `bmc3` | v0.69 | riscv-formal: RV32I against the ISA, bounded | [`formal/run-riscv-formal.sh`](formal/run-riscv-formal.sh) |
 | Z3 | 5.3.1, pip `z3-solver` | replays a riscv-formal failure into a VCD | [`formal/run-riscv-formal.sh`](formal/run-riscv-formal.sh) |
 
@@ -87,7 +87,7 @@ The scripts named `run-*.sh` are in [4.build/hw_build.openXC7](../../../../4.bui
 - **The 3-stage now trades IPC for clock, and breaks even.** 1.40x the 2-stage's Fmax against 0.73x its IPC: 71 against 70 MIPS. It is the only core here that closes timing at x4 Gen2's 250 MHz. Where the clock is free, the 2-stage does the same work with fewer cycles and less latency.
 - **IPC:** retired instructions (RVFI) per `user_clk` cycle, from SOC reset release to the firmware result: `make run CORE=... USRSIMOPTS="--define SOC_IPC"` ([5.sim](../../../../5.sim/README.md)). The firmware polls the PCIE stack, so each core retires a different count (6367, 6783, 6368). The 3-stage pays 1 more cycle per instruction, 2 more per jump or taken branch.
 - **Vivado Fmax:** the full design at x4 Gen2, `user_clk` over-constrained by 0.8 ns of setup uncertainty (3.2 ns), so that no core meets its target and Vivado keeps optimising. Fmax = 1 / (3.2 ns - WNS). The 3-stage uses [`edubos5.3STG-ONLY.mcp.tcl`](edubos5.3STG-ONLY.mcp.tcl). Area: `report_utilization -hierarchical`.
-- **openXC7 Fmax:** nextpnr's report at the 250 MHz target (`make GEN=2 CPU=...`). It cannot apply the multicycle paths ([nextpnr#110](https://github.com/openXC7/nextpnr/issues/110)), so it times the 3-stage's 2-cycle paths as 1-cycle. It varies between builds by 10-20 MHz.
+- **openXC7 Fmax:** nextpnr's report at the 250 MHz target (`make GEN=2 CPU=...`). It cannot apply the multicycle paths (nextpnr#110), so it times the 3-stage's 2-cycle paths as 1-cycle. It varies between builds by 10-20 MHz.
 - **Yosys area:** `synth_xilinx -flatten` of the sv2v-converted design, the CPU kept as its own hierarchy. sv2v inlines the SOC, so it has no SOC row.
 - PicoRV32 with `BARREL_SHIFTER=0`, `ENABLE_COUNTERS=0`, and eduBOS5 with `EN_COUNTERS=0`: measured before the counters, as the SOC built them then (now `make COUNTERS=0`). The default build (`COUNTERS=1`) adds the counters to both, and its firmware times the waits with them.
 - Co-simulation: the same firmware ([5.sim](../../../../5.sim/README.md#what-they-cost)). The result time includes the PCIE link-up, so it improves less than IPC.
@@ -347,7 +347,7 @@ The 2-stage column is the **negative test**. It must fail somewhere, and only a 
 3. **Necessary is not sufficient.** The 2-stage core passes the source side too: its sources also hold 2 clocks. Only a negative test shows the property does not prove the claim; the capture side tells the two apart (section 5).
 4. **Don't mix harnesses.** With the core's own source checks on in the miter, copy B's checks fire on the junk the miter injects on purpose: a false failure.
 5. **Pick an engine that scales.** Yosys's built-in `sat` proved the source side in seconds, but needed 15 minutes for 7 clocks on two cores. ABC's `pdr` and `bmc3` (in openXC7's Yosys build) are much faster: BMC found the 2-stage counterexample in 0.1 s.
-6. **Front ends have bugs too.** `read_slang` cannot reach an enum constant through a hierarchical name (`u_a.FETCH_INSTR`); use its value. EBMC 6.1 mistypes a `parameter bit` passed down the hierarchy, and cannot elaborate this core ([diffblue/hw-cbmc#2274](https://github.com/diffblue/hw-cbmc/issues/2274)). Work around them in the harness, never in the RTL.
+6. **Front ends have bugs too.** `read_slang` cannot reach an enum constant through a hierarchical name (`u_a.FETCH_INSTR`); use its value. EBMC 6.2 stops on `edubos5_pkg.sv` line 14 ("assignment to enum requires enum of the same type, but got bool"), so it cannot elaborate this core ([#10](https://github.com/chili-chips/openPCIE/issues/10); 6.1 had another error, fixed in 6.2). Work around them in the harness, never in the RTL.
 
 7. **Read every counterexample.** The 3-stage miter first failed at clock 9:
    1. `dmem_rdy` was already high in a load's `EXECUTE`, so the core skipped `LOAD_DATA` (the FSM's `EXECUTE` branch in `edubos5.sv`).
@@ -415,7 +415,7 @@ Formal found two things in eduBOS5 itself, and pointed to a third improvement:
 
 **Why EBMC:** every other open-source tool reads a Yosys netlist and inherits Yosys's SVA limits. EBMC alone has its own SVA front end: the candidate for proving the declarative assertions as written.
 
-EBMC 6.1 status here:
+EBMC 6.2 status here:
 - It proves `$changed |-> $past` both bounded (BMC) and unbounded.
 - For `|-> ##2` it gives bounded proofs only. Its unbounded engines need Spot, which is not in Ubuntu's apt.
 - It cannot read eduBOS5 yet (gotcha 6).

@@ -141,19 +141,19 @@ In [`hw_build.openXC7`](./hw_build.openXC7) ([README](./hw_build.openXC7/README.
 | Build | Chain | Output |
 |---|---|---|
 | `make` | `yosys` (`read_slang`, no sv2v) -> `nextpnr-himbaechel` -> `fasm2frames` -> `xc7frames2bit` (1) | `build_artifacts/top.x4g1.direct.bit` |
-| `make GEN=2` | same, x4 Gen2, 3-stage eduBOS5; misses 250 MHz here ([nextpnr#110](https://github.com/openXC7/nextpnr/issues/110)) | `build_artifacts/top.x4g2.direct.bit` |
+| `make GEN=2` | same, x4 Gen2, 3-stage eduBOS5; misses 250 MHz here (nextpnr#110) | `build_artifacts/top.x4g2.direct.bit` |
 | `make LANES=1` | same, x1 link | `build_artifacts/top.x1g2.direct.bit` |
 | `make FRONTEND=sv2v` | `sv2v` -> `yosys` -> `nextpnr-himbaechel` -> `fasm2frames` -> `xc7frames2bit` (1) | `build_artifacts/work/x4g1.direct.sv2v/top.x4g1.direct.bit` |
 
-1. `ASSEMBLER=fpga-as` for the one-step assembler. Not the default yet: it writes `RXCDR_CFG` wrong ([#41](https://github.com/chili-chips-ba/openPCIE/issues/41)).
+1. `ASSEMBLER=fpga-as` for the one-step assembler. Not the default yet: it writes `RXCDR_CFG` wrong ([#12](https://github.com/chili-chips/openPCIE/issues/12)).
 
 Add `VARIANT=switched` for RC-switched: `build_artifacts/top.x1g2.switched.bit`. Each build has its own work folder and makes the firmware of its variant, so a bitstream always carries the matching one. `make check-env` checks the tools.
 
-**Verified on hardware:** the pre-v1.0.0 bitstream (`build_artifacts/pre-v1.0.0/`) brings the link up at **Gen2** against a second Artix-7 board as endpoint, as does the Vivado bitstream from the same RTL. The v1.0.0 bitstreams build and meet timing, except x4 Gen2 (181 MHz of 250 MHz: nextpnr cannot apply the eduBOS5 multicycle paths, [nextpnr#110](https://github.com/openXC7/nextpnr/issues/110)); not on the board yet.
+**Verified on hardware:** the pre-v1.0.0 bitstream (`build_artifacts/pre-v1.0.0/`) brings the link up at **Gen2** against a second Artix-7 board as endpoint, as does the Vivado bitstream from the same RTL. The v1.0.0 bitstreams build and meet timing, except x4 Gen2 (181 MHz of 250 MHz: nextpnr cannot apply the eduBOS5 multicycle paths, nextpnr#110); not on the board yet.
 
 Before the first build ([details](./hw_build.openXC7/README.md)):
 
-- **Bitstreams are not compressed:** 9.73 MB each; neither openXC7 assembler compresses yet ([lromor/fpga-assembler#59](https://github.com/lromor/fpga-assembler/issues/59)). The Vivado build compresses.
+- **Bitstreams are not compressed:** 9.73 MB each; neither openXC7 assembler compresses yet (lromor/fpga-assembler#59). The Vivado build compresses.
 - **nextpnr's GT attribute defaults differ from the Xilinx library.** For an attribute the RTL leaves out, Vivado uses the `unisim` default, nextpnr its own, almost always `0`, silently. This is why the design first failed on hardware. `lane_xcvr.sv` now sets 20 of them explicitly.
 
 ## Loading the bitstream

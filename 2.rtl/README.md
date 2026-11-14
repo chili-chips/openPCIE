@@ -171,7 +171,7 @@ openXC7 v1.0.0 (Yosys `read_slang` + nextpnr-himbaechel), part `xc7a200tfbg484-3
 | `clk125`, needs 125 MHz | 337.0 MHz | 348.6 MHz | 409.8 MHz |
 | `user_clk` | 157.2 MHz, needs 125 | **181.1 MHz, needs 250** | 148.2 MHz, needs 62.5 |
 
-Fmax is nextpnr's estimate and varies with placement. All clocks meet their target except x4 Gen2's `user_clk`: nextpnr cannot apply the 3-stage's multicycle paths ([nextpnr#110](https://github.com/openXC7/nextpnr/issues/110)). Vivado closes x4 Gen2 ([above](#link-width-speed-and-user-clock)).
+Fmax is nextpnr's estimate and varies with placement. All clocks meet their target except x4 Gen2's `user_clk`: nextpnr cannot apply the 3-stage's multicycle paths (nextpnr#110). Vivado closes x4 Gen2 ([above](#link-width-speed-and-user-clock)).
 
 ### RTL coding rules
 

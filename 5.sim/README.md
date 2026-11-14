@@ -567,7 +567,7 @@ So the pictures show the protocol between the two ends, not how the hard macro r
 
 ### The x4 link in WaveCrux
 
-`make run SIM_LANES=4 USRSIMOPTS="--define DUMP_VCD"` runs the same firmware over an x4 Gen1 link (`SIM_GEN=2`: x4 Gen2). The tracked dump is `tb.x4g1.direct.fst`, and [`tb.x4g1.direct.PIPE-DLL.wavecrux`](tb.x4g1.direct.PIPE-DLL.wavecrux) opens it with all four lanes in each direction. Decoding them needs Ferrite's multi-lane PIPE and Data Link Layer decoders, [wavecrux-decoders PR #18](https://github.com/Ferrite-Engineering/wavecrux-decoders/pull/18) (not released yet).
+`make run SIM_LANES=4 USRSIMOPTS="--define DUMP_VCD"` runs the same firmware over an x4 Gen1 link (`SIM_GEN=2`: x4 Gen2). The tracked dump is `tb.x4g1.direct.fst`, and [`tb.x4g1.direct.PIPE-DLL.wavecrux`](tb.x4g1.direct.PIPE-DLL.wavecrux) opens it with all four lanes in each direction. Decoding them needs Ferrite's multi-lane PIPE and Data Link Layer decoders, wavecrux-decoders PR #18 (not released yet).
 
 **Training on four lanes.** Configuration numbers the lanes: TS1 `link=0 lanes=PAD,PAD,PAD,PAD`, then `lanes=0,1,2,3`, then TS2 with both numbers. The decoder deskews the lanes on these ordered sets and reports `Link width x4` and `Lanes aligned x4 (offsets 0,0,0,0)` at 73.97 µs. In each direction, the four lanes switch from training to data together, and the LTSSM reaches L0 (`16`) at 74.5 µs:
 
@@ -1015,7 +1015,7 @@ What exists in the open (Oct 2026), dynamic and static:
 | [pcievhost](https://github.com/wyvernSemi/pcievhost) | co-simulation model, C | PIPE lanes up to TLP: LTSSM, DLL, TLP | not as a checker: a link partner, the Endpoint here |
 | [cocotbext-pcie](https://github.com/alexforencich/cocotbext-pcie) | cocotb model, Python | TLP: Root Complex, switches, Endpoints, config space, BARs, MSI, DMA | not as a checker: a link partner; Xilinx models are UltraScale(+) device only, no 7-series `PCIE_2_1` |
 | WaveCrux plugins: [our TLP decoder](https://github.com/Ferrite-Engineering/wavecrux-decoders/tree/main/decoders/pcie-tlp), [Ferrite's PCIe decoders](https://github.com/Ferrite-Engineering/wavecrux-decoders) | post-simulation, on the waveform | TLP; PIPE, DLL and serial line | partly: CRC, sequence numbers, 8b/10b and disparity |
-| [ngscopeclient](https://www.ngscopeclient.org/) (scopehal, BSD-3) | post-capture, on scope or imported VCD waveforms | serial lane up: 8b/10b, 128b/130b, link training, 1-32 lane logical layer, DLL, TLP | partly: flags bad symbols and malformed packets; starts from the serial line, so it does not read our PIPE dump; no FST import yet: requested in [scopehal #1121](https://github.com/ngscopeclient/scopehal/issues/1121), details in [#38](https://github.com/chili-chips-ba/openPCIE/issues/38) |
+| [ngscopeclient](https://www.ngscopeclient.org/) (scopehal, BSD-3) | post-capture, on scope or imported VCD waveforms | serial lane up: 8b/10b, 128b/130b, link training, 1-32 lane logical layer, DLL, TLP | partly: flags bad symbols and malformed packets; starts from the serial line, so it does not read our PIPE dump; no FST import yet: [#11](https://github.com/chili-chips/openPCIE/issues/11) |
 | [openpcie-uvm](https://github.com/Sandeep-bhardwaj/openpcie-uvm) (third party, MIT) | UVM, Vivado xsim | our `riscv_pcie_soc` above the hard block: AXI4-Stream TLP port, bridge registers | not PCIE: the SoC bridge (scoreboard, AXI4-Stream assertions); its [findings](../README.md#community-involvement) |
 | [SymbiYosys](https://github.com/YosysHQ/sby) | formal | any, with your own SVA | only what you write: no open PCIE property set found |
 
@@ -1445,11 +1445,11 @@ Fixed in this repo only; [Local changes](#local-changes) lists how we differ fro
 |---|---|---|---|
 | 1 | pcievhost | LTSSM deadlocks against the real `PCIE_2_1` | fixed here: `ltssm-openpcie.patch` |
 | 2 | pcievhost | UpdateFC sent before InitFC1 | fixed upstream, 1.9.3 |
-| 3 | RV32-ISS | Charges 2 cycles more per instruction than its timing model | fixed here: `rv32-openpcie.patch`, [#32](https://github.com/chili-chips-ba/openPCIE/issues/32) |
-| 4 | RV32-ISS | `sw`/`sh` take load timing, not store | fixed here: `rv32-openpcie.patch`, [#33](https://github.com/chili-chips-ba/openPCIE/issues/33) |
-| 5 | RV32-ISS | No reset input; runs before the RTL core leaves reset | fixed here: reset on VProc interrupt bit 3, [#34](https://github.com/chili-chips-ba/openPCIE/issues/34) |
-| 6 | RV32-ISS | Ours was v1.3.3; upstream is 3 commits ahead | fixed here: sources at `774d84fa`, [#32](https://github.com/chili-chips-ba/openPCIE/issues/32) |
-| 7 | RV32-ISS | Timing tables not matched to the RTL cores | fixed here: within 0.6%, [#35](https://github.com/chili-chips-ba/openPCIE/issues/35) |
+| 3 | RV32-ISS | Charges 2 cycles more per instruction than its timing model | fixed here: `rv32-openpcie.patch` |
+| 4 | RV32-ISS | `sw`/`sh` take load timing, not store | fixed here: `rv32-openpcie.patch` |
+| 5 | RV32-ISS | No reset input; runs before the RTL core leaves reset | fixed here: reset on VProc interrupt bit 3 |
+| 6 | RV32-ISS | Ours was v1.3.3; upstream is 3 commits ahead | fixed here: sources at `774d84fa` |
+| 7 | RV32-ISS | Timing tables not matched to the RTL cores | fixed here: within 0.6% |
 | 8 | pcievhost | No Recovery.Speed: cannot follow the RC to Gen2; a TS cannot carry the Speed Change bit | fixed here: `ltssm-openpcie.patch`, `pcievhost-speed.patch` |
 | 9 | pcievhost | `SetTxDisabled()` has no effect: DLLPs go out during Recovery | fixed here: `pcievhost-speed.patch` |
 | 10 | PIPE PHY model | At Gen2 the symbol clock and PCLK edges share a time step, and symbols are dropped or doubled | fixed here: symbol clock started from PCLK, made in the model's wrapper (`PIPExN__pcieVHost.sv`; the test bench gives it PCLK only) |
@@ -1517,7 +1517,7 @@ Functionality upstream pcieVHost does not have, or has and we dropped, all in ou
 | Feature | API, where | What it is for |
 |---|---|---|
 | Transaction taps | TLP and DLLP ports on `pcieVHost.sv` (`TapTl()`, `TapDll()`) | the waveform shows each packet a node sends |
-| Electrical idle without X, Z or side-band | Removed: Z on the line (4-state simulators), the `ElecIdleOut`/`ElecIdleIn` side-band out of the PIPE wrapper (Verilator, which reached the partner ahead of the data), the receiver-detect flag from X. Added: on the PIPE each idle symbol is `` `NOSIG `` with the K flag (`pciexpress_header.svh`: `0xFF`, no 8b/10b code); on the serial line idle is constant 0, and the receiver drops sync at a symbol of ten equal bits; inside, `pcieVHost.sv` takes and gives idle on its ports on every simulator, and the model's state is 2-state (`bit`, `int`), so nothing starts as X | one rule for Verilator, Icarus and XSIM, with no X/Z checks (Verilator's `=== 'z` can't tell a driven 0 from Z: [verilator#8991](https://github.com/verilator/verilator/issues/8991)). Any PIPE partner sees idle the same way; no `ifdef VERILATOR` left in the idle path ([special values](models/pcievhost/README.md#special-values-on-the-line)) |
+| Electrical idle without X, Z or side-band | Removed: Z on the line (4-state simulators), the `ElecIdleOut`/`ElecIdleIn` side-band out of the PIPE wrapper (Verilator, which reached the partner ahead of the data), the receiver-detect flag from X. Added: on the PIPE each idle symbol is `` `NOSIG `` with the K flag (`pciexpress_header.svh`: `0xFF`, no 8b/10b code); on the serial line idle is constant 0, and the receiver drops sync at a symbol of ten equal bits; inside, `pcieVHost.sv` takes and gives idle on its ports on every simulator, and the model's state is 2-state (`bit`, `int`), so nothing starts as X | one rule for Verilator, Icarus and XSIM, with no X/Z checks (Verilator's `=== 'z` can't tell a driven 0 from Z: verilator#8991). Any PIPE partner sees idle the same way; no `ifdef VERILATOR` left in the idle path ([special values](models/pcievhost/README.md#special-values-on-the-line)) |
 | Lane reversal | `SetLaneReverse()`, `GetLaneReverse()`, `pcie.c` (a logical-to-physical lane map on every lane access, the encoder's running disparity swapped: `SwapLaneDisparity()`, `codec.c`); `SetLaneReversal()`, `ltssm.c` (Configuration.Lanenum.Wait) | a port may reverse its lanes (4.2.4.9.1, 4.2.6.3.2); upstream had the core's `ReverseIn`/`ReverseOut`, across all 16 lanes, set by nothing |
 | Packet monitor | `SetPktMonitor()`, `pcie.c` | sees every TLP and DLLP, sent and received, as on the wire: the spec checker's input |
 | Recovery and speed change | `LinkIdle()`, `ChangeLinkSpeed()`, `GetLinkSpeed()`, `ltssm.c` | Gen1/Gen2 changes, following the partner into Recovery (4.2.6) |

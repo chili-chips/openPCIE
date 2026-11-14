@@ -8,7 +8,7 @@ for Yosys's SystemVerilog front end (read_slang, FRONTEND=slang in the Makefile)
 read_slang elaborates the whole hierarchy up front, so every primitive must be
 declared -- with its parameters, or every parameter the RTL sets is rejected.
 Blackboxes loaded into Yosys with read_verilog -lib carry no parameters into
-slang (povik/sv-elab#367 would change that), and Yosys's cells_sim.v does not
+slang (`read_slang --target xilinx`, Yosys after 0.70, changes that), and Yosys's cells_sim.v does not
 pass slang's checks (parameters in specify blocks). So the declarations are
 taken from Yosys's own cells_xtra.v / cells_sim.v and reduced to header, ports
 and parameters.
@@ -23,8 +23,8 @@ Two adjustments, both for upstream problems:
 usage: python3 gen_xilinx_bb.py <yosys datdir>/xilinx <out.sv> PRIMITIVE [...]
 """
 
-# FIXME: this whole script is a tool workaround (openPCIE #29); drop it once
-# read_slang can take cells_sim.v or sv-elab#367 is merged.
+# FIXME: this whole script is a tool workaround (openPCIE #7); drop it once
+# read_slang --target xilinx (Yosys after 0.70) takes cells_sim.v.
 
 import re
 import sys

@@ -393,7 +393,7 @@ Planned as a simple EP BFM; grown, after NLnet's questions, into a full SoC co-s
 
 _ScalePNR_ was planned as a fallback for _nextpnr-xilinx_'s timing shortcomings; it was not needed. The _nextpnr-xilinx_ bitstream brings the link up at **Gen2** on hardware, as Vivado does. That took six fixes: one latent RTL bug and five workarounds for openXC7 defects, documented with the filed issues in [4.build/hw_build.openXC7](4.build/hw_build.openXC7/README.md).
 
-The design now builds with [_openXC7_ 1.0.0](https://lnkd.in/p/gsDArjSt), what _"ScalePNR"_ evolved into: _Yosys 0.69_ with integrated _**Slang**_, _**nextpnr-himbaechel**_ and _**fpga-as**_. Slang makes the sv2v prep step unnecessary; sv2v stays as a cross-check option. We assemble with _fasm2frames_ and _xc7frames2bit_, as _fpga-as_ writes one GTP setting wrong ([#41](https://github.com/chili-chips-ba/openPCIE/issues/41)). The 1.0.0 bitstreams are not tested on hardware yet; the Gen2 result is from the earlier flow.
+The design now builds with [_openXC7_ 1.0.0](https://lnkd.in/p/gsDArjSt), what _"ScalePNR"_ evolved into: _Yosys 0.69_ with integrated _**Slang**_, _**nextpnr-himbaechel**_ and _**fpga-as**_. Slang makes the sv2v prep step unnecessary; sv2v stays as a cross-check option. We assemble with _fasm2frames_ and _xc7frames2bit_, as _fpga-as_ writes one GTP setting wrong ([#12](https://github.com/chili-chips/openPCIE/issues/12)). The 1.0.0 bitstreams are not tested on hardware yet; the Gen2 result is from the earlier flow.
 
 --------------------
 
@@ -534,7 +534,7 @@ Questions are welcome ===> [![issues](https://badgen.net/github/open-issues/chil
 
 Next: **openPCIE3**, a 24-lane Gen3 backplane with Optical Copper Link (OCuLink), around the Diodes PI7C9X3G1224GP switch (PCIE 3.1, 24 lanes, 12 ports). It links one or two PCs, each over an x4 OCuLink cable, to four x4 EP connectors (two slots, two M.2).
 
-Main use: a PC I/O extender for compute, storage or I/O cards, e.g. for open-source AI servers. The PC drives REFCLK and reset over the cable, so the board needs no local clock or reset generator. Design input is welcome in [#9](https://github.com/chili-chips-ba/openPCIE/issues/9) and [#13](https://github.com/chili-chips-ba/openPCIE/issues/13).
+Main use: a PC I/O extender for compute, storage or I/O cards, e.g. for open-source AI servers. The PC drives REFCLK and reset over the cable, so the board needs no local clock or reset generator. Design input is welcome in [#2](https://github.com/chili-chips/openPCIE/issues/2).
 
 --------------------
 
