@@ -3,20 +3,20 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 #
-# Upgrade the co-simulation models in 5.sim/models from their upstream sources
-# (github.com/wyvernSemi): VProc, pcievhost, mem_model, rv32. Builds the Linux
-# libraries (rv32: copies its sources), copies headers and HDL, and re-applies
-# our local changes (see 5.sim/README.md, "Local changes"). rv32 is used at a
-# commit past its last tag, so pass RV32_REF to keep it.
+# Upgrade the rv32 ISS sources in 5.sim/models/rv32 from upstream
+# (github.com/wyvernSemi/rv32) and re-apply our local changes
+# (rv32-openpcie.patch). rv32 is used at a commit past its last tag, so pass
+# RV32_REF to keep it.
 #
-# usage:  bash 5.sim/tools/vip-upgrade.sh          latest tag of each model
-#         VPROC_REF=VERSION_1_13_4 PCIEVHOST_REF=... MEM_MODEL_REF=main \
+# VProc, pcieVHost and mem_model come from openPCIE_BFM (the submodule
+# vip/openPCIE_BFM): upgrade them there, with its 4.build/vip-import.sh.
+#
+# usage:  bash 5.sim/tools/vip-upgrade.sh                    latest tag
 #         RV32_REF=774d84fa bash 5.sim/tools/vip-upgrade.sh
 #
 # Upstream clones go to VIP_WORK (default ~/.cache/openpcie-vip). Needs git,
-# gcc, g++, make, sed, patch. Afterwards: build VProc.so for CPU=rtl, vproc
-# and iss, run "make run", update the version table in 5.sim/README.md, and
-# review the diff before committing.
+# sed, patch. Afterwards: make run CPU=iss, update the version table in
+# 5.sim/README.md, and review the diff before committing.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 M=$HERE/../models
@@ -42,121 +42,8 @@ fetch_ref() { fetch "$@" || { echo "vip-upgrade: fetching $1 failed" >&2; exit 1
 
 lf() { tr -d '\r' < "$1"; }  # upstream mixes CRLF and LF; we keep LF
 
-VPROC_REF=$(fetch_ref vproc "${VPROC_REF:-}") || exit 1
-PCIEVHOST_REF=$(fetch_ref pcievhost "${PCIEVHOST_REF:-}") || exit 1
-MEM_MODEL_REF=$(fetch_ref mem_model "${MEM_MODEL_REF:-}") || exit 1
 RV32_REF=$(fetch_ref rv32 "${RV32_REF:-}") || exit 1
-echo "VProc $VPROC_REF, pcievhost $PCIEVHOST_REF, mem_model $MEM_MODEL_REF, rv32 $RV32_REF"
-
-O=$(mktemp -d)
-trap 'rm -rf "$O"' EXIT
-
-# ---- VProc: libcosimlnx.a (DPI build) and its headers/HDL ------------------
-# local change: the user code runs as a coroutine on the simulator's thread,
-# not in a thread per node (models/cosim/vproc-coroutine.patch)
-V=$W/vproc
-for f in code/VProc.h code/VSched.c code/VUser.c; do
-    sed -i 's/\r$//' "$V/$f"
-done
-if ! patch -s --no-backup-if-mismatch -p1 -d "$V" < "$M/cosim/vproc-coroutine.patch"; then
-    echo "ERROR: vproc-coroutine.patch no longer applies to VProc $VPROC_REF."
-    exit 1
-fi
-for f in VSched VUser; do
-    gcc -c -O2 -g -fPIC -m64 -I"$V/code" -DVPROC_SV "$V/code/$f.c" -o "$O/$f.o"
-done
-rm -f "$M/cosim/lib/libcosimlnx.a"
-ar cr "$M/cosim/lib/libcosimlnx.a" "$O"/VSched.o "$O"/VUser.o
-for f in VProc.h VProcClass.h VProcIrqClass.h VSched_pli.h VUser.h; do
-    lf "$V/code/$f" > "$M/cosim/include/$f"
-done
-lf "$V/f_VProc.v" > "$M/cosim/f_VProc.sv"
-lf "$V/extradefs.v" > "$M/cosim/extradefs.svh"
-for f in vprocdefs.vh vprocdpi.vh; do lf "$V/$f" > "$M/cosim/$f"; done
-
-# ---- mem_model: HDL only (its C model is in pcievhost); mem_model.sv is ours
-lf "$W/mem_model/mem_model.v" > "$M/cosim/f_mem_model.sv"
-lf "$W/mem_model/mem_model_dpi.vh" > "$M/cosim/mem_model_dpi.vh"
-
-# ---- pcievhost: libpcielnx.a, headers, HDL ---------------------------------
-P=$W/pcievhost
-# local changes, on LF copies of the files they change:
-#   transaction taps, TLP and DLLP ports (models/pcievhost/README.md)
-#   speed change: speed_change bit in TS, SetTxDisabled holds the queue,
-#   InitFC follows the partner into Recovery, ltssm.h declares LinkIdle() etc.
-#   mem.c: per-node table init, RW1C config bits (WriteConfigSpaceW1c)
-#   Serialiser.sv: per lane, re-sync at the comma, sync lost at the first idle symbol
-#   lane reversal: a lane map in pcie.c, the encoder's disparity swapped (codec.c)
-#   electrical idle: the core's ElecIdleIn/Out ports on every simulator, the
-#   line constant 0, NOSIG on the PIPE (pciexpress_header.svh); no X or Z
-for f in src/codec.c src/codec.h src/displink.c src/ltssm.h src/mem.c src/mem.h src/pci_express.h src/pcie.c src/pcie.h src/pcie_utils.c src/pcie_utils.h src/pcie_vhost_map.h verilog/pcieVHost/pcieVHost.v verilog/pcieVHost/pcieVHostPipex1.v verilog/lib/Serialiser.v verilog/headers/pciexpress_header.v verilog/lib/clkmux.v; do
-    sed -i 's/\r$//' "$P/$f"
-done
-for p in taps speed; do
-    if ! patch -s --no-backup-if-mismatch -p1 -d "$P" < "$M/pcievhost/pcievhost-$p.patch"; then
-        echo "ERROR: pcievhost-$p.patch no longer applies to pcievhost $PCIEVHOST_REF."
-        exit 1
-    fi
-done
-for f in codec mem pcie pcie_utils pcicrc32 displink; do
-    gcc -c -O2 -g -fPIC -m64 -I"$V/code" -DVPROC_SV "$P/src/$f.c" -o "$O/$f.o"
-done
-rm -f "$M/pcievhost/lib/libpcielnx.a"
-ar cr "$M/pcievhost/lib/libpcielnx.a" "$O"/{codec,mem,pcie,pcie_utils,pcicrc32,displink}.o
-for f in codec.h mem.h pci_express.h pcie.h pcieModelClass.h pcie_utils.h pcie_vhost_map.h; do
-    lf "$P/src/$f" > "$M/pcievhost/include/$f"
-done
-H=$M/pcievhost/verilog/headers
-for f in allheaders pciedispheader pciexpress_header timescale; do
-    lf "$P/verilog/headers/$f.v" > "$H/$f.svh"
-done
-# register map, generated from the C header as upstream's makefiles do
-lf "$P/src/pcie_vhost_map.h" |
-    sed "s/0x/32'h/;s/#/\`/;s/DEFINES/AUTO GENERATED. DO NOT EDIT!/;" > "$H/pcie_vhost_map.svh"
-# local change: our test bench top is tb
-lf "$P/verilog/test/test_defs.v" | sed 's/`define fatal test\.Fatal;/`define fatal tb.Fatal;/' > "$H/test_defs.svh"
-grep -q 'define fatal tb\.Fatal' "$H/test_defs.svh"
-for f in pcieVHost pcieVHostPipex1; do
-    lf "$P/verilog/pcieVHost/$f.v" > "$M/pcievhost/verilog/pcieVHost/$f.sv"
-done
-# the serial wrapper's parts (PcieVhostSerial, make IFACE=serial)
-mkdir -p "$M/pcievhost/verilog/lib"
-for f in Serialiser clkmux; do
-    lf "$P/verilog/lib/$f.v" > "$M/pcievhost/verilog/lib/$f.sv"
-done
-# local change: VProc byte-enable/burst ports, left open (we build VProc with
-# VPROC_BYTE_ENABLE)
-F=$M/pcievhost/verilog/pcieVHost/pcieVHost.sv
-grep -qE '^\s*\.RD\s*\(RD\),$' "$F"
-sed -i -E '/^\s*\.RD\s*\(RD\),$/a\
-`ifdef VPROC_BYTE_ENABLE\
-           .BE             (),\
-`endif\
-`ifdef VPROC_BURST_IF\
-           .Burst          (),\
-           .BurstFirst     (),\
-           .BurstLast      (),\
-`endif' "$F"
-
-# local change: SystemVerilog names (copied above as .sv, .svh): the `include
-# lines to match
-sed -i -E 's/(`include "\w+)\.v"/\1.svh"/' "$M/cosim/vprocdefs.vh" "$H/allheaders.svh" \
-    "$M"/pcievhost/verilog/pcieVHost/*.sv "$M"/pcievhost/verilog/lib/*.sv
-if grep -qE '`include "\w+\.v"' "$M/cosim/vprocdefs.vh" "$H"/*.svh "$M"/pcievhost/verilog/*/*.sv; then
-    echo "ERROR: an \`include of a .v file is left"; exit 1
-fi
-
-# local change: LTSSM fixes, kept as a patch on upstream ltssm.c
-L=$M/pcievhost/ltssm
-lf "$P/src/ltssm.h" > "$L/ltssm.h"
-lf "$P/src/ltssm.c" > "$L/ltssm.c.orig"
-cp "$L/ltssm.c.orig" "$L/ltssm.c"
-if ! patch -s --no-backup-if-mismatch "$L/ltssm.c" < "$L/ltssm-openpcie.patch"; then
-    echo "ERROR: ltssm-openpcie.patch no longer applies to pcievhost $PCIEVHOST_REF."
-    echo "       Port the fixes by hand into $L/ltssm.c, then regenerate the patch:"
-    echo "       diff -u ltssm.c.orig ltssm.c > ltssm-openpcie.patch"
-    exit 1
-fi
+echo "rv32 $RV32_REF"
 
 # ---- rv32: library sources (5.sim/Makefile builds the library) -------------
 # Only the files in models/rv32/src are refreshed; a file upstream adds to the
@@ -172,8 +59,8 @@ if ! patch -s --no-backup-if-mismatch -p0 -d "$M/rv32/src" < "$M/rv32/rv32-openp
     exit 1
 fi
 
-echo "Done. Next: build VProc.so for CPU=rtl/vproc/iss, make run, update the"
-echo "version table in 5.sim/README.md, review the diff."
+echo "Done. Next: make run CPU=iss, update the version table in 5.sim/README.md,"
+echo "review the diff."
 
 # -----------------------------------------------------------------------------
 # Project:     openPCIE

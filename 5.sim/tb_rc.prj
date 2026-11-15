@@ -5,14 +5,15 @@
 # xsim source list for the Artix-7 RC model test bench (make RC=model,
 # tb_rc.sv): models only, no RTL.
 
-sv work models/cosim/mem_model.sv
-sv work models/cosim/f_VProc.sv
-sv work models/pcievhost/verilog/pcieVHost/pcieVHost.sv
-sv work models/pcievhost/verilog/pcieVHost/pcieVHostPipex1.sv
+# $BFM: openPCIE_BFM (vip/openPCIE_BFM); $VIP: its VIP build. make fills both in (obj/tb_rc.prj).
+sv work $BFM/2.rtl/mem_model.sv
+sv work $VIP/hdl/f_VProc.sv
+sv work $VIP/hdl/pcieVHost.sv
+sv work $VIP/hdl/pcieVHostPipex1.sv
 sv work ../2.rtl/0.common.opensource/src/pcie/link_pkg.sv
-sv work models/pipe_sym_pkg.sv
-sv work models/pcieVHostPipexN.sv
-sv work models/PIPExN__pcieVHost.sv
-sv work models/pipe_phy_core.sv
-sv work models/pipe_mac_adapter.sv
+sv work $BFM/2.rtl/pipe_sym_pkg.sv
+sv work $BFM/2.rtl/pcieVHostPipexN.sv
+sv work $BFM/2.rtl/PIPExN__pcieVHost.sv
+sv work $BFM/2.rtl/pipe_phy_core.sv
+sv work $BFM/2.rtl/pipe_mac_adapter.sv
 sv work tb_rc.sv

@@ -24,7 +24,7 @@
 //
 //     1. a behavioural PIPE PHY -- the sideband handshake the PCIE_2_1 LTSSM
 //        needs from a PHY: PHYSTATUS, receiver detection, RXVALID, RXELECIDLE
-//        (models/pipe_phy_core.sv), and the PCLK/rate handling
+//        (openPCIE_BFM pipe_phy_core.sv), and the PCLK/rate handling
 //     2. the link partner itself -- a pcieVHost in our wrapper
 //        PIPExN__pcieVHost, configured as an ENDPOINT, so the openPCIE Root
 //        Complex has something to enumerate. x1 or x4, as PCIE_LANES
@@ -133,7 +133,7 @@ module phy_top
 
   //------------------------------------------------------------------
   // The PHY: PIPE handshakes and electrical idle, for the hard macro's
-  // PIPE (models/pipe_phy_core.sv, shared with openCologne-PCIE). The
+  // PIPE (openPCIE_BFM pipe_phy_core.sv, shared with openCologne-PCIE). The
   // hard macro's lanes are packed for it: lane l is [16*l +: 16], [2*l +: 2]
   //------------------------------------------------------------------
   logic [16*PCIE_LANES-1:0] mac_tx_data,  mac_rx_data;
@@ -219,7 +219,7 @@ module phy_top
   end
 
   // The model in our wrapper: the same link, plus its TLPs and DLLPs at the
-  // Data Link and Transaction layers, for the dump (models/PIPExN__pcieVHost.sv)
+  // Data Link and Transaction layers, for the dump (openPCIE_BFM PIPExN__pcieVHost.sv)
   PIPExN__pcieVHost #(
     .NodeNum   (1),      // VUserMain1.cpp -- the endpoint program
     .EndPoint  (1),      // enables the config space and auto-completions

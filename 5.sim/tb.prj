@@ -18,19 +18,20 @@
 # ---------------------------------------------------------------------
 # Co-simulation models
 # ---------------------------------------------------------------------
-sv work models/cosim/mem_model.sv
-sv work models/cosim/f_VProc.sv
+# $BFM: openPCIE_BFM (vip/openPCIE_BFM); $VIP: its VIP build. make fills both in (obj/tb.prj).
+sv work $BFM/2.rtl/mem_model.sv
+sv work $VIP/hdl/f_VProc.sv
 # VProc as the SOC's CPU, on its native memory bus. Only reached when the design is analysed with
 # --define SOC_CPU_VPROC (make CPU=vproc / CPU=iss); otherwise it is compiled
 # but never instantiated, and xelab prunes it.
 sv work models/soc_cpu.VPROC.native.sv
-sv work models/pcievhost/verilog/pcieVHost/pcieVHost.sv
-sv work models/pcievhost/verilog/pcieVHost/pcieVHostPipex1.sv
-sv work models/pipe_sym_pkg.sv
-sv work models/pcieVHostPipexN.sv
-sv work models/PIPExN__pcieVHost.sv
-sv work models/pipe_phy_core.sv
-sv work models/pipe_x4_view.sv
+sv work $VIP/hdl/pcieVHost.sv
+sv work $VIP/hdl/pcieVHostPipex1.sv
+sv work $BFM/2.rtl/pipe_sym_pkg.sv
+sv work $BFM/2.rtl/pcieVHostPipexN.sv
+sv work $BFM/2.rtl/PIPExN__pcieVHost.sv
+sv work $BFM/2.rtl/pipe_phy_core.sv
+sv work $BFM/2.rtl/pipe_x4_view.sv
 
 # ---------------------------------------------------------------------
 # DUT: packages and interfaces

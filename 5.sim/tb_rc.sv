@@ -5,7 +5,7 @@
 //--------------------------------------------------------------------------
 // Description:
 //   Test bench of the Artix-7 RC model (make RC=model): the model, pcieVHost
-//   on node 2 (usercode/VUserMain2.cpp), in place of the RC_opensource DUT,
+//   on node 2 (openPCIE_BFM 3.sw/a7rc), in place of the RC_opensource DUT,
 //   against the same pcieVHost endpoint as tb.sv, on node 1
 //   (usercode/VUserMain1.cpp). They meet on a 16-bit PIPE, x1 or x4, Gen1 or
 //   Gen2, through one register stage each way, as in
@@ -48,7 +48,7 @@ module tb;
 
 //--------------------------------------------------------------
 // Clocks and reset: PCLK 125 MHz at Gen1, 250 MHz at Gen2; each model makes
-// its symbol clock from it (models/PIPExN__pcieVHost.sv). The RC model sets
+// its symbol clock from it (openPCIE_BFM PIPExN__pcieVHost.sv). The RC model sets
 // the rate: its GEN2_CLK register, which it writes in Recovery.Speed with
 // both sides idle.
 // Resets are released with nonblocking assignments: a release on a symbol
@@ -99,7 +99,7 @@ module tb;
 
 `ifdef SIM_PIPE_PHY
   // make PHY=core: the RC model is the MAC of a PIPE, through
-  // models/pipe_mac_adapter.sv, above models/pipe_phy_core.sv; the endpoint is
+  // openPCIE_BFM pipe_mac_adapter.sv, above its pipe_phy_core.sv; the endpoint is
   // that PHY's link partner. The core's TX flop and the flop on the endpoint's
   // TX are the register stage each way. The endpoint's receiver is present
   // once it is out of reset: the first detection, before that, finds none.

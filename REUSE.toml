@@ -33,11 +33,12 @@ SPDX-License-Identifier = "CC-BY-SA-4.0"
 # 2. Third-party code and libraries (redistributable under their own licenses)
 # =============================================================================
 
-# wyvernSemi co-simulation VIP: VProc, mem_model, pcieVHost, rv32 ISS.
+# wyvernSemi co-simulation VIP: the rv32 ISS. VProc, mem_model and pcieVHost
+# come from openPCIE_BFM (5.sim/vip/openPCIE_BFM, a submodule, its own REUSE.toml).
 # Our own integration files in rv32/usercode carry their own BSD header,
 # which wins (precedence "closest").
 [[annotations]]
-path = ["5.sim/models/cosim/**", "5.sim/models/pcievhost/**", "5.sim/models/rv32/**"]
+path = ["5.sim/models/rv32/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2004-2025 Simon Southwell"
 SPDX-License-Identifier = "GPL-3.0-or-later"

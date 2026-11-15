@@ -65,6 +65,8 @@ The test bench runs the real Root Complex RTL against [*pcievhost*](https://gith
 
 _pcievhost_ is a root complex model; a parameter turns it into the endpoint here, in our wrapper `PIPExN__pcieVHost.sv`: upstream's `pcieVHostPipex1.v` (our `.sv`) at x1, our `pcieVHostPipexN.sv` at x4. Its user code, [`usercode/VUserMain1.cpp`](usercode/VUserMain1.cpp), builds a Type 0 config space with PCIE, MSI and Power Management capabilities, calls `initFc()` to bring up flow control, and can generate traffic. The model answers every request that needs a completion by itself, and prints the traffic both ways to the console, as set in `ContDisps.hex`. Its endpoint features are [limited](#endpoint-feature-limitations).
 
+The model, its PIPE wrappers and the Artix-7 RC model come from [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), the submodule `vip/openPCIE_BFM`, shared with openCologne-PCIE. Its README covers the model; this one, how openPCIE uses it.
+
 ## Test Bench Structure
 
 `tb.sv` instantiates `RC_opensource` from `2.rtl/0.common.opensource`: the same top level as both bitstreams, RC-direct and RC-switched, with the whole design:
@@ -107,7 +109,7 @@ Three simulation-only defines, set only by `5.sim/Makefile`, never by a synthesi
 
 ### The PIPE PHY model
 
-`models/phy_top.EP-PIPE-BFM.sv` replaces the transceiver, with the link partner behind it. It gives the `PCIE_2_1` LTSSM what it needs from a PHY, through `models/pipe_phy_core.sv` (shared with openCologne-PCIE):
+`models/phy_top.EP-PIPE-BFM.sv` replaces the transceiver, with the link partner behind it. It gives the `PCIE_2_1` LTSSM what it needs from a PHY, through openPCIE_BFM's `pipe_phy_core.sv` (shared with openCologne-PCIE):
 
 * **PHYSTATUS pulses**, 8 PCLK after every power-state and rate change. Low in PIPE reset: high there, the hard macro falls back from Polling.Active to Detect.Quiet 3 times
 * **Receiver detection** in P1: 16 PCLK after `TXDETECTRX`, a PHYSTATUS pulse with `RXSTATUS = 3'b011` (or `000` with no receiver)
@@ -134,7 +136,7 @@ The endpoint side of _pcievhost_ is a parameter, `EndPoint = 1`, set where `mode
 * **No device behaviour behind the BARs.** A write is stored and a read returns it: no DMA, no interrupts, no application logic.
 * **Little error injection.** `make SIM_FAULT=crs|nocpl|late|linkdown` covers CRS, a lost Completion, a late endpoint and a link drop ([Fault tests](#fault-tests-the-firmwares-error-paths)). Malformed TLPs, Nak and replay take an edit of the model.
 * **x1 upstream, x4 here.** Upstream's `pcieVHostPipex1` is x1 with a 16-bit PIPE; our `pcieVHostPipexN` runs the same model at x4 (`make SIM_LANES=4`), Gen1 and Gen2.
-* **The endpoint LTSSM paths were the least exercised.** Three turned out wrong once real silicon drove them. The fixes are in `models/pcievhost/ltssm/ltssm.c`, the original beside it as `ltssm.c.orig`.
+* **The endpoint LTSSM paths were the least exercised.** Three turned out wrong once real silicon drove them. The fixes are in `ltssm.c` (openPCIE_BFM `3.sw/ltssm`), the original beside it as `ltssm.c.orig`.
 
 For a partner with real device behaviour, use the RTL endpoint [`2.rtl/1.EP.opensource`](../2.rtl/1.EP.opensource). It lacks this model's decoded protocol log and controllability: the two complement each other.
 
@@ -144,6 +146,7 @@ Linux or WSL, once:
 
 - **Vivado 2026.1 for Linux** (`xvlog`, `xelab`, `xsim`; needs a license file, even for `xsim`). Windows `xsim` starts from WSL too, but loads the C/C++ models (`-sv_lib`) only as a Windows DLL, not the Linux `.so` built here.
 - **GCC 10+** (C++20) and `make`: `sudo apt install build-essential`
+- **openPCIE_BFM**, a submodule: clone with `git clone --recurse-submodules`, or run `git submodule update --init` in a clone. `make` builds its libraries into `obj/vip`.
 - **RISC-V GCC** (xPack `riscv-none-elf-`) for the firmware: [4.build](../4.build/README.md)
 
 Then, from the repo root:
@@ -158,9 +161,7 @@ It finds Vivado (`/tools/Xilinx/<version>/Vivado`, `~/Xilinx/<version>/Vivado`, 
 
 | Component | In use | Latest upstream (Oct 2026) | Source |
 |---|---|---|---|
-| VProc | 1.13.4 | 1.13.4 | [wyvernSemi/vproc](https://github.com/wyvernSemi/vproc) |
-| pcievhost **(modified: DLL and TL access points besides the PIPE, x4; see below)** | 1.9.3 | 1.9.3 (without our changes) | [wyvernSemi/pcievhost](https://github.com/wyvernSemi/pcievhost) |
-| mem_model **(modified, see below)** | `main` c7b9c62 (1.0.1 + one fix) | same | [wyvernSemi/mem_model](https://github.com/wyvernSemi/mem_model) |
+| VProc 1.13.4, pcievhost 1.9.3, mem_model `main` c7b9c62 **(modified: DLL and TL access points besides the PIPE, x4; see below)** | from [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM) | same (without our changes) | [its upstream table](https://github.com/chili-chips/openPCIE_BFM/blob/main/1.upstream/vip/README.md) |
 | rv32 ISS **(modified, see below)** | 1.3.3 | 1.3.3 | [wyvernSemi/rv32](https://github.com/wyvernSemi/rv32) |
 | Vivado simulator (`xsim`) | 2026.1 | 2026.1 | [AMD Vivado](https://www.amd.com/en/products/software/adaptive-socs-and-fpgas/vivado.html) |
 | WaveCrux Pro | 1.1.1 | 1.1.1 | [Ferrite-Engineering/wavecrux](https://github.com/Ferrite-Engineering/wavecrux) |
@@ -191,35 +192,15 @@ The ready-made `.wavecrux` sessions open the tracked FSTs, named like the bitstr
 
 | File | Change | Why |
 |---|---|---|
-| `models/cosim/mem_model.sv` | wraps upstream `mem_model.v` (kept as `f_mem_model.sv`) in Verilator `lint_off` pragmas | keeps third-party code out of our lint |
-| VProc, pcieVHost, mem_model HDL (`models/cosim`, `models/pcievhost/verilog`) | SystemVerilog names: modules `.sv`, `` `include`` headers `.svh`, the `` `include`` lines to match; `tools/vip-upgrade.sh` copies them so, after the patches, which keep upstream's `.v` names | one rule for our simulation sources: no `.v` files |
 | `models/rv32/src/rv32csr_cpu.cpp` (in `rv32-openpcie.patch`) | the timer-compare check in `process_interrupts()` no longer charges cycles | it added 2 cycles to every instruction |
 | `models/rv32/src/rv32i_cpu.cpp` (in `rv32-openpcie.patch`) | `sw`, `sh` add the store extra cycles | upstream adds the load ones |
 | `models/rv32/usercode/rv32_timing_config.h` | PicoRV32, eduBOS5 2-/3-stage tables measured on the RTL in this SOC | see [Our Local VIP Improvements](#our-local-vip-improvements) |
 | `models/rv32/usercode/VUserMain0.cpp` | no fetch/load wait states; bus credit; waits for reset release, restarts on reset; RV32I-only fetch filter | see [Our Local VIP Improvements](#our-local-vip-improvements) |
 | `models/soc_cpu.VPROC.native.sv` | 2-clock picorv32 handshake; `!resetn` on VProc interrupt bit 3 | see [Our Local VIP Improvements](#our-local-vip-improvements) |
 
-pcievhost:
+The changes to pcieVHost and VProc, file by file: [openPCIE_BFM, local changes](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#local-changes).
 
-| File | Change | Why |
-|---|---|---|
-| `ltssm/ltssm.c` | As upstream port: send Link and Lane = PAD until the partner assigns them; stay in Configuration.Lanenum for at least 16 TS1 | real PCIE_2_1 downstream port deadlocked or timed out against the model's endpoint LTSSM ([Endpoint feature limitations](#endpoint-feature-limitations)) |
-| `ltssm/ltssm.c`, `ltssm.h` | Recovery with the speed change (RcvrLock, RcvrCfg, Speed, Idle; timeouts fall back to the old rate, or go to Detect); no random N_FTS in Recovery. `LinkIdle()` follows the partner from L0 into Recovery, and looks for TS1 and TS2 before each idle it sends; `ChangeLinkSpeed()` starts a change to Gen1 or Gen2 from this side; `GetLinkSpeed()`. Recovery.Speed writes `GEN2_CLK`, so `PcieVhostSerial`'s own clocks follow (`IFACE=serial`) | upstream has no Recovery.Speed: the model could not follow the RC to Gen2 ([the Gen2 speed change](#example-the-gen2-speed-change)) |
-| `ltssm/ltssm.c`, `ltssm.h` | `SetLinkProfile()`, `GetLinkProfile()`: `LTSSM_PROFILE_ARTIX7_RC` takes the root port's Configuration path with the Artix-7 TS counts, the Autonomous Change bit, a fixed Detect time (first TS1 3.035 µs after PERST#), and one more TS1 in Linkwidth.Accept and Lanenum.Accept and TS2 in Configuration.Complete than upstream. In a speed change it sends the Artix-7 TS1 counts in RcvrLock, holding the Speed Change bit for its first 1 (its own change) or 8 (the partner's), times its Recovery.Speed idle, and sets the rate (`GEN2_CLK`) once its EIOS is out. `GetLinkTimeNs()`: ns from the symbol clock ticks at each rate, for the RC model's firmware timing; `GetLinkRecoveryNs()`: the part spent in Recovery, for its checker's L0-only timers. `LTSSM_PROFILE_EP`, the default, is the path above | the [RC model](#the-rc-model) |
-| `src/pcie.c` (in `lib/libpcielnx.a`) | `SendTsGen()` keeps the Speed Change and Autonomous Change bits of its rate argument; `SetTxDisabled()` holds TLPs, DLLPs, Acks and Naks, sending logical idle; a received Nak is an Ack up to its sequence number, then a replay from the next TLP. SKPs keep their interval in training (issues 45, 46), a due Ack or Nak goes before the next TLP ([issue 18](#simulation-issues)), an UpdateFC right after the packet on the wire ([issue 23](#simulation-issues)); both queue purges compare modulo 4096 ([issue 27](#simulation-issues)). `SetPktMonitor()` (declared in `pcie.h`, its pointer in `pcie_utils.h`): a monitor called with every TLP and DLLP sent (`SendPacket()`) and received (`ProcessInput()`, `pcie_utils.c`), before processing. In [`pcievhost-speed.patch`](models/pcievhost/pcievhost-speed.patch) | a TS could not carry the Speed Change bit; upstream sets the TX-disabled flag but never reads it, so DLLPs went out during Recovery; on a Nak, upstream skipped forward while seq > Nak and ran off the end of its queue (segfault) |
-| `src/pci_express.h`, `src/displink.c` (in `lib/libpcielnx.a`) | The PCIe Capability union holds 15 DWs, the capability's size ([issue 28](#simulation-issues)). The packet display shifts bytes as unsigned ([issue 29](#simulation-issues)) | undefined behaviour, found by UBSan: it made `-O0` and `-O2` builds differ |
-| `models/cosim`: `VSched.c`, `VUser.c`, `VProc.h` (in `lib/libcosimlnx.a`, `include/VProc.h`) | The user code runs as a coroutine on the simulator's thread: `VSched()` and `VExch()` switch stacks (`VCoSwap`, x86-64 assembly), 16 MB per node with a guard page. `VPROC_THREADS` keeps the threads | [about 22 times faster](#our-local-vip-improvements): the thread handover was the cost. `vproc-coroutine.patch`, applied by `tools/vip-upgrade.sh` |
-| `src/mem.c`, `src/mem.h` (in `lib/libpcielnx.a`) | The config space tables are cleared entry by entry ([issue 20](#simulation-issues)). `WriteConfigSpaceW1c()` marks RW1C bits: a Configuration write of 1 clears them ([issue 21](#simulation-issues)). `ReadRamByteBlock()` takes a read that ends at a 4 KB boundary ([issue 24](#simulation-issues)) | upstream: [issues 20, 21 and 24](#simulation-issues) |
-| `src/pcie_utils.c` (in `lib/libpcielnx.a`), `src/ltssm.h` | `TxFcInitInt()` waits between InitFC rounds with `LinkIdle()`, not `SendIdle()`. Endpoint fixes: UR for a Type 0 Configuration Request to a function other than 0 ([issue 14](#simulation-issues)), the Extended Register Number masked to 4 bits ([issue 16](#simulation-issues)), Completions of at most 128 bytes ([issue 17](#simulation-issues)), accesses that end at a BAR's end ([issue 22](#simulation-issues)), an Ack or Nak on the wire finishes before a packet queued meanwhile ([issue 31](#simulation-issues)). `ltssm.h` declares `LinkIdle()`, `ChangeLinkSpeed()`, `GetLinkSpeed()`, `GetLinkProfile()`, `GetLinkTimeNs()` and `GetLinkRecoveryNs()`. With `LTSSM_PROFILE_ARTIX7_RC`, InitFC and UpdateFC go as on that root port: one InitFC DLLP every 64 ns, done after 4 InitFC2 rounds once it has the partner's; UpdateFC every 32.77 µs at either rate, timed from the end of InitFC, not just because nothing else waits. FC_INIT2 completes on the partner's first InitFC2 or UpdateFC, as the spec has it (upstream waits for all three InitFC types again, and hangs on a partner that sends one set of each). In `pcievhost-speed.patch` | the EP sent InitFC2 and UpdateFC for 370 ns (x4) after the RC entered Recovery.RcvrLock: `initFc()` did not look for TS1 |
-| `verilog/pcieVHost/pcieVHost.sv` | VProc `BE` and `Burst` ports, left open | we build VProc with `VPROC_BYTE_ENABLE` |
-| `src/displink.c` (in `lib/libpcielnx.a`), `include/pcie_vhost_map.h`, `verilog/headers/pcie_vhost_map.svh`, `verilog/pcieVHost/pcieVHost.sv`, `pcieVHostPipex1.sv` | transaction taps: TLP and DLLP ports, in [`pcievhost-taps.patch`](models/pcievhost/pcievhost-taps.patch) | the decoders need the TLPs and DLLPs; the model keeps them in C ([transaction taps](#every-layer-at-the-endpoint-transaction-taps)) |
-| `verilog/headers/test_defs.svh` | `` `fatal`` calls `tb.Fatal` | our test bench top is `tb` |
-| `src/pcie_utils.c`, `src/pcie_utils.h`, `src/pci_express.h` (in `pcievhost-speed.patch`) | Lane polarity inversion: a TS identifier received inverted (D21.5, D26.5) inverts the lane from then on | 4.2.4.4 ([issue 52](#simulation-issues)) |
-| `verilog/pcieVHost/pcieVHostPipex1.sv` (in `pcievhost-speed.patch`), `models/pcieVHostPipexN.sv` | Electrical idle is `NOSIG` per symbol, both ways; the line is idle in reset; RX sampled on the falling edge, the core's TX symbol taken on it too; state `bit`, registers `always_ff` with an asynchronous reset on `nreset` (no `initial`), unused lanes tied to 0 | the partner's idle was never seen on 4-state simulators, X and Z left the wrapper at start-up, and the read raced the sample ([issues 53, 55, 56](#simulation-issues)) |
-| `verilog/pcieVHost/pcieVHost.sv`, `verilog/headers/pciexpress_header.svh`, `verilog/lib/clkmux.sv` (in `pcievhost-speed.patch`) | The core's `ElecIdleIn`/`ElecIdleOut` ports on every simulator; an idle lane sends constant 0; no X or Z flags; `` `NOSIG `` defined with the K codes; state `bit`/`int`, registers `always_ff` with an asynchronous reset on `notReset`; `PcieVhostSerial`'s `generate` `else` gets its `begin`/`end` (issue 58) | one idle rule on every simulator ([what we added or removed](#pcievhost-what-we-added-or-removed)) |
-| `verilog/lib/Serialiser.sv` (in `pcievhost-speed.patch`) | Each lane syncs on its own; its receiver counts each symbol from the comma it re-syncs on, and drops sync at the first symbol of ten equal bits, on every simulator; it tells the core, per lane, when it is not synced | `IFACE=serial`: after electrical idle every symbol was cut at the old bit offset, and the last symbol before it was lost ([issues 49, 50](#simulation-issues)) |
-
-The unmodified `ltssm.c` is kept as `ltssm.c.orig`, our fixes as `ltssm/ltssm-openpcie.patch`. [`tools/vip-upgrade.sh`](tools/vip-upgrade.sh) rebuilds all four models from upstream and re-applies these changes; it stops if the LTSSM, taps, speed or rv32 patch no longer applies. rv32 is built here from its sources (`models/rv32/src`, upstream `774d84fa`).
+The pcievhost and VProc changes live in [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), the submodule `vip/openPCIE_BFM`: the patches in `1.upstream/patches`, the LTSSM fixes as `3.sw/ltssm/ltssm-openpcie.patch` on upstream's `ltssm.c.orig`. Its `4.build/vip-import.sh` brings in a new upstream; its `4.build/build-vip.sh` builds the libraries and HDL, patches applied, into `5.sim/obj/vip` (the Makefile runs it). [`tools/vip-upgrade.sh`](tools/vip-upgrade.sh) upgrades rv32, built here from its sources (`models/rv32/src`, upstream `774d84fa`).
 
 ### What the simulation does
 
@@ -308,17 +289,17 @@ Make options (`make help` lists them too):
 |---|---|---|
 | `RC` | `hm` (default), `model` | the RC: the RC_opensource DUT with the hard macro (`tb.sv`), or the [Artix-7 RC model](#the-rc-model) (`tb_rc.sv`; `VARIANT=direct`, x1 or x4) |
 | `IFACE` | `pipe` (default), `serial` | with `RC=model`: where the model meets the endpoint, the PIPE or the serial line, 8b/10b and scrambling on ([`tb_rc_serial.sv`](#on-the-serial-line)) |
-| `PHY` | `none` (default), `core`, `hm` | with `RC=model IFACE=pipe`, a PIPE PHY between the models, the RC model its MAC ([`models/pipe_mac_adapter.sv`](models/pipe_mac_adapter.sv)): `core`, [`models/pipe_phy_core.sv`](models/pipe_phy_core.sv); `hm`, the hard macro's socket ([`tb_socket.sv`](tb_socket.sv), [`models/pcie_core.RC-model.sv`](models/pcie_core.RC-model.sv)): its PIPE registers, `clk_rst_gen` and `phy_top`; no SOC. Not with `SIM_LANE_REVERSE`; `make mutants` runs without a PHY |
+| `PHY` | `none` (default), `core`, `hm` | with `RC=model IFACE=pipe`, a PIPE PHY between the models, the RC model its MAC ([`pipe_mac_adapter.sv`](https://github.com/chili-chips/openPCIE_BFM/blob/main/2.rtl/pipe_mac_adapter.sv)): `core`, [`pipe_phy_core.sv`](https://github.com/chili-chips/openPCIE_BFM/blob/main/2.rtl/pipe_phy_core.sv); `hm`, the hard macro's socket ([`tb_socket.sv`](tb_socket.sv), [`models/pcie_core.RC-model.sv`](models/pcie_core.RC-model.sv)): its PIPE registers, `clk_rst_gen` and `phy_top`; no SOC. Not with `SIM_LANE_REVERSE`; `make mutants` runs without a PHY |
 | `A7RC` | `0` (default), `1` | with `RC=model`: the tester, which also sweeps the config space and sends back-to-back requests, or literal, only what the lab RC sends ([drive and check](#drive-and-check)) |
 | `SEED` | `1` (default), any | with `RC=model`: the seed of the tester's random stimulus, read at run time (no rebuild) |
 | `SEEDS` | `10` (default) | `make regress RC=model`: seeds 1 to `SEEDS` |
 | `REGRESS_S`, `REGRESS_TRIES` | `900`, `3` (default) | the time limit of a seed in seconds, and how often a seed with no result runs again |
 | `REGRESS_DUMP` | `none` (default), `fail` | after `make regress`: every failing seed run again with its waveform |
-| `WCX_OPEN` | `1` (default), `0` | `make wavecrux RC=model SEED=N`: that seed with its waveform, opened in WaveCrux at the checker's first violation ([`tools/wavecrux.py`](tools/wavecrux.py); WaveCrux started with `--wcp-port 54321`); `0`: the waveform only |
-| `REGRESS_JOBS` | `1` (default), any | seeds run side by side, each in `obj/regress/<seed>/` with its own copy of the snapshot ([`tools/regress.sh`](tools/regress.sh)) |
+| `WCX_OPEN` | `1` (default), `0` | `make wavecrux RC=model SEED=N`: that seed with its waveform, opened in WaveCrux at the checker's first violation ([`wavecrux.py`](https://github.com/chili-chips/openPCIE_BFM/blob/main/4.build/wavecrux.py); WaveCrux started with `--wcp-port 54321`); `0`: the waveform only |
+| `REGRESS_JOBS` | `1` (default), any | seeds run side by side, each in `obj/regress/<seed>/` with its own copy of the snapshot ([`regress.sh`](https://github.com/chili-chips/openPCIE_BFM/blob/main/4.build/regress.sh)) |
 | `REGRESS_QUIET` | `1` (default), `0` | the packet display off in `regress` (`0`: as `hex/ContDisps.hex`) |
 | `MUTANT_JOBS` | `3` (default), any | `make mutants`: the checker against broken endpoints, side by side, each in `obj/mutants/<name>/`; each must fail the rule it breaks ([`tools/mutants.py`](tools/mutants.py)) |
-| `OPTFLAG` | `-O2 -g` (default) | our user code and `ltssm.c` (the VIP libraries are built `-O2 -g` by `tools/vip-upgrade.sh`); `-O0` and `-O2` must give the same result ([issue 28](#simulation-issues)) |
+| `OPTFLAG` | `-O2 -g` (default) | our user code and `ltssm.c` (the VIP libraries are built `-O2 -g` by openPCIE_BFM's `build-vip.sh`); `-O0` and `-O2` must give the same result ([issue 28](#simulation-issues)) |
 | `VARIANT` | `direct` (default), `switched` | one endpoint, or a switch with endpoints behind it ([below](#rc-switched-a-switch-behind-the-link)) |
 | `SIM_LANES` | `1` (default), `4` | the link width |
 | `SIM_GEN` | `2` (default; x4: `1`), `1` | the fastest rate; at 2 the RC takes the link to Gen2 after L0 |
@@ -583,18 +564,11 @@ So the pictures show the protocol between the two ends, not how the hard macro r
 
 ### Every layer at the Endpoint: transaction taps
 
-The PIPE shows the link as symbols. The Endpoint model also reports each TLP and DLLP it sends and receives, through transaction taps we added to pcieVHost. Our wrapper [`models/PIPExN__pcieVHost.sv`](models/PIPExN__pcieVHost.sv) puts them on one decoder page, `tb.dut.u_pcie.u_phy_top.u_pcie_ep`, next to its PIPE link, under the names WaveCrux auto-binds (dn = RC -> EP, up = EP -> RC):
-
-| Layer | Signals | For |
-|---|---|---|
-| PIPE | `pipe_dn_*`, `pipe_up_*` (`pclk`, `data`, `datak`) | the PIPE and Data Link Layer decoders |
-| Data Link | `dllp_dn_*`, `dllp_up_*`: every DLLP, one word each | DLLP rows |
-| Data Link | `dll_rx_*`: RC -> EP TLPs and DLLPs, as an Endpoint's DLL hands them to its TL | driving a TL under test |
-| Transaction | `tx_*` (RC -> EP), `rx_*` (EP -> RC) | the TLP decoder |
+The PIPE shows the link as symbols. The Endpoint model also reports each TLP and DLLP it sends and receives, through transaction taps we added to pcieVHost. Our wrapper [`PIPExN__pcieVHost.sv`](https://github.com/chili-chips/openPCIE_BFM/blob/main/2.rtl/PIPExN__pcieVHost.sv) puts them on one decoder page, `tb.dut.u_pcie.u_phy_top.u_pcie_ep`, next to its PIPE link, under the names WaveCrux auto-binds (dn = RC -> EP, up = EP -> RC):
 
 So the dump now has two TLP views, one at each end of the link: `tb.tlp_view` at the Root Complex's AXI-Stream, `u_pcie_ep` at the Endpoint. Same TLPs (21 down, 20 up), the hard macro and the link apart. The run also shows 67 DLLPs down and 92 up.
 
-The C side is [`models/pcievhost/pcievhost-taps.patch`](models/pcievhost/pcievhost-taps.patch), applied by [`tools/vip-upgrade.sh`](tools/vip-upgrade.sh). The wrapper is the one [openCologne-PCIE](https://github.com/chili-chips/openCologne-PCIE/tree/main/5.sim#transaction-taps-a-test-platform-at-every-layer) uses for its host and its Endpoint model; [how it works](https://github.com/chili-chips/openCologne-PCIE/blob/main/0.doc/5.sim/pcievhost-taps.drawio.png).
+The signals by layer, and how the taps work in C and HDL: [openPCIE_BFM, transaction taps](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/integration.md#transaction-taps).
 
 ### How long a TLP spends in the hard macro
 
@@ -667,7 +641,7 @@ eduBOS5 against PicoRV32 (IPC, Fmax, area): [eduBOS5 README](../2.rtl/0.common.o
 
 ## VProc Software
 
-The _VProc_ software is DPI-C code that keeps in step with the simulation, with a C or a C++ API on top for the running code. The _VProc_ `soc_cpu` is node 0, so user software starts at `VUserMain0`, not `main`. `VUserMain0` must have C linkage: the _VProc_ code that calls it is C, as are all the programming logic interfaces, DPI-C included. The libraries are in `5.sim/models/cosim/lib`, the headers in `5.sim/models/cosim/include` ([details](models/cosim/README.md); the [_VProc_ manual](https://github.com/wyvernSemi/vproc/blob/master/doc/VProc.pdf)).
+The _VProc_ software is DPI-C code that keeps in step with the simulation, with a C or a C++ API on top for the running code. The _VProc_ `soc_cpu` is node 0, so user software starts at `VUserMain0`, not `main`. `VUserMain0` must have C linkage: the _VProc_ code that calls it is C, as are all the programming logic interfaces, DPI-C included. The libraries and headers are built from openPCIE_BFM into `5.sim/obj/vip/lib` and `include` ([details](models/README.md#vproc-and-mem_model); the [_VProc_ manual](https://github.com/wyvernSemi/vproc/blob/master/doc/VProc.pdf)).
 
 The C++ API is the class `VProc` (`VProcClass.h`); its constructor creates an API object for one node:
 
@@ -793,7 +767,7 @@ To change what is compiled, list C++ files in `USER_C` (`soc_cpu`) or `PCIE_C` (
 make USER_C="VUserMain0.cpp MyTest1Class.cpp"
 ```
 
-For many build variants, wrap these calls in scripts or make files that set the variables and call this one. The user software goes into `libuser.a`, linked with the precompiled _VProc_ library `libcosimlnx.a` (`5.sim/models/cosim/lib`) into `VProc.so`, which the simulator loads (`xelab -sv_lib`). The models' HDL is in `5.sim/models/cosim`.
+For many build variants, wrap these calls in scripts or make files that set the variables and call this one. The user software goes into `libuser.a`, linked with the _VProc_ library `libcosimlnx.a` (built from openPCIE_BFM into `5.sim/obj/vip/lib`) into `VProc.so`, which the simulator loads (`xelab -sv_lib`). The models' HDL is in `5.sim/obj/vip/hdl` and openPCIE_BFM `2.rtl`.
 
 `make help` prints:
 
@@ -929,27 +903,19 @@ Nothing before the colon means local host; a host name debugs from another machi
 
 The [mem_model](https://github.com/wyvernSemi/mem_model) HDL component fronts a sparse memory model in C, part of the _pcieVHost_ software. It maps a 64-bit address space and allocates pages on demand, so it uses only the memory it needs. Instantiate it as often as you like: every instance, and any _VProc_ code through the API, sees the same memory.
 
-The `soc_cpu.VPROC.native` wrapper used here has no `mem_model` (the inherited `soc_cpu.VPROC` has one, for program writes via a UART). The software on its _VProc_ still reaches the memory through the API, as does the software on the [_pcievhost_](#driving-the-pcie-link)'s _VProc_. HDL details: [`models/cosim/README.md`](models/cosim/README.md).
+The `soc_cpu.VPROC.native` wrapper used here has no `mem_model` (the inherited `soc_cpu.VPROC` has one, for program writes via a UART). The software on its _VProc_ still reaches the memory through the API, as does the software on the [_pcievhost_](#driving-the-pcie-link)'s _VProc_. HDL details: [VProc and mem_model](models/README.md#vproc-and-mem_model).
 
 ## Driving the PCIE Link
 
-The _openPCIE_ logic has one PCIE PIPE downstream port, x1 or x4, Gen1 and Gen2. The test bench drives it with `pcieVHostPipex1` (x1) or our `pcieVHostPipexN` (x4), built on the _pcieVHost_ VIP. Configuring and driving the model: [`models/pcievhost/README.md`](models/pcievhost/README.md).
+The _openPCIE_ logic has one PCIE PIPE downstream port, x1 or x4, Gen1 and Gen2. The test bench drives it with `pcieVHostPipex1` (x1) or our `pcieVHostPipexN` (x4), built on the _pcieVHost_ VIP. Configuring and driving the model: [the _pcieVHost_ manual in openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/pcievhost/README.md).
 
 <div align=center>
-<img alt="pcieVHost module" width=750 src="models/pcievhost/images/pcievhost_module.png">
+<img alt="pcieVHost module" width=750 src="https://github.com/chili-chips/openPCIE_BFM/raw/main/0.doc/pcievhost/images/pcievhost_module.png">
 </div>
 
 ### Three ways to attach pcieVHost
 
-One model (the same core, C model and patches) with an adapter for what it talks to, so a fix or a calibration holds for all three:
-
-| Adapter | The model plays | It talks to | Files | PIPE |
-|---|---|---|---|---|
-| **Line** | a whole node on the wire | another model | `pcieVHostPipex1.sv`, `pcieVHostPipexN.sv`; `Serialiser.sv` with `IFACE=serial` | not PIPE: it models the line. Idle is `NOSIG` ([special values](models/pcievhost/README.md#special-values-on-the-line)). The fastest with `IFACE=pipe`: a symbol per clock, no 8b/10b, no scrambling; the regression runs on it. `IFACE=serial` steps every bit, 8b/10b and scrambling on, so it is slower |
-| **PIPE-PHY** | the PHY and the far node | an RTL MAC directly, with no SerDes | `models/pipe_phy_core.sv`, wrapped by `models/phy_top.EP-PIPE-BFM.sv` (the hard macro's MAC); in openCologne-PCIE by `phy_vproc_rc.sv` (its EP's MAC) | the PHY side of PIPE with its handshakes: PhyStatus on power-state and rate changes (and in PIPE reset, but not for the hard macro: `RST_LAT = 0`), receiver detection; TxElecIdle in, RxElecIdle and RxValid out. Shortcuts: a receiver is always present for the hard macro (`rcvr_present` tied to 1; `PHY=core` ties it to the endpoint's reset, so the first detection fails), PCLK switches at once on a rate change |
-| **PIPE-MAC** | the MAC | a PIPE PHY | `models/pipe_mac_adapter.sv`; on `pipe_phy_core.sv` (`RC=model PHY=core`), and in the hard macro's socket (`PHY=hm`, `models/pcie_core.RC-model.sv`): x1 and x4, Gen1 and Gen2 pass as without it | the MAC side of PIPE, with its handshakes: PIPE reset, receiver detection in P1 (again after a quiet time if none), P0, rate change; idle per lane. Its rules are assertions that end the run |
-
-The SerDes BFM stays below all three, at the level of the GateMate silicon.
+One model, three adapters: on the line, as the PHY of an RTL MAC, or as the MAC over a PIPE PHY: [openPCIE_BFM, three ways to attach pcieVHost](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/integration.md#three-ways-to-attach-pcievhost).
 
 ## HAL
 
@@ -976,19 +942,7 @@ The build handles three more host differences, so the firmware source has no co-
 
 How our co-simulation models differ from upstream, beyond [Local changes](#local-changes). The pcieVHost fixes and features: [Simulation issues](#simulation-issues), [pcieVHost: what we added or removed](#pcievhost-what-we-added-or-removed).
 
-- **VProc: the user code as a coroutine, about 22 times faster, and deterministic.** Upstream runs each node's user code in a thread of its own, and hands over through two semaphores on every access: two system calls and a scheduler wake-up, millions of times per run. Ours runs it on the simulator's own thread, on its own stack; an access switches stacks in 21 instructions of x86-64 assembly, no kernel ([`models/cosim/vproc-coroutine.patch`](models/cosim/vproc-coroutine.patch)). The results are identical, the HM run to the picosecond:
-
-  | openCologne-PCIE EP model, Verilator, seed 1 | run 1 | run 2 | run 3 | run 4 | run 5 |
-  |---|---|---|---|---|---|
-  | threads, upstream | 17.7 s | 17.8 s | 17.2 s | 18.1 s | 17.9 s |
-  | coroutines, ours | 0.8 s | 0.8 s | 0.8 s | 0.8 s | 0.8 s |
-
-  Under XSIM the simulator's own kernel weighs more: `RC=model` 32.5 s to 9.5 s (3.4 times), the HM run with its RTL CPU 65.9 s to 52.6 s.
-
-  With one thread and no operating system scheduler in the handover, every run takes the same wall time. Threads had an intermittent slow mode (3 to 80 times slower, in 4 of 9 runs one evening, in none of 10 another), with the handover its prime suspect; 100 seeds under coroutines all took the same time. At 0.8 s a seed, 1000 seeds take about 13 minutes (under 2 with `REGRESS_JOBS=8`), where it took 5 hours before. Measured: 100 seeds of the EP model in openCologne-PCIE, 8 at a time, in 14 s, all PASS. On other CPUs, on Windows, and with `-DVPROC_THREADS` (for sanitizer runs: they do not follow stack switches), VProc keeps the threads, now retrying a wait a signal interrupts. A `VUserMain<n>()` that returns idles its node with an error message; upstream left the simulator waiting forever.
-- **pcievhost: Data Link and Transaction access points, besides the PIPE.** Upstream, the link is visible only as PIPE symbols; TLPs and DLLPs stay inside the C model. Our transaction taps bring every TLP and DLLP sent and received out to ports, and `PIPExN__pcieVHost` offers them at the Data Link Layer (`dllp_*`, `dll_rx_*`) and the Transaction Layer (`tx_*`, `rx_*`) ([transaction taps](#every-layer-at-the-endpoint-transaction-taps)).
-- **pcievhost: x4 PIPE.** Upstream's PIPE wrapper `pcieVHostPipex1` is x1 only. Ours, `pcieVHostPipexN`, runs the same model over any number of lanes; the test bench uses x1 and x4 (`make SIM_LANES=4`: Gen1, `user_clk` 125 MHz; `SIM_GEN=2`: Gen2, 250 MHz), and all pass ([the x4 link in WaveCrux](#the-x4-link-in-wavecrux)).
-- **pcievhost: Gen2 speed changes.** Upstream's LTSSM helper stops at L0 and has no Recovery.Speed. Ours follows the RC from L0 into Recovery and through a speed change, and can start one itself, Gen1 to Gen2 and Gen2 to Gen1 (`make` at x1, `SIM_SPEED_TEST=1`). All pass against the hard macro ([the Gen2 speed change](#example-the-gen2-speed-change)).
+- **pcieVHost and VProc:** coroutine VProc (about 22 times faster), Data Link and Transaction access points, x4 PIPE, Gen2 speed changes: [openPCIE_BFM, what we added](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#what-we-added).
 - **rv32 ISS built from source.** `models/rv32/src` holds the ISS sources at upstream `774d84fa`; the make file builds the library. Two fixes in `rv32-openpcie.patch`: the timer-compare check no longer adds 2 cycles to every instruction, and `sw`/`sh` take store timing, not load.
 - **Timing measured on our RTL.** `rv32_timing_config.h` holds cycles per instruction class measured in this SOC, so they include its memory latency (fetch included, no wait states):
 
@@ -1173,176 +1127,15 @@ make run RC=model SIM=janushdl                     # in JanusHDL; also make regr
 
 #### Drive and check
 
-The model drives the endpoint and judges what comes back, which no open-source project does yet ([the gap](#open-source-pcie-validation-stacks)). The drivers are in [`usercode/VUserMain2.cpp`](usercode/VUserMain2.cpp). The checkers, in [`usercode/a7rc_check.cpp`](usercode/a7rc_check.cpp), see every TLP and DLLP on the link through our packet monitor in pcieVHost (`SetPktMonitor()`).
-
-- **Two modes.** The default is the tester: the lab RC's sequence, then what its firmware never sends but the spec allows. `A7RC=1` is literal: only what the lab RC sends, with its timing. Up to the firmware's result both match the hard macro, as below. The checkers run in both. An `A7RC=1` dump is named `tb.x1g2.model.a7rc.fst`.
-- **Rules.** Each has an ID, prefixed by layer, and a section of the PCIe Base Specification 2.1. At the end the model prints checks and violations per rule; any violation fails the run. A FAIL, or no result by `RUN_US`, ends the sim with `$fatal`, so `make run` exits non-zero.
-- **An error-free line.** Nothing corrupts symbols in simulation, so a Nak or a replay is the endpoint's fault, not noise.
-- **Self-check.** The model checks its own TLPs too: framing, Length within MPS and MRRS, no 4 KB crossing. A violation there is a model error, and fails the run as well.
-- **Seeds.** One seed drives the tester's random stimulus: `make run SEED=N` (default 1, no rebuild), `make regress SEEDS=N` for seeds 1 to N. With the [coroutine VProc](#our-local-vip-improvements) a seed takes under a second under Verilator. The model prints how often each kind of stimulus ran, so a seed that hits nothing shows; `make regress` ends with the rules no seed checked.
-- **Mutants.** `make mutants` breaks the endpoint one way at a time (no SKP, a reserved Training Control bit, one EIOS at 5.0 GT/s, a short electrical idle, Recovery.Speed at 2.5 GT/s without a faster common rate) and checks that each fails the rule it breaks: the checker's own regression.
-- **Stuck Recovery.** A Recovery that runs 50 µs prints `---> Recovery for 50 us, still in RcvrLock ...` with the substate and rate, long before the run's time limit (expected after a failed speed change, or with `SIM_FAULT=linkdown`).
-
-**Drivers**
-
-| Driver | Mode | What it sends | Status |
-|---|---|---|---|
-| Lab RC sequence | both | link training with the Artix-7 TS counts and timing, FC init, then the RC firmware: ID read, BAR sizing and placement, Command, a write and a read at BAR0, with its think times | done |
-| `CfgSweep()` | tester | every DW of 00h-FFh and the extended capability chain; all ones to read-only registers, ones to the RW1C status bits, each read back; a read of function 1 | done |
-| `Stress()` | tester | 8 writes and 8 reads to BAR0 back to back (the spec sets no gap; only flow control limits the sender), the data checked | done |
-| `Mix()`: request mix | tester | each BAR filled, then 64 writes and reads at random: 1 byte to MPS (writes) or MRRS (reads), any byte address, so partial Byte Enables; some end at a 4 KB boundary, none crosses one. `TL.ORDER` checks the data | done |
-| `Mix()`: pacing | tester | back to back, a random gap, or a burst of 4-12; random free tags, up to 32 reads outstanding | done |
-| `Unsupported()` | tester | IO read and write, MRdLk, a read and a write outside the BARs, a Type 1 Configuration Read, Vendor-Defined Messages Type 0 (UR) and Type 1 (dropped silently); Device Status cleared first, then checked after each group: set after a UR, kept by a 0, cleared by a 1, still clear after the Type 1 message; then an ordinary read | done |
-| `Odd()` | tester | a write and a read with ECRC (TD 1); a poisoned write, then its read; a poisoned Configuration Write (UR, Interrupt Line unchanged); the error status; reads with Traffic Class 1-7 and Relaxed Ordering / No Snoop | done |
-| `Faults()` | tester | Data Link faults from the RC, each around reads whose Completions must arrive once: a Nak of a good Completion, Acks held past the endpoint's replay timer, a TLP with a bad LCRC, a TLP sent again after its Ack (a duplicate), a DLLP with a bad CRC (`InjectFault()`, `SendDuplicate()`, our pcieVHost hooks; the stored copy stays good, so the replay is); then Device Status, Correctable Error Detected | done |
-| `Speed()` | tester | link speed changes the RC directs (`ChangeLinkSpeed()`), with 4 reads outstanding: to Gen1 and back to Gen2; the Completions may come before, in or after the Recovery (Gen2 links only) | done |
-| `Retrain()` | tester | Recovery at 8 random points (`RetrainLink()`, or `ChangeLinkSpeed()` to a random rate when both sides advertise Gen2): 1 to 4 reads and some writes, then a random gap of up to 400 symbol clocks, so the endpoint's Completions and Acks are on the wire, queued or not yet due | done |
-| `Dma()` | tester | the endpoint's own requests: the RC writes a trigger to Interrupt Line, and the endpoint program ([`usercode/ep_dma.h`](usercode/ep_dma.h)) writes 48 blocks of 64 bytes to the RC's memory and reads them back, the data compared; the RC holds its UpdateFCs for 10 µs (`HoldFc()`), so the endpoint runs out of posted credits and must wait | done |
-| Credit starvation | tester | late UpdateFCs: done (`Dma()` holds the RC's for 10 us); minimum credits: planned | partly |
-| Training varied | tester | from the seed (`SetLtssmVary()`): up to 8 more TS1/TS2 and idle symbols in Configuration and Recovery than the least, 0 to 2 more EIOS, up to 128 ns more idle in Recovery.Speed | done |
-| Lane polarity | `SIM_POLARITY=1` | both serial lines inverted: each receiver inverts its lane | done |
-| Lane reversal | `SIM_LANES=4 SIM_LANE_REVERSE=1` | the x4 lanes wired reversed; the endpoint (`SIM_LANE_REV=ep`), the RC model (`rc`, tester only) or both may reverse; Recovery at random points: `Retrain()`; a Gen1-only RC: `SIM_RC_GEN=1` | done |
-| `SEED=N` | tester | one reproducible seed for all random stimulus; `make regress SEEDS=N`, each seed with a time limit and retries | done |
-
-**Checkers** (the endpoint's side of the link)
-
-| Rule | PCIe 2.1 | Checks |
-|---|---|---|
-| `TL.FMT-TYPE` | 2.2.1, 1.3.2.2 | Fmt/Type defined; Message routing an endpoint may use; no I/O request from a PCI Express Endpoint (a Legacy Endpoint may) |
-| `TL.RSVD` | 2.2.1 | reserved header bits 0; TH, IDO, AT 0 (not enabled) |
-| `TL.LENGTH` | 2.2.2, 2.2.7 | Length matches the payload; payload <= MPS (128 B), read <= MRRS (512 B) |
-| `TL.ECRC` | 2.7.1 | no ECRC from the endpoint: without AER its generation is off, also on Completions to requests with ECRC |
-| `TL.POISON` | 2.7.2.2 | EP 1 only on a TLP with data (poisoning data is legal) |
-| `TL.REQ-ID` | 2.2.6.2 | the endpoint's requests carry its captured bus/device |
-| `TL.REQ-ADDR` | 2.2.4.1 | address bits 1:0 0; 64-bit format only above 4 GB |
-| `TL.REQ-4KB` | 2.2.7 | no request crosses 4 KB |
-| `TL.REQ-BE` | 2.2.5 | First/Last DW Byte Enables legal for the Length |
-| `TL.REQ-BME` | 7.5.1.1 | the endpoint's memory and I/O requests only with Bus Master Enable set |
-| `TL.CPL-MATCH` | 2.3.2 | a Completion for an outstanding request: Requester ID, Tag |
-| `TL.CPL-ID` | 2.2.9 | Completer ID: the bus/device captured from the Type 0 CfgWr |
-| `TL.CPL-STATUS` | 2.2.9 | status defined; CRS only for Cfg; data only with SC, for reads |
-| `TL.CPL-FIELDS` | 2.2.9, 2.3.1.1 | Byte Count, Lower Address, Length, BCM 0; a split ends on the completer's RCB, 128 bytes (the Link Control RCB bit is the Root Port's) |
-| `TL.CPL-TC-ATTR` | 2.2.9 | TC and Attr as the request's |
-| `TL.CPL-ALL` | 2.3.1 | every non-posted request completed |
-| `TL.ORDER` | 2.4.1 | a read returns what the RC wrote before it, or after it (a posted write may pass a read); enabled bytes only |
-| `DL.DLLP-CRC` | 3.4.1 | DLLP CRC good |
-| `DL.DLLP-TYPE` | 3.4.1 | DLLP type defined, VC0 only |
-| `DL.NAK` | 3.5.3.1 | no Nak, but after a TLP the RC sent with a bad LCRC |
-| `DL.LCRC` | 3.5.2.1 | LCRC good, or inverted with EDB |
-| `DL.SEQ` | 3.5.2.1 | sequence numbers from 0, one up per new TLP |
-| `DL.REPLAY` | 3.5.2.1 | a replay only after a Nak from the RC, or once the replay timer ran out: timed from the oldest unAcked TLP's transmission or the last Ack that advanced, the TLPs after it in the same replay with it; and an unAcked TLP sent again within twice the timer (+100%) |
-| `DL.ACK-SEQ` | 3.5.2.2 | an Ack or Nak names a TLP sent, never an older one |
-| `DL.ACK-LAT` | 3.5.3.1 | each TLP Acked within the Ack latency limit, in L0 time: the table value (no tolerance, unlike the replay timer), plus a TLP in progress, the Ack itself and the link |
-| `DL.DLLP-RSVD` | 3.4.1 | DLLP reserved fields 0 |
-| `DL.REPLAY-ORDER` | 3.5.2.1 | a replay starts at the oldest unAcked TLP (after a Nak, the one after its) and goes in order, before any new TLP |
-| `DL.BAD-TLP` | 3.5.3.1 | a TLP with a bad LCRC is Naked with the last good sequence number, and dropped |
-| `DL.DUPLICATE` | 3.5.3.1 | a duplicate TLP (sent again after its Ack) is Acked within the Ack latency limit, not Naked, and dropped (no Completion: `TL.CPL-MATCH`) |
-| `FC.INIT-ORDER` | 3.3.1 | InitFC1, then InitFC2 (FI1 may end an InitFC1 set early), then UpdateFC once FC_INIT2 can be done; each set P, NP, Cpl in order |
-| `FC.INIT-SAME` | 2.6.1.2 | InitFC2 credits equal InitFC1 |
-| `FC.INFINITE` | 2.6.1 | an UpdateFC of an infinite type carries 0 |
-| `FC.FORWARD` | 2.6.1.2 | a credit limit never moves back |
-| `FC.RANGE` | 2.6.1 | at most 127 header and 2047 data credits ahead |
-| `FC.UPDATE-PERIOD` | 2.6.1.2 | an UpdateFC of each finite type at most 30 µs +50% apart |
-| `FC.TLP-EARLY` | 3.3.1 | no TLP before the endpoint can have left FC_INIT2: its own InitFC2 sent, or the RC's sent |
-| `FC.EP-CREDITS` | 2.6.1.1 | the endpoint's TLPs fit the RC's credits |
-| `FC.INIT-MIN` | 2.6.1 | initial data credits: Posted and Completion at least Max_Payload_Size Supported, Non-Posted at least 1, or infinite |
-| `FC.CPL-INF` | 2.6.1 | an endpoint advertises infinite Completion credits |
-| `FC.RETURN` | 2.6.1.2 | by the end, UpdateFCs returned every credit the RC's TLPs used (an expectation, not a spec rule: the run idles 45 µs first) |
-| `CFG.ID` | 7.5.1 | Vendor ID neither FFFFh nor 0000h |
-| `CFG.HEADER` | 7.5.1.2 | Header Type 0, Latency Timer 0, Capabilities List 1, Capabilities Pointer >= 40h; reserved bits 0 |
-| `CFG.CAP-LIST` | 7.6 | the capability chain ends, no loop; PM and PCIe Capabilities present |
-| `CFG.PCIE-CAP` | 7.8.2, 7.8.3 | PCIe Capability version 2 (2.1 hardwires 2h; 1 accepted for a 1.x device at 2.5 GT/s), Endpoint, no slot; MPS Supported defined; Role-Based Error Reporting set, as by every function of PCIe 1.1 on |
-| `CFG.LINK` | 7.8.6, 7.8.8 | Link Capabilities speed and width defined; Link Status = the trained link |
-| `CFG.EXT-CAPS` | 7.9.1 | the extended capability chain from 100h ends (all 0 if none) |
-| `CFG.BAR` | 7.5.2.1 | a BAR read after all ones: type defined, size mask contiguous |
-| `CFG.RO` | 7.4 | read-only bits keep their value across a write |
-| `CFG.RW1C` | 7.4 | RW1C bits that were 1 read 0 after a write of 1, and stay 1 after a write of 0 |
-| `CFG.FN` | 7.3.3 | a request to a function a single-function device lacks gets UR |
-| `PL.FRAMING` | 4.2.2 | no K symbol inside a packet; a DLLP is 8 symbols and ends in END |
-| `PL.L0-ONLY` | 4.2.6.4 | no TLP or DLLP from the endpoint's first TS1/TS2 of a training or Recovery until it can be in L0: the RC back in L0, or 16 symbol times and a DLLP after the RC began Configuration.Idle or Recovery.Idle |
-| `PL.SPEED` | 4.2.6.4.3 | a speed change up only in a Recovery whose TS2s from the endpoint carried speed_change, to a rate they advertised (down to 2.5 GT/s: also the fallback, 4.2.6.4.2) |
-| `PL.TS-FIELDS` | 4.2.4.1 | TS1/TS2: Data Rate bit 1 set, bits 0 and 3-5 0, speed_change not in Polling or Configuration, the same rates there; Training Control 0 but Disable Scrambling (bits 5-7 reserved; the RC directs no Hot Reset, Disable, Loopback or Compliance Receive); after Configuration, the Link and Lane Numbers it set |
-| `PL.SKP` | 4.2.7.1 | SKP Ordered Sets: in Polling, Configuration and L0 never more than 1538 + Max_Payload_Size + 28 Symbol Times apart (4.2.7.2); in L0 one per 1180 to 1538 (give or take one per L0 period) |
-| `PL.EIOS` | 4.2.4.2 | EIOS from the endpoint, lane 0: only in Recovery, on the way to Recovery.Speed (after TS2s with speed_change, at 2.5 GT/s with 5.0 GT/s on both sides; or, at 5.0 GT/s or back from a changed rate, after RcvrLock timed out with TS1 only, 4.2.6.4.1, or in RcvrCfg, after its TS2, once the RC sent EIOS, 4.2.6.4.3); one at 2.5 GT/s, two in a row at 5.0 GT/s; at least 32 TS2s with speed_change before (counted from its first); then electrically idle until the RC is, and for at least 800 ns after the later EIOS, 6 µs without speed_change (4.2.6.4.2) |
-| `TL.UR` | 2.3.1 | an unsupported non-posted request gets UR, a supported one never |
-| `TL.CRS` | 2.3.1 | CRS only until the first successful Configuration Completion |
-| `CFG.ERR-STATUS` | 6.2.5, 6.2.3.2.4, 7.8.5, 7.5.1.2 | Device Status by Figure 6-2 (no AER): a posted request's UR sets UR Detected and Non-Fatal Error Detected; a non-posted one's with Role-Based Error Reporting is Advisory: no severity bit, UR Detected set or clear accepted (the figure and 7.8.5 differ); a poisoned posted request: Non-Fatal, or none as Advisory; Bad TLP, Bad DLLP, Replay Timer Timeout: Correctable Error Detected; Fatal never; Status Detected Parity Error on every poisoned request |
-
-The `PL.` rules see the ordered sets on lane 0 of an x1 link (the RC model's), and the RC's LTSSM state, not the endpoint's; `PL.SPEED` judges the speed at each return to L0.
-
-**Results.** Against the pcieVHost endpoint here and the EP model in openCologne-PCIE, all 59 rules pass in both modes, at the PIPE, on the serial line and through the speed changes; in openCologne-PCIE under Verilator and Icarus, and over 100 seeds. The first runs found three deviations in the EP model and a bug in pcieVHost's Configuration Requests ([issues 14 to 16](#simulation-issues)). The request mix, the unsupported requests, `-O0`/`-O2` builds with UBSan and valgrind, the odd requests (ECRC, poisoned, TC 1-7), the Data Link faults and independent reviews of the code found forty-three more in pcieVHost: Completions over Max_Payload_Size, Acks and UpdateFCs held behind queued TLPs, accesses refused at a BAR's end or a 4 KB boundary, no RW1C bits, no UR Detected, MRdLk completed by an endpoint, an array one word short, an uninitialised counter in link training, poisoned TLPs taken as good, Completions without the request's TC and attributes, ECRC on by default, no replay timer, no duplicate detection, a Nak with the wrong sequence number, SKP Ordered Sets held back by a busy queue or through training, a serial receiver that lost its symbol alignment after electrical idle, no lane polarity inversion, electrical idle hidden at the PIPE, X on the line at start-up, a race one symbol wide between simulators, and Configuration that checked lane 0 only at any width ([issues 17 to 66](#simulation-issues), 38, 47, 51, 54, 62, 65 and 66 ours). All are fixed or worked around but two: one limitation we keep, one with no stimulus yet (a bad ECRC). `TL.CRS` is exercised only with `SIM_FAULT=crs`. The faults and the DMA print what they did: one Nak from the RC, 16 TLPs sent again in 3 replays, 96 endpoint requests with its posted header credits down to 0.
-
-**How it runs.** [`tb_rc.sv`](tb_rc.sv) puts the model in place of the RC_opensource DUT, against the same pcieVHost endpoint (`VUserMain1.cpp`), on a 16-bit x1 PIPE. Resets as in `tb.sv`: PERST# at 1 µs, the endpoint 487 ns later. No RTL, no CPU: the run takes seconds.
-
-- [`usercode/VUserMain2.cpp`](usercode/VUserMain2.cpp): the model, pcieVHost on node 2. It sets the profile's values, trains the link, starts flow control, then runs our RC firmware ([`3.sw/RC-direct`](../3.sw/RC-direct)) ported to C++: the ID read, `assign_bars()` (Command off, size each BAR, place it in the window from 0x80000000 or park it), Command on, then the self-test write and read at BAR0. Same Requester ID (0x10EE), bus 1, tags, CRS retry and result markers (`0x0000FACE`: pass).
-- Firmware time: each request leaves the hard macro's measured time after the endpoint's last TLP (8.996-14.46 µs, by the firmware's code path), plus about 1 µs at Gen1. The first one 80.958 µs after the model's own L0: the SOC leaves reset at DL_Active, so a late endpoint delays it ([Fault tests](#fault-tests-the-firmwares-error-paths)). The Completion timeout (2.18 ms) and the CRS retry (374 µs) are the firmware's too. `GetLinkTimeNs()` (`ltssm.c`) counts the time at both rates. It checks every Completion (tag, Requester ID, status, byte count) and the values the firmware reads.
-- `SetLinkProfile(LTSSM_PROFILE_ARTIX7_RC)` in `ltssm.c`: the RC's Configuration path. Link and Lane numbers at once, 8 more TS1 in Linkwidth.Accept and Lanenum.Accept, the Autonomous Change bit in Configuration.Complete. The default, `LTSSM_PROFILE_EP`, is the endpoint as before.
-- Gen2 (`SIM_GEN=2`, the default): both sides advertise Gen2, and the model starts the change to Gen2 right after InitFC2, as the Artix-7 RC does (1.95 µs after L0). The RC sets the rate: in Recovery.Speed, with both sides idle, the profile writes pcieVHost's `GEN2_CLK` register. Its `Gen2ClkSel` output (now a port of `PIPExN__pcieVHost`) switches the clocks of `tb_rc.sv`.
-- `SIM_SPEED_TEST=1`: the endpoint takes the link to Gen1 at the firmware's BAR0 write and back at its BAR1 write. Both changes meet traffic; the model holds its Ack for the BAR0 Completion through Recovery, as the hard macro does (5.520 µs).
-
-Against the hard macro (`tb.x1g1.direct.fst`; the change to Gen2 from `tb.x1g2.direct.fst`), RC transmit as the endpoint sees it:
-
-| Item | Hard macro | RC model |
-|---|---|---|
-| Before Polling | electrical idle; the first TS1 3.035 µs after PERST# (4.035 µs) | the same: 4.040 µs |
-| Disable Scrambling bit in every TS | set: the sim build turns scrambling off (`SIM_PIPE_CODING`) | the same (`CONFIG_LTSSM_TS_CTL`) |
-| Configuration TS1, Link = 0: Lane = PAD / Lane = 0 | 15 / 14 | the same |
-| Configuration.Complete TS2, Autonomous Change | 24 | the same |
-| Configuration.Idle SKP, after the last TS2 starts | 280 ns | 285 ns |
-| Last training TS (L0) | 74.099 µs | 74.120 µs |
-| N_FTS, credits | 255; P 32/437, NP 12/24 | the same |
-| Last training TS to the first InitFC | 657 ns | the same |
-| InitFC: DLLP spacing, round, InitFC1 / InitFC2 rounds | 64 ns, 192 ns, 5 / 4 | the same |
-| SKP during training | 12, one every 92 TS, the last in Configuration.Idle | the same |
-| Ack after the END of an endpoint TLP | 424 ns at Gen1, 212 ns at Gen2 (median); one per TLP | the same |
-| Requests: 21, the firmware's order and headers | Gen2: the first 80.958 µs after L0 (155.057 µs); each after the endpoint's last TLP | the same: the first at 155.076 µs, each gap within 8 ns; the last request 0.25 µs later |
-| The same at Gen1 | 81.032 µs after L0; each about 1 µs longer, except two: Command = 0 (+812 ns), Command = 6 (+0) | each gap within 40 ns, except those two; the last request 1.6 µs later |
-| Change to Gen2 starts, after the last training TS | 2.368 µs, right after InitFC2 | 2.360 µs |
-| First UpdateFC, after the end of InitFC; then | 32.77 µs; every 32.77 µs | the same |
-
-The speed changes of `make SIM_SPEED_TEST=1` (`tb.x1g2.direct.speed.fst`, `tb.x1g2.model.speed.fst`), RC transmit, hard macro / RC model:
-
-| Phase | RC starts Gen1→Gen2 | EP starts Gen2→Gen1 | EP starts Gen1→Gen2 |
-|---|---|---|---|
-| RcvrLock TS1, old rate (with Speed Change) | 13 (12) / 13 (12) | 16 (8) / 16 (8) | 17 (8) / 16 (8) |
-| RcvrCfg TS2, old rate | 32 / 32 | 34 / 34 | 34 / 33 |
-| Idle, last EIOS to the first TS1 at the new rate | 866 / 856 ns | 1194 / 1200 ns | 858 / 850 ns |
-| RcvrLock TS1, new rate | 14 / 17 | 24 / 24 | 15 / 16 |
-| RcvrCfg TS2, new rate | 17 / 16 | 17 / 16 | 17 / 16 |
-| First TS1 to last TS2 | 4.87 / 4.77 µs | 5.41 / 5.31 µs | 5.18 / 4.99 µs |
-
-EIOS counts compare since the PIPE PHY model keeps the line idle under TxElecIdle ([issue 54](#simulation-issues)): 2 at Gen2, 1 at Gen1, on both. A fixed model bug: when the EP's EIOS came first, the model changed the rate before its own EIOS reached the EP, so the EP waited out its 6 µs idle timeout.
+The drivers, the 59 rules and their results: [openPCIE_BFM, drive and check](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/rc-model.md#drive-and-check).
 
 #### On the serial line
 
-`make run RC=model IFACE=serial` runs the same model on a 1-bit line per lane each way (x1, or x4 with `SIM_LANES=4`), in [`tb_rc_serial.sv`](tb_rc_serial.sv): both sides are upstream's `PcieVhostSerial` ([`pcieVHost.sv`](models/pcievhost/verilog/pcieVHost/pcieVHost.sv), with `Serialiser.sv` and `clkmux.sv` from its `verilog/lib`). The C model does 8b/10b and scrambling, as on hardware, and the Disable Scrambling bit is clear. Electrical idle is a constant 0 on the line. This is the level the GateMate SerDes BFM takes.
-
-- `Gen2Clk = 1`: the wrappers take the Gen2 clocks (500 MHz, 5 GHz) and halve them at Gen1; `GEN2_CLK` selects. (Upstream's `generate` drove the bit clock twice with `Gen2Clk = 0`: issue 58.)
-- Each side switches its own clocks, so the endpoint profile now writes `GEN2_CLK` in Recovery.Speed too. On a PIPE its `Gen2ClkSel` is left open.
-- Gen2 and Gen1 PASS; the Gen2 run changes the link to Gen2 on the serial line.
-- `USRSIMOPTS="--define DUMP_VCD"` dumps each side's 10-bit symbols and transaction taps (`tb.x1g2.model.serial.fst`); add `--define DUMP_LINE` for the 1-bit line, a few G events a second.
-
-RC transmit, PIPE / serial: the same sequence. The endpoint now sees the RC's electrical idle and starts training at 4.03 µs (1.51 µs on the PIPE), so the counts the RC takes from its partner shift a little:
-
-| Item | PIPE | Serial |
-|---|---|---|
-| First training TS | 4.040 µs | 4.025 µs |
-| Polling.Active TS1 | 17 | 18 |
-| Configuration TS1 Lane = PAD / Lane = 0, TS2 | 15 / 14, 24 | the same |
-| Last training TS (L0) | 74.120 µs | 74.041 µs |
-| First InitFC, Gen2 change, after L0 | 657 ns, 2.360 µs | 634 ns, 2.324 µs |
-| DLLPs: InitFC1 / InitFC2 rounds, UpdateFC P / NP, Ack | 5 / 4, 8 / 8, 20 | the same |
-| TLPs | 21 | 21 |
-
-The Artix-7's own serial timing (its GTP: latency, electrical idle, receiver detection) is not measured: the model puts its PIPE behaviour on an ideal serialiser.
+`make run RC=model IFACE=serial` runs the model on a 1-bit line per lane, in [`tb_rc_serial.sv`](tb_rc_serial.sv). Details and the PIPE/serial comparison: [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/rc-model.md#on-the-serial-line).
 
 #### Driving another project's EP
 
-openCologne-PCIE runs this model as the only host of its co-simulation, against its GateMate EP RTL (`make run EP=rtl`) and its EP model (`EP=model`), at the PIPE or, with `IFACE=serial`, on the serial line, through Cologne Chip's PIPE logic and the GateMate SerDes BFM ([its 5.sim README](https://github.com/chili-chips/openCologne-PCIE/tree/main/5.sim#the-host-openpcies-artix-7-rc-model)). It takes from here `usercode/VUserMain2.cpp`, `a7rc_check.cpp` and `.h`, `ltssm.c`, `pcievhost-speed.patch` and `models/cosim/vproc-coroutine.patch`; what it expects of that EP, IDs and BAR sizes, comes from there (`-DA7RC_EP_EXPECT`). With `-DA7RC_PIPE_SCRAMBLE` it scrambles at the PIPE too, as the lab RC: openCologne-PCIE sets it for its EP RTL.
-
-- The model starts the change to Gen2 only when the EP advertised Gen2, as the Artix-7 RC does; the GateMate EP is Gen1.
-- Its first run found two EP issues: one InitFC set of each kind (legal; the model completes FC init on it, upstream's pcieVHost hangs), and an UpdateFC-NP that lowered the header limit from 32 to 9 after the first Configuration Read (the model stops, PCIe 2.1, 2.6.1). With the second fixed there, the run passes, at the PIPE and on the serial line.
-- In the tester mode, the EP Naks every TLP after the first of a back-to-back run: 58 Naks for 16 TLPs. The first Nak crashed pcieVHost ([issue 13](#simulation-issues)); with that fixed, the replays deliver all 16, and the data checks.
+openCologne-PCIE runs this model as the only host of its co-simulation: [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/rc-model.md#driving-another-projects-ep).
 
 ### Fault tests: the firmware's error paths
 
@@ -1439,109 +1232,20 @@ TLP traffic (enumeration order, tags, payload sizes) is set by our RC firmware, 
 
 ## Simulation issues
 
-Fixed in this repo only; [Local changes](#local-changes) lists how we differ from upstream.
+Issues in openPCIE's own models. The pcieVHost and PIPE-wrapper issues, same numbers, are in [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#simulation-issues).
 
 | # | Model | Issue | Status |
 |---|---|---|---|
-| 1 | pcievhost | LTSSM deadlocks against the real `PCIE_2_1` | fixed here: `ltssm-openpcie.patch` |
-| 2 | pcievhost | UpdateFC sent before InitFC1 | fixed upstream, 1.9.3 |
 | 3 | RV32-ISS | Charges 2 cycles more per instruction than its timing model | fixed here: `rv32-openpcie.patch` |
 | 4 | RV32-ISS | `sw`/`sh` take load timing, not store | fixed here: `rv32-openpcie.patch` |
 | 5 | RV32-ISS | No reset input; runs before the RTL core leaves reset | fixed here: reset on VProc interrupt bit 3 |
 | 6 | RV32-ISS | Ours was v1.3.3; upstream is 3 commits ahead | fixed here: sources at `774d84fa` |
 | 7 | RV32-ISS | Timing tables not matched to the RTL cores | fixed here: within 0.6% |
-| 8 | pcievhost | No Recovery.Speed: cannot follow the RC to Gen2; a TS cannot carry the Speed Change bit | fixed here: `ltssm-openpcie.patch`, `pcievhost-speed.patch` |
-| 9 | pcievhost | `SetTxDisabled()` has no effect: DLLPs go out during Recovery | fixed here: `pcievhost-speed.patch` |
-| 10 | PIPE PHY model | At Gen2 the symbol clock and PCLK edges share a time step, and symbols are dropped or doubled | fixed here: symbol clock started from PCLK, made in the model's wrapper (`PIPExN__pcieVHost.sv`; the test bench gives it PCLK only) |
-| 11 | pcievhost | `initFc()` does not follow the partner into Recovery: InitFC2 and UpdateFC go out during Recovery.RcvrLock | fixed here: `pcievhost-speed.patch`, `ltssm-openpcie.patch` |
-| 12 | pcievhost | FC_INIT2 waits for all three InitFC types again after FC_INIT1: hangs on a partner that sends one InitFC1 and one InitFC2 set (legal) | fixed here, Artix-7 RC profile: `pcievhost-speed.patch` |
-| 13 | pcievhost | Segfault on the first Nak received: the replay search skips while seq > Nak and runs off the end of the queue | fixed here: `pcievhost-speed.patch` |
-| 14 | pcievhost | The endpoint ignores the function number of a Configuration Request: a single-function device answers function 1-7 as function 0, with SC, where it must return UR (found by `CFG.FN`) | fixed here: `pcievhost-speed.patch` |
-| 15 | pcievhost example EP | The example config space (kept in `usercode/VUserMain1.cpp`) leaves the PCIe Capabilities register 0 (version 0) and sets Link Status to 0x0091 (x9), never updated (found by `CFG.PCIE-CAP`, `CFG.LINK`) | fixed here: version 2 Endpoint; Link Status follows the link (`UpdateLinkStatus()`) |
-| 16 | pcievhost | A Configuration Request to a device or function other than 0 carries a K symbol in its header: `CreateTlpTemplate()` writes the Extended Register Number byte as `addr >> 8`, unmasked, so the device/function bits reach bit 8 of the 9-bit symbol. Harmless at the PIPE; on the serial line the 8b/10b encoder sends a control code mid-TLP and the endpoint decodes garbage (found by `TL.CPL-MATCH`, the config sweep's function-1 read) | fixed here: `pcievhost-speed.patch` (`& 0x0f`) |
-| 17 | pcievhost | The endpoint answers a memory read with one Completion of the whole length, up to 4 KB, whatever its Max_Payload_Size (128 bytes): 360-488 byte CplDs (found by `TL.LENGTH`, the tester's request mix) | fixed here: `pcievhost-speed.patch`, Completions of at most 128 bytes, split at aligned addresses, so each ends on the RCB |
-| 18 | pcievhost | A due Ack waits for the whole transmit queue: `SendPacket()` puts it first only on entry, then sends every queued TLP. With a backlog of Completions the Ack came 3-11 us late (found by `DL.ACK-LAT`) | fixed here: `pcievhost-speed.patch`, a due Ack or Nak goes before the next TLP (3.5.3.1) |
-| 19 | pcievhost | The endpoint stops the run (`PVH_FATAL`) on a memory read of bytes nobody wrote: its sparse memory (`ReadRamByteBlock()`) returns an error for an unwritten block. A real endpoint returns data, whatever its BAR held. By design upstream: it catches a test that reads what it never wrote (found by the tester's request mix, a read in BAR1) | limitation, kept: the tester fills each BAR before its random reads, which also gives `TL.ORDER` data to check |
-| 20 | pcievhost | `mem.c` allocates the per-node config space tables, then clears entry `[node]` once per node instead of each entry `[idx]`: the other nodes' pointers stay uninitialised, so a second node with config space would crash. Latent here (one endpoint node; found reading the code) | fixed here: `pcievhost-speed.patch` |
-| 21 | pcievhost | Config space bits are read-only or read-write only: no RW1C, so the error bits of Status and Device Status could not be cleared by writing 1 (7.4) | fixed here: `pcievhost-speed.patch`, `WriteConfigSpaceW1c()`; `usercode/VUserMain1.cpp` marks Status bits 15:11 and 8 and Device Status bits 3:0 |
-| 22 | pcievhost | The endpoint refuses a memory access that ends at a BAR's end: `checkBars()` compares the end address, one past the last byte, with `<`. Such a write is dropped, such a read gets UR (found by `TL.ORDER`: the fill of BAR1's last 128 bytes) | fixed here: `pcievhost-speed.patch` |
-| 23 | pcievhost | An UpdateFC goes to the end of the transmit queue, so with a backlog of Completions the timer's UpdateFC came 46.3 us after the last, over the 30 us +50% (2.6.1.2; found by `FC.UPDATE-PERIOD`) | fixed here: `pcievhost-speed.patch`, it goes right after the packet on the wire (3.5.2.1), also when that packet is an Ack or Nak (on the serial line it came 45.9 us apart, behind a burst of Completions) |
-| 24 | pcievhost | `ReadRamByteBlock()` stops the run (`PVH_FATAL`, "block read crosses 4K boundary") on a read that ends at a 4 KB boundary: it checks `addr + length`, one past the last byte; `WriteRamByteBlock()` checks `addr + length - 1`. Hidden behind issue 22 until then (found by the tester's mix: a read to the end of BAR0) | fixed here: `pcievhost-speed.patch` |
-| 25 | pcievhost | `PcieCompare()`, the qsort compare of the delayed-Completion queue, casts the pointers it gets to packets; they point to the array's elements, so it sorts on whatever lies there, and equal times have no fixed order. Latent: only with `CompletionRate`, which no endpoint here sets; with Completions split per issue 17 it would send the splits out of order (found by an independent review) | fixed here: `pcievhost-speed.patch`, dereferenced; ties keep creation order |
-| 26 | pcievhost | After a Nak, the replay from the queue's head also sends the DLLPs queued between the unacknowledged TLPs: an old UpdateFC can move the partner's credit limit back. Upstream appended DLLPs to the queue; issue 23's fix puts UpdateFCs between TLPs, so it is more likely now (found by an independent review) | fixed here: `pcievhost-speed.patch`, `Replay()` drops the DLLPs already sent |
-| 27 | pcievhost | The transmit sequence number never wraps at 4096, while Ack/Nak sequence numbers are 12 bits: after 4096 TLPs from one node the queue's purge on Ack (`seq <= curr_ack`) stops working; issue 13's fix copied the compare into the purge on Nak. Our runs send about 300 (found by independent reviews) | fixed here: `pcievhost-speed.patch`, both purges compare modulo 4096 |
-| 28 | pcievhost | `pci_express.h` sizes the PCIe Capability union's word array 14 DWs (`words[0x0e]`) while the capability, `CFG_PCIE_CAPS_SIZE_BYTES`, is 15. The example endpoint's loops index word 14: undefined, so at `-O2` the compiler may drop that write and Slot Control 2 / Status 2 and their write mask become stack garbage. The HM run ended 64 ns earlier with any part built `-O2` (found by UBSan, chasing that difference) | fixed here: `pcievhost-speed.patch`, `words[0x0f]` |
-| 29 | pcievhost | `displink.c` shifts a byte left by 24 as a signed `int`: undefined when its top bit is set, in the packet display (found by UBSan) | fixed here: `pcievhost-speed.patch`, `uint32_t` casts |
-| 30 | pcievhost | `ltssm.c` `Configuration()`: Configuration.Complete's first pass reads `ts2_count[0]`, an uninitialised stack array, before `ReadEventCount()` fills it; if the leftover is non-zero the node counts one TS2 too many and leaves Complete a TS2 early, depending on what was on the stack (found by valgrind memcheck, on both nodes) | fixed here: `ltssm.c` (`ltssm-openpcie.patch`), the event-count arrays zeroed where declared |
-| 31 | pcievhost | A packet queued while an Ack or Nak is on the wire and the queue is empty (`AddPktToQueue()`) becomes the packet being sent, mid-DLLP: the Ack is cut short and the new packet goes out without its first symbols. The UpdateFC timer, checked every symbol, or a Completion can queue in that window; issue 23's fix made it likelier (found by an independent review) | fixed here: `pcievhost-speed.patch`, the packet follows the Ack or Nak |
-| 32 | pcievhost | The endpoint completes a locked read (MRdLk) with data, as a Legacy Endpoint would; a PCI Express Endpoint supports no locks and must answer UR (6.5) (found by `TL.UR`, the tester's unsupported requests) | fixed here: `pcievhost-speed.patch`, UR when the model is an endpoint |
-| 33 | pcievhost | The endpoint never sets Device Status UR Detected on an Unsupported Request (7.8.5): it does not know where its PCIe Capability is (found by `CFG.ERR-STATUS`) | fixed here: `pcievhost-speed.patch`, `SetUrDetectedReg()`, not for messages an endpoint accepts or ignores (Vendor-Defined Type 1, Set_Slot_Power_Limit, PME_Turn_Off, Unlock, the hot-plug Ignored Messages of 2.2.8.7); `usercode/VUserMain1.cpp` gives the Device Status address and the UR Detected bit; the model adds the severity (issue 38) |
-| 34 | pcievhost | By default the endpoint puts an ECRC on its Completions to a request with ECRC; without AER, ECRC generation cannot be enabled, so an endpoint sends none (2.7.1) (found by `TL.ECRC`, the tester's ECRC read) | worked around: `usercode/VUserMain1.cpp` sets `CONFIG_DISABLE_ECRC_CMPL` |
-| 35 | pcievhost | The endpoint ignores the poison bit: it writes a poisoned write's data and logs nothing; a poisoned Configuration Write is written and gets SC instead of UR (2.7.2.2); a poisoned TLP received must set Status Detected Parity Error (7.5.1.2) and the error status (6.2) (found by `CFG.ERR-STATUS`) | fixed here: `pcievhost-speed.patch`: the data is not used, the Configuration Write gets UR; Detected Parity Error always, the error status by Figure 6-2 (Non-Fatal, none when Advisory; a UR outranks it) |
-| 36 | pcievhost | The endpoint's Completions carry TC 0 and Attr 0 whatever the request had; they must carry the request's (2.2.9) (found by `TL.CPL-TC-ATTR`, the tester's reads with TC 1-7 and Relaxed Ordering / No Snoop) | fixed here: `pcievhost-speed.patch` |
-| 37 | pcievhost | The endpoint always checks ECRC and drops a TLP with a bad one; without AER, ECRC checking cannot be enabled, so such a TLP is processed as usual (2.7.1) (found by review; no stimulus sends a bad ECRC) | open: matters only for bad-ECRC stimulus |
-| 38 | ours | Both EP models advertised Role-Based Error Reporting 0; every function of PCIe 1.1 on must set it (7.8.3). With it, a non-posted request's UR is an Advisory Non-Fatal Error, which a function without AER does not signal: no severity bit in Device Status (6.2.3.2.4.1, Figure 6-2) (found by review; the severity first got wrong from AER devices' documents, then put right from the spec text) | fixed here: `usercode/VUserMain1.cpp` sets it; `pcievhost-speed.patch`: `UrDetected()` sets Non-Fatal only for a posted request's UR, or without it; `CFG.PCIE-CAP` checks it |
-| 39 | pcievhost | The receiver keeps no next expected sequence number (NEXT_RCV_SEQ, 3.5.3.1): it takes every TLP with a good LCRC, a duplicate too (a read answered twice), and Naks no gap (found by `Faults()`: `TL.CPL-MATCH` on the duplicate) | fixed here: `pcievhost-speed.patch`: the expected TLP is taken and Acked, a duplicate Acked and dropped, one after a gap dropped with one Nak; the Ack goes before the ECRC check |
-| 40 | pcievhost | The transmitter has no replay timer (3.5.2.1): it sends a TLP again only after a Nak, so a lost Ack or TLP stalls the link for good (found by `Faults()`: `DL.REPLAY` with the Acks held) | fixed here: `pcievhost-speed.patch`: the timer (x1, Max_Payload_Size 128: 711 symbol times at Gen1, 864 at Gen2), started at a TLP's end, restarted by forward progress and at the end of a replay's first TLP (a Nak resets and holds it till then), held in Recovery; REPLAY_NUM, counted per replay, reset by forward progress; Recovery on its rollover is logged, not started |
-| 41 | pcievhost | A TLP with a bad LCRC is Naked with its own sequence number, read from the bad TLP; the Nak must carry the last good one (3.5.3.1), so the sender skipped the lost TLP (found by `Faults()`: `DL.BAD-TLP`) | fixed here: `pcievhost-speed.patch`, one Nak until a good TLP |
-| 42 | pcievhost | `SendNak()` replacing a pending Nak takes the pending Ack's timestamp (NULL without one) and compares sequence numbers unwrapped (found by review) | fixed here: `pcievhost-speed.patch` |
-| 43 | pcievhost | Device Status logs no Correctable error: Bad TLP, Bad DLLP, Replay Timer Timeout and REPLAY_NUM Rollover must set Correctable Error Detected, with or without AER (6.2.5, Figure 6-2; 6.2.7) (found by checking the checker against the spec text) | fixed here: `pcievhost-speed.patch`, `CorrectableDetected()` |
-| 44 | pcievhost | A received TLP's byte count ORs Length bits 9:8 into the low byte, and takes Length 0 as 0, not 1024 DW (2.2.2): wrong from 256 DW (found by review; our TLPs are smaller) | fixed here: `pcievhost-speed.patch` |
-| 45 | pcievhost | SKP Ordered Sets go out only once the transmit queue has drained (4.2.7.1: at the next packet boundary): Completions to a stream of reads kept it full, and the endpoint sent none for 11,000 Symbol Times (`PL.SKP`) | fixed here: `pcievhost-speed.patch` |
-| 46 | pcievhost | SKP Ordered Sets that fall due in link training are held until L0, then sent in a burst (4.2.7.1: at the next Ordered Set boundary); we had fixed it for the Artix-7 RC profile only (found by review) | fixed here: `pcievhost-speed.patch`, for every profile |
-| 47 | pcievhost | Recovery.RcvrCfg goes to Recovery.Speed on any speed_change, also at 2.5 GT/s when one side advertises no 5.0 GT/s: EIOS and electrical idle for no rate change; the spec goes to Recovery.Idle (4.2.6.4.3). Ours: our Recovery code (found reading the spec for `PL.EIOS`) | fixed here: `ltssm-openpcie.patch` |
-| 48 | pcievhost | TxL0s, Disabled and Loopback send one EIOS at any rate; at 5.0 GT/s it takes two (4.2.4.2). None of them runs here (found by review) | fixed here: `ltssm-openpcie.patch` |
-| 49 | pcievhost | `Serialiser.v` (`IFACE=serial`): after electrical idle the receiver re-syncs on a comma but keeps its old bit count, so every symbol after is cut at the old offset: no TS seen, the link hung in Recovery.RcvrLock after a speed change | fixed here: `pcievhost-speed.patch` |
-| 50 | pcievhost | `Serialiser.v` (`IFACE=serial`): the receiver drops sync at the first idle bit, so the last symbol before electrical idle shows for 0.2 ns and the model misses it: the last IDL of an EIOS (`PL.EIOS`; 4-state simulators, xsim and Icarus) | fixed here: `pcievhost-speed.patch`. Now sync drops at the first idle symbol (ten equal bits), on every simulator ([what we added or removed](#pcievhost-what-we-added-or-removed)) |
-| 51 | pcievhost | `ltssm.c` Recovery.Speed, endpoint profile, serial line: the rate changes while the last EIOS is still in the serialiser, which sends its last symbol half at each rate (`PL.EIOS`). Ours: our Recovery code | fixed here: `ltssm-openpcie.patch` |
-| 52 | pcievhost | No automatic lane polarity inversion (4.2.4.4: required of every receiver, per lane; upstream has only a whole-link `InvertIn` register that nothing sets): a lane with D+ and D- swapped never trained (`SIM_POLARITY=1`) | fixed here: `pcievhost-speed.patch` |
-| 53 | pcievhost | `pcieVHostPipex1.v` hands the model `{1'b0, K, data}`, so on a 4-state simulator (XSIM, Icarus) an idle symbol is never all Z: neither side saw its partner's electrical idle, and the endpoint trained 3 µs early, unlike under Verilator, with its side-band (found comparing Verilator and Icarus in openCologne-PCIE) | fixed here: `pcievhost-speed.patch`; `models/pcieVHostPipexN.sv` the same. Since replaced by `NOSIG` ([what we added or removed](#pcievhost-what-we-added-or-removed)) |
 | 54 | PHY model | `models/phy_top.EP-PIPE-BFM.sv` passed the hard macro's PIPE data to the endpoint model during TxElecIdle: the endpoint saw 4 EIOS at Gen2 and 3 at Gen1 where the line carries 2 and 1, and never saw the hard macro idle in Detect (found by review; we had calibrated the RC model to the 4 and 3). Ours | fixed: idle under TxElecIdle (now `NOSIG`) |
-| 55 | pcievhost | `pcieVHostPipex1.v` at time 0: the TX shift (on `posedge pcieclk or negedge nreset`, outside the reset branch) read the core's symbol before its assign had settled, and the line registers started as X. On a 4-state simulator (Icarus, XSIM) X and Z symbols left the wrapper in reset; the partner saw a lane not idle and left Detect.Quiet 3 µs early (found tracing Verilator against Icarus in openCologne-PCIE) | fixed here: `pcievhost-speed.patch`: the line idle (`NOSIG`) in reset, the model's state `bit` |
-| 56 | pcievhost | `pcieVHostPipex1.v`: the RX sample register changed on the rising edge on which the core reads `LinkIn` and its idle input, in _VProc_'s delta cycles. The read saw the old or the new sample as the scheduler chose: one symbol apart between Verilator, Icarus and XSIM, and between XSIM's own scheduling modes (`--disable_multi_driver_resolution_scheduling`) | fixed here: `pcievhost-speed.patch`: RX sampled on the falling edge; `pcieVHostPipexN.sv` the same |
-| 57 | pcievhost | The user code waits for reset release by an interrupt on its edge, registered with `regIrq()` after the model's setup. Released before that (oCP: 25 ns, 2 symbol clocks), the edge was lost and the model sent idles for ever (found when oCP's symbol clock began at the first PCLK edge) | fixed here: `usercode/VUserMain1.cpp`, `VUserMain2.cpp` (and oCP's) wait on the reset level (`RESET_STATE`, a delta cycle), no interrupt |
-| 58 | pcievhost | `PcieVhostSerial` (`pcieVHost.v`): the `generate` `else` has no `begin`/`end`, so it takes only the next item; with `Gen2Clk = 0` the clock mux drives the serial clock as well as the `assign` (found by review; we use `Gen2Clk = 1`) | fixed here: `pcievhost-speed.patch` |
-| 59 | pcievhost | `ltssm.c` `LinkState()` kept the lanes Polling found active in a local, 0 again on the next call: Configuration took every link as x1 and checked the Link and Lane numbers on lane 0 only. x4 trained all the same, but a reversed link could not be seen (found by the lane reversal tests) | fixed here: `ltssm-openpcie.patch` (kept per node) |
-| 60 | pcievhost | Configuration.Lanenum.Wait waited for its own lane numbers, which with issue 59 meant lane 0's. Given them reversed, an upstream port must answer with the same numbers (reversing its lanes) or its own (4.2.6.3.2.2); it never left the state. The hard macro gave up after 8 us and went back to Detect, again and again | fixed here: `ltssm-openpcie.patch`, `pcievhost-speed.patch` (lane reversal) |
-| 61 | pcievhost | Configuration.Lanenum.Accept and Complete took a lane whose Link number or Lane number matched (`&&` for a mismatch, not `||`), and Complete's restart of the TS2 count was lost at the next lane's read: only lane 0 mattered (found by review, once issue 59 made all lanes count) | fixed here: `ltssm-openpcie.patch` |
-| 62 | ours | The replay timer (issue 40) took the x1 values at any width, so an x4 endpoint replayed after 711/864 symbol times, above the x4 limit of twice 219/372 (Tables 3-4/3-5); the RC model's Ack, calibrated at x1, came later than Table 3-6 allows at x4 (73). `DL.REPLAY` now also bounds a replay's start late (found by review) | fixed here: `pcievhost-speed.patch` (timer by width), `VUserMain2.cpp` (x4 Ack), `a7rc_check.cpp` |
-| 63 | pcievhost | Configuration had no timeouts (4.2.6.3: 24 ms in Linkwidth.Start, 2 ms in Lanenum.Wait and Complete, then Detect; 2 ms in Idle, then Recovery once, then Detect): a port whose partner gave up stayed in it for good; the hard macro gave up after 8 us. Recovery.Idle went to Detect at once, not to Recovery first (4.2.6.4.4) | fixed here: `ltssm-openpcie.patch` (also a 2 ms guard in Lanenum.Accept, which the spec leaves without one) |
-| 64 | pcievhost | `Serialiser.v` kept one sync for all lanes, lane 0's, and `PcieVhostSerial` told the core that lanes 1 to 15 were always idle: the serial wrapper could not run wider than x1 | fixed here: `pcievhost-speed.patch` (per lane) |
-| 65 | ours | Lane reversal (issue 60) on the serial line: the encoder's running disparity stayed with the logical lane, so each line saw it jump | fixed here: `pcievhost-speed.patch` (`SwapLaneDisparity()`) |
-| 66 | ours | `PL.L0-ONLY` took the endpoint's DLLP at the end of Recovery.Idle as early: the endpoint is in L0 after 8 idle symbols from the RC, while the RC may still owe some of its 16 (4.2.6.4.4; found at x4 on the serial line) | fixed here: `a7rc_check.cpp`, `GetLtssmIdleNs()` (`ltssm.c`) |
 
 ### pcieVHost: what we added or removed
 
-Functionality upstream pcieVHost does not have, or has and we dropped, all in our patches ([`pcievhost-speed.patch`](models/pcievhost/pcievhost-speed.patch), [`pcievhost-taps.patch`](models/pcievhost/pcievhost-taps.patch), [`ltssm-openpcie.patch`](models/pcievhost/ltssm/ltssm-openpcie.patch), [`vproc-coroutine.patch`](models/cosim/vproc-coroutine.patch)). Its bug fixes: the `pcievhost` rows of the table above.
-
-| Feature | API, where | What it is for |
-|---|---|---|
-| Transaction taps | TLP and DLLP ports on `pcieVHost.sv` (`TapTl()`, `TapDll()`) | the waveform shows each packet a node sends |
-| Electrical idle without X, Z or side-band | Removed: Z on the line (4-state simulators), the `ElecIdleOut`/`ElecIdleIn` side-band out of the PIPE wrapper (Verilator, which reached the partner ahead of the data), the receiver-detect flag from X. Added: on the PIPE each idle symbol is `` `NOSIG `` with the K flag (`pciexpress_header.svh`: `0xFF`, no 8b/10b code); on the serial line idle is constant 0, and the receiver drops sync at a symbol of ten equal bits; inside, `pcieVHost.sv` takes and gives idle on its ports on every simulator, and the model's state is 2-state (`bit`, `int`), so nothing starts as X | one rule for Verilator, Icarus and XSIM, with no X/Z checks (Verilator's `=== 'z` can't tell a driven 0 from Z: verilator#8991). Any PIPE partner sees idle the same way; no `ifdef VERILATOR` left in the idle path ([special values](models/pcievhost/README.md#special-values-on-the-line)) |
-| Lane reversal | `SetLaneReverse()`, `GetLaneReverse()`, `pcie.c` (a logical-to-physical lane map on every lane access, the encoder's running disparity swapped: `SwapLaneDisparity()`, `codec.c`); `SetLaneReversal()`, `ltssm.c` (Configuration.Lanenum.Wait) | a port may reverse its lanes (4.2.4.9.1, 4.2.6.3.2); upstream had the core's `ReverseIn`/`ReverseOut`, across all 16 lanes, set by nothing |
-| Packet monitor | `SetPktMonitor()`, `pcie.c` | sees every TLP and DLLP, sent and received, as on the wire: the spec checker's input |
-| Recovery and speed change | `LinkIdle()`, `ChangeLinkSpeed()`, `GetLinkSpeed()`, `ltssm.c` | Gen1/Gen2 changes, following the partner into Recovery (4.2.6) |
-| L0 time | `GetLinkTimeNs()`, `GetLinkRecoveryNs()` (with a Recovery in progress, so L0 time stands still in it and never steps back), `ltssm.c` | time limits judged in L0 only (Ack latency, UpdateFC period) |
-| Artix-7 RC profile | `SetLinkProfile(LTSSM_PROFILE_ARTIX7_RC)`, `ltssm.c`, `pcie_utils.c` | the hard macro's TS counts, Detect time, SKP interval, InitFC gaps, 32.77 µs UpdateFC timer, FC_INIT2 rules |
-| Transmitter off | `SetTxDisabled()` (upstream: a flag nothing read) | logical idle, nothing queued sent, during Recovery |
-| RW1C config bits | `WriteConfigSpaceW1c()`, `mem.c` | Status and Device Status bits a write of 1 clears (7.4) |
-| Error logging (no AER) | `SetUrDetectedReg()`, `CorrectableDetected()`, `pcie_utils.c` | Device Status by Figure 6-2: UR Detected, Non-Fatal, none for an Advisory error (Role-Based Error Reporting), Correctable for Bad TLP/DLLP and replay timeouts (6.2.5, 7.8.5) |
-| Poisoned TLPs received | `pcie_utils.c` | data dropped, Detected Parity Error and the error status set (2.7.2, 7.5.1.2) |
-| Completion TC and Attr | `pcie_utils.c`, `pcie.c` | Completions echo the request's (2.2.9) |
-| Data Link receive rules | `pcie_utils.c` | NEXT_RCV_SEQ: duplicates Acked and dropped, a gap Naked once (3.5.3.1) |
-| Replay timer, REPLAY_NUM | `pcie.c` | replays without a Nak; a replay without the DLLPs already sent (3.5.2.1) |
-| Credit starvation | `HoldFc()`, `pcie.c` (its gate in `pcie_utils.c`) | no UpdateFC for a while: the partner runs out of credits and must wait (2.6.1) |
-| CRS after reset | `SetCfgCrs()`, `pcie.c` (its answer in `pcie_utils.c`) | an endpoint answers its first Configuration Requests with CRS, the request not carried out: one seed in four, one or two (2.3.1); the RC retries, `TL.CRS` checks it |
-| Requester ID | `GetCompleterId()`, `pcie.c` | the bus and device captured from Configuration Writes, for a node's own requests (2.2.6.2) |
-| Artix-7 RC Data Link timing | `pcie.c`, with `SetLinkProfile(LTSSM_PROFILE_ARTIX7_RC)` | at Gen2 x1, calibrated from the hard macro (`make HM_PROBE=1`): replay timer about 2.84 µs, replay 170 symbol times after a Nak |
-| Ordered-set monitor | `SetOsMonitor()`, `pcie.c`: each TS1/TS2 (with its fields), SKP, IDL and FTS received, beside the model's own processing (`RegisterOsCallback()` replaces that) | the `PL.` rules |
-| LTSSM state | `GetLtssmState()`, `GetLtssmL0Ns()`, `GetLtssmRates()`, `ltssm.c`: the state the model is in, when it last entered L0, the rates it advertises, and its last EIOS in Recovery.Speed (`GetLtssmEiosNs()`) | the `PL.` rules |
-| Retrain | `RetrainLink()`, `ltssm.c`: the next `LinkIdle()` takes the link through Recovery without a speed change (4.2.6.5) | `Retrain()` |
-| Training varied | `SetLtssmVary()`, `ltssm.c`: TS counts and idle symbols up to N more than the least, EIOS 0 to 2 more, the Recovery.Speed idle up to 16 N ns more, from `PcieRand()` | the tester |
-| Fault injection | `InjectFault()`, `ClearFaults()`: `FAULT_RX_NAK_NEXT`, `FAULT_TX_BAD_LCRC`, `FAULT_TX_BAD_DLLP` (on the wire, the stored copy good), `FAULT_TX_DUP` with `SendDuplicate()` (a TLP sent again after its Ack), `pcie.c` | Data Link faults (the RC model's `Faults()`) |
-| VProc coroutines | `VCoSwap`, `VSched.c`, `VUser.c` | user code on the simulator's thread: about 22 times faster, deterministic |
-
-Each new pcieVHost change goes into this table (a feature added or removed) or the issues table (a fix).
+Every pcieVHost feature we added or removed, with its API: [openPCIE_BFM, what we added or removed](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#pcievhost-what-we-added-or-removed).
 
 ## References
 - [VProc](https://github.com/wyvernSemi/vproc)

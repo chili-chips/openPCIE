@@ -7,20 +7,14 @@
 | `soc_cpu.VPROC.native.sv` | _VProc_ as the SOC's CPU, on its **native** memory bus. The one in use: `make CPU=vproc` or `make CPU=iss` ([The three CPU options](../README.md#the-three-cpu-options)) |
 | `soc_cpu.VPROC.sv` | inherited _VProc_ `soc_cpu` on the `soc_if` bus. Reference only, not instantiated |
 | `phy_top.EP-PIPE-BFM.sv` | behavioural PIPE PHY in place of `2.rtl/0.common.opensource/src/pcie/phy_top.sv`; carries the _pcieVHost_ endpoint ([The PIPE PHY model](../README.md#the-pipe-phy-model)) |
-| `pipe_sym_pkg.sv` | the symbol values on our PIPE links (`NOSIG_SYM`), for our models in place of upstream's header (master here; openCologne-PCIE has an identical copy, with `pipe_phy_core.sv`) |
-| `pipe_mac_adapter.sv` | the MAC side of PIPE with its handshakes, for a pcieVHost above a PIPE PHY; `tb_rc.sv` with `PHY=core`, `pcie_core.RC-model.sv` (master here) |
 | `pcie_core.RC-model.sv` | the Artix-7 RC model in the hard macro's socket: `pcie_core`'s ports, the model and `pipe_mac_adapter.sv` inside (`tb_socket.sv`, `PHY=hm`) |
-| `pipe_phy_core.sv` | the PHY side of PIPE with its handshakes; `phy_top.EP-PIPE-BFM.sv` wraps it here, `phy_vproc_rc.sv` in openCologne-PCIE (master here) |
-| `PIPExN__pcieVHost.sv` | that endpoint in our wrapper: PIPE link, TLPs and DLLPs on one WaveCrux decoder page, x1 or x4 ([transaction taps](../README.md#every-layer-at-the-endpoint-transaction-taps)) |
-| `pcieVHostPipexN.sv` | upstream's x1 PIPE wrapper `pcieVHostPipex1`, for any number of lanes; the x4 link |
-| `pipe_x4_view.sv` | the four lanes of an x4 link, both directions, under the names the multi-lane PIPE and DLL decoders bind; dumped only at x4 |
 | `bfm_uart.sv` | UART bus functional model; not instantiated by the current test bench |
+
+The PCIE model is [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), the submodule `../vip/openPCIE_BFM`: pcieVHost, VProc and mem_model, our PIPE wrappers (`PIPExN__pcieVHost.sv`, `pcieVHostPipexN.sv`, `pipe_phy_core.sv`, `pipe_mac_adapter.sv`, `pipe_sym_pkg.sv`, `pipe_x4_view.sv`) and the Artix-7 RC model. Its README has the details; the files here use it.
 
 | Sub-directory | Contents |
 |---|---|
-| [`cosim`](cosim/README.md) | _VProc_ and _mem_model_ co-simulation VIP |
 | [`rv32`](rv32/README.md) | _rv32_ RISC-V RV32GC (+ Zba/Zbb/Zbc/Zbs) instruction set simulator, C++ |
-| [`pcievhost`](pcievhost/README.md) | PCIe traffic generator with PIPE TX and RX data (x1 upstream; x4 through our `pcieVHostPipexN.sv`) |
 
 ## soc_cpu.VPROC.native
 
@@ -38,3 +32,31 @@ Inherited from the sibling Chili.CHIPS SOC infrastructure. **Not used here**: th
 * `imem_we`, `imem_waddr[31:2]`, `imem_wdat[31:0]`: write-only port for program upload over UART. It feeds a [_mem_model_](https://github.com/wyvernSemi/mem_model) instance, _VProc_'s [main memory](../README.md#the-mem_model-co-simulation-sparse-memory-model), which uses the sparse C memory of [_pcieVHost_](https://github.com/wyvernSemi/pcievhost). The upload thus lands in the memory the virtual processor sees.
 
 <div align="center"><img alt="soc_cpu.VPROC component" width="600" src="images/soc_cpu_vproc.png"></div>
+
+## VProc and mem_model
+
+_VProc_ (virtual processor) and _mem_model_ (sparse memory, part of _pcievhost_) are the core of the openPCIE co-simulation. Both come from openPCIE_BFM. They share one memory:
+
+* `soc_cpu.VPROC` is a _VProc_; its programs use the _mem_model_ space.
+* Logic reaches the same space through the `mem_model` HDL component, also used in the PCIe interface driver.
+* Code on the _pcievhost_ VIP's own _VProc_ reaches it through the API.
+
+How they work, their C and C++ APIs: [openPCIE_BFM, VProc and mem_model](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/integration.md#vproc-and-mem_model).
+
+### Their use in _openPCIE_
+
+`make` builds both from openPCIE_BFM into `5.sim/obj/vip`: `lib/libcosimlnx.a` (VProc), `include/` (the C headers), `hdl/` (the HDL). The `.prj` files compile openPCIE_BFM's `2.rtl/mem_model.sv` and `hdl/f_VProc.sv`; they `` `include`` the rest (`f_mem_model.sv`, the Verilog headers) through the include path. Natively compiled test code includes:
+
+* `VProcClass.h` for the _VProc_ C++ API, or `VUser.h` for the C API;
+* `mem.h` for the memory model C API.
+
+From C++, wrap the C headers:
+
+```
+extern "C" {
+#include "VUser.h"
+#include "mem.h"
+}
+```
+
+Application code compiled natively for _VProc_ gets these headers through the co-simulation HAL. More: the [_VProc_ manual](https://github.com/wyvernSemi/vproc/blob/master/doc/VProc.pdf), the [_mem_model_ manual](https://github.com/wyvernSemi/mem_model/blob/main/doc/mem_model_manual.pdf).

@@ -257,7 +257,7 @@ module tb;
 // Add --define DUMP_SOC_CPU for the CPU under RVFI names (CPU.eduBOS5/wavecrux).
 // Only the TLP monitors, the decoder view, the SOC level, the LTSSM
 // state and the decoder page of the pcieVHost endpoint (u_pcie_ep, our
-// wrapper models/PIPExN__pcieVHost.sv): its 16-bit PIPE for Ferrite's PCIe
+// wrapper openPCIE_BFM PIPExN__pcieVHost.sv): its 16-bit PIPE for Ferrite's PCIe
 // PIPE and Data Link Layer decoders (plus rx_active for rxvalid), and the
 // TLPs and DLLPs it sends and receives, from the taps we added to the model.
 // That keeps the file small enough to open in seconds.

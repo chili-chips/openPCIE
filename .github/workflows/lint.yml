@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: true   # 5.sim/vip/openPCIE_BFM
 
       - name: Install OSS CAD Suite (Yosys + yosys-slang, Verilator)
         uses: YosysHQ/setup-oss-cad-suite@v4

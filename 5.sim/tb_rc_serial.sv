@@ -5,7 +5,7 @@
 //--------------------------------------------------------------------------
 // Description:
 //   Test bench of the Artix-7 RC model on the serial line (make RC=model
-//   IFACE=serial): the model, pcieVHost on node 2 (usercode/VUserMain2.cpp),
+//   IFACE=serial): the model, pcieVHost on node 2 (openPCIE_BFM 3.sw/a7rc),
 //   against the same pcieVHost endpoint as tb.sv, on node 1
 //   (usercode/VUserMain1.cpp). Both are upstream's PcieVhostSerial: the model
 //   does 8b/10b and scrambling, as on hardware, and the wrapper puts the

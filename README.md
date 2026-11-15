@@ -183,10 +183,12 @@ One [test bench](5.sim/README.md), three interchangeable CPUs: the RTL core that
 * CPU: [`make CPU=rtl|vproc|iss`](5.sim/README.md#the-three-cpu-options), all running the same firmware source and reaching the same result over the same link ([measured](5.sim/README.md#what-they-cost))
   * `vproc`: a [_VProc_](https://github.com/wyvernSemi/vproc)-based [`soc_cpu.VPROC.native`](5.sim/models/README.md#soc_cpuvprocnative), firmware compiled for the host
   * `iss`: RISC-V code on the [rv32 ISS model](5.sim/models/rv32/README.md)
-* Link: the [_pcieVHost VIP_](https://github.com/wyvernSemi/pcievhost)
+* Link: the [_pcieVHost VIP_](https://github.com/wyvernSemi/pcievhost), from [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), our PCIE model on it (PIPE wrappers, the Artix-7 RC model)
   * x1 or x4 (`make SIM_LANES=4`), always Gen1: pcieVHost models Gen1 only
   * RC-direct, or RC-switched (`make VARIANT=switched`): a switch with two endpoints and two empty slots, walked through in a [hands-on tutorial](5.sim/README.md#pcie-through-a-switch-a-hands-on-tutorial)
-* Memory: a C [sparse memory model](https://github.com/wyvernSemi/mem_model), reachable from logic through an [HDL component](5.sim/models/cosim/README.md) and from _pcieVHost_ software through an API
+* Memory: a C [sparse memory model](https://github.com/wyvernSemi/mem_model), reachable from logic through an [HDL component](5.sim/models/README.md#vproc-and-mem_model) and from _pcieVHost_ software through an API
+
+openPCIE_BFM is a submodule (`5.sim/vip/openPCIE_BFM`): clone with `git clone --recurse-submodules`, or run `git submodule update --init` in a clone.
 
 **A first for open source:** to our knowledge, no open-source, rule-based PCIE protocol checker exists at any layer. Our Artix-7 RC model drives the EP and [checks every TLP and DLLP](5.sim/README.md#drive-and-check) against PCIe Base 2.1 rules, failing the run on any violation ([the gap](5.sim/README.md#open-source-pcie-validation-stacks)).
 
@@ -497,7 +499,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 </div>
 
 
-### Community Outreach:
+### Community Outreach
 - [2026-11-01, LinkedIn](https://lnkd.in/p/g3Qi_uvv)
 - [2026-10-25, LinkedIn](https://lnkd.in/p/gNncVdNv)
 - [2026-10-20, LinkedIn (Ferrite)](https://lnkd.in/p/g-yGBEU8)
@@ -514,7 +516,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 - [2025-07-22](https://www.linkedin.com/posts/simon-southwell-7684482_pcie-vhdl-nvc-activity-7354160318052220929-K0Ku?utm_source=share&utm_medium=member_desktop&rcm=ACoAAAJv-TcBSi_5ff0VNMrInrT-xg44YF3jnyU)
 - [2025-04-03](https://www.linkedin.com/feed/update/urn:li:activity:7313386031125303296?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7313386031125303296%2C7313594045216223236%29&dashCommentUrn=urn%3Ali%3Afsd_comment%3A%287313594045216223236%2Curn%3Ali%3Aactivity%3A7313386031125303296%29)
 
-**Issues filed upstream**, still open. Details, workarounds and the fixed ones: [openXC7 findings](4.build/hw_build.openXC7/README.md#openxc7-findings).
+**Issues filed upstream** from this project, open and closed. Details of the open ones: [openXC7 findings](4.build/hw_build.openXC7/README.md#openxc7-findings).
 
 | Tool / project | Issue | What | State |
 |---|---|---|---|
@@ -528,6 +530,11 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 | sv-elab | [sv-elab#282](https://github.com/povik/sv-elab/issues/282) | no `real` parameters on primitives (`MMCME2_ADV`) | open |
 | EBMC | [hw-cbmc#2341](https://github.com/diffblue/hw-cbmc/issues/2341) | 6.2 rejects a 1-bit enum (eduBOS5 proofs) | open |
 | JanusHDL | [#1](https://github.com/chili-chips/openPCIE/issues/1) | 0.17.0: what simulates and what does not | open |
+| openXC7 nextpnr | nextpnr#84, #88, #90, #92, #93, #94, #146 | GT PLL settings; `TXPI_SYNFREQ_PPM`; unconstrained clock timed at 12 MHz; `--placer sa`; truncated FASM assembled; contradicting GT `LOC`; falling-edge FFs | fixed on main, not yet released |
+| openXC7 nextpnr | PRs nextpnr#145, #149, #150, #152, #153, #154 | `set_multicycle_path`: setup sign, Fmax, skew, tag check, XDC selectors, LUT-RAM tags | merged on main, not yet released |
+| openXC7 nextpnr-xilinx | [nextpnr-xilinx#100](https://github.com/openXC7/nextpnr-xilinx/issues/100) | `IBUFDS_GTE2.O` driving a GT and a `BUFG`: dead fabric clock | closed (fixed on main) |
+| EBMC | hw-cbmc#2274 | 6.1: a typed parameter passed to a child parameter | closed (fixed in 6.2) |
+| WaveCrux | wavecrux#22 | decoder transactions drawn at the wrong time (time units) | closed (fixed in 1.0.1) |
 
 Numbers without a link were filed from an account that is no longer available. JanusHDL has no public tracker (closed source, so it can read encrypted IP): its issues are in our repos, under the [`JanusHDL` label](https://github.com/issues?q=org%3Achili-chips+label%3AJanusHDL).
 

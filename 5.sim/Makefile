@@ -18,6 +18,12 @@ USER_C           = ltssm.c
 USRCODEDIR       = $(CURDIR)/usercode
 PCIE_C           = VUserMain1.cpp $(if $(filter switched,$(VARIANT)),pcie_switch.cpp) $(if $(filter model,$(RC)),VUserMain2.cpp a7rc_check.cpp)
 PCIECODEDIR      = $(CURDIR)/usercode
+# The PCIE model, from openPCIE_BFM (the submodule vip/openPCIE_BFM): the
+# Artix-7 RC model (3.sw/a7rc: VUserMain2.cpp, a7rc_check.cpp) and the LTSSM
+# helper (3.sw/ltssm: ltssm.c)
+BFM              = $(CURDIR)/vip/openPCIE_BFM
+A7RC_DIR         = $(BFM)/3.sw/a7rc
+LTSSM_DIR        = $(BFM)/3.sw/ltssm
 OPTFLAG         ?= -O2 -g
 VPROC_PLI        = VProc.so
 USRSIMOPTS       =
@@ -30,14 +36,14 @@ override BUILD   = DEFAULT
 # The RC
 # --------------------------------------------
 # RC=hm (default): the RC_opensource DUT, with the PCIE_2_1 hard macro (tb.sv).
-# RC=model: the Artix-7 RC model, pcieVHost on node 2 (usercode/VUserMain2.cpp),
+# RC=model: the Artix-7 RC model, pcieVHost on node 2 (openPCIE_BFM 3.sw/a7rc),
 # against the same endpoint, without the RTL (tb_rc.sv), x1 or x4.
 # IFACE (RC=model): pipe (default), the PIPE as in tb.sv; serial, the serial
 # line, both sides upstream's PcieVhostSerial with 8b/10b and scrambling
 # (tb_rc_serial.sv).
 # PHY (RC=model IFACE=pipe): none (default), the two models meet at the PIPE;
-# core, the RC model is the MAC of a PIPE (models/pipe_mac_adapter.sv) above
-# the PIPE PHY of the co-simulation (models/pipe_phy_core.sv), whose link
+# core, the RC model is the MAC of a PIPE (openPCIE_BFM pipe_mac_adapter.sv) above
+# the PIPE PHY of the co-simulation (openPCIE_BFM pipe_phy_core.sv), whose link
 # partner is the endpoint; hm, the same in the hard macro's socket: pcie_top
 # with models/pcie_core.RC-model.sv, clk_rst_gen and the phy_top of tb.sv
 # (tb_socket.sv, no SOC).
@@ -50,7 +56,7 @@ override BUILD   = DEFAULT
 # SEEDS=N runs seeds 1 to N, REGRESS_JOBS at a time, each in obj/regress/<seed>/
 # with the packet display off (REGRESS_QUIET=0: as hex/ContDisps.hex), a time
 # limit of REGRESS_S seconds, and again (up to REGRESS_TRIES times) when it
-# hits the limit with no result (tools/regress.sh).
+# hits the limit with no result (openPCIE_BFM 4.build/regress.sh).
 RC                ?= hm
 ifdef RC_LINE
   $(error RC_LINE is now IFACE=pipe|serial)
@@ -68,7 +74,7 @@ REGRESS_DUMP      ?= none
 # each in obj/mutants/<name>/; each must fail the rule it breaks (tools/mutants.py)
 MUTANT_JOBS       ?= 3
 # make wavecrux RC=model SEED=N: that seed again with its waveform (DUMP_VCD, then
-# the FST), opened in WaveCrux at the checker's first violation (tools/wavecrux.py;
+# the FST), opened in WaveCrux at the checker's first violation (openPCIE_BFM 4.build/wavecrux.py;
 # WaveCrux runs with --wcp-port 54321). WCX_OPEN=0: the dump only.
 # REGRESS_DUMP=fail: after make regress, every failing seed dumped that way
 WCX_OPEN          ?= 1
@@ -78,7 +84,7 @@ WCX_SIGNALS        = $(if $(filter serial,$(IFACE)),$(addprefix $(WCX_EP).pvh.,L
                      TlpRxValid TlpRxData TlpTxValid TlpTxData),$(addprefix $(WCX_EP).,pipe_dn_data pipe_dn_datak \
                      pipe_up_data pipe_up_datak tlp_dn_valid tlp_dn_data tlp_up_valid tlp_up_data))
 ifneq ($(filter mutants,$(MAKECMDGOALS)),)
-  ifneq ($(PHY),none)
+  ifneq ($(or $(PHY),none),none)  # PHY gets its default (none) further down
     $(error make mutants runs the PIPE without a PHY: leave PHY out)
   endif
 endif
@@ -208,7 +214,7 @@ endif
 # source), for make, make run and make regress with RC=model PHY=none. It
 # compiles the sources at each run and loads VProc.so as a DPI-C library.
 # RC=hm needs the hard macro's secureip model; PHY=core and PHY=hm need
-# models/pipe_mac_adapter.sv, whose assertions jhdl 0.17 does not read.
+# openPCIE_BFM pipe_mac_adapter.sv, whose assertions jhdl 0.17 does not read.
 SIM               ?= xsim
 ifeq ($(filter xsim janushdl,$(SIM)),)
   $(error SIM must be xsim or janushdl (got "$(SIM)"))
@@ -301,9 +307,23 @@ export BLD_DIR HW_SRC SIM_DIR TB_NAME
 # VProc C/C++ variables
 # --------------------------------------------
 
-# Location of VProc and memory model libraries
-COSIMDIR         = $(CURDIR)/models/cosim
-PCIEDIR          = $(CURDIR)/models/pcievhost
+# VProc, pcieVHost and mem_model: libraries, C headers and HDL, built from
+# openPCIE_BFM's upstream copies with its two patches (pcievhost-speed for the
+# RC model, vproc-coroutine) into VIP_DIR (lib/, include/, hdl/). Built once,
+# then reused until a source changes; obj/vip, so each make mutants copy has
+# its own.
+ifeq ($(wildcard $(BFM)/4.build/build-vip.sh),)
+  $(error no vip/openPCIE_BFM: clone with --recurse-submodules, or run git submodule update --init)
+endif
+VIP_ENV          = VIP_PATCH=$(BFM)/1.upstream/patches/pcievhost-speed.patch \
+                   VPROC_PATCH=$(BFM)/1.upstream/patches/vproc-coroutine.patch \
+                   VIP_BUILD=$(CURDIR)/obj/vip
+ifeq ($(filter clean help,$(MAKECMDGOALS)),)
+  VIP_DIR       := $(shell $(VIP_ENV) bash $(BFM)/4.build/build-vip.sh)
+  ifeq ($(VIP_DIR),)
+    $(error building the VIP failed: $(VIP_ENV) bash $(BFM)/4.build/build-vip.sh)
+  endif
+endif
 
 # --------------------------------------------
 # RV32 ISS variables
@@ -346,7 +366,7 @@ ARCHFLAG         = -m64
 # $(BLD_DIR)/csr_build carries csr_regs.h, the firmware's register accessors
 # (VProc bus cycles with CPU=vproc), and generated-files/ the PeakRDL
 # register layout they use (csr.h, csr_top.h).
-INCLPATHS        = -I$(USRCODEDIR) -I$(PCIECODEDIR) -I$(COSIMDIR)/include -I$(PCIEDIR)/include -I$(PCIEDIR)/ltssm -I$(BLD_DIR)/csr_build -I$(BLD_DIR)/csr_build/generated-files $(RV32INCLOPTS)
+INCLPATHS        = -I$(USRCODEDIR) -I$(PCIECODEDIR) -I$(A7RC_DIR) -I$(VIP_DIR)/include -I$(LTSSM_DIR) -I$(BLD_DIR)/csr_build -I$(BLD_DIR)/csr_build/generated-files $(RV32INCLOPTS)
 DEFS             = -DVPROC_SV -DVPROC -DEXCLUDE_LTSSM $(ISS_DEFS) \
                    $(if $(filter switched,$(VARIANT)),-DSIM_SWITCHED) \
                    -DEP_GEN=$(SIM_GEN) -DRC_GEN=$(SIM_RC_GEN) $(if $(filter 1,$(SIM_SPEED_TEST)),-DSPEED_TEST) \
@@ -382,8 +402,8 @@ CFLAGS_SO        = $(ARCHFLAG)                         \
                    -Wl,-whole-archive                  \
                    -L$(CURDIR)      -luser             \
                    -Wl,-no-whole-archive               \
-                   -L$(COSIMDIR)/lib $(COSIMLDOPT)     \
-                   -L$(PCIEDIR)/lib  $(PCIELDOPT)      \
+                   -L$(VIP_DIR)/lib  $(COSIMLDOPT)     \
+                   $(PCIELDOPT)                        \
                    $(RV32LDOPTS)                       \
                    -o $(VPROC_PLI)
 
@@ -446,7 +466,11 @@ FW_DIR           = $(VOBJDIR)/fw
 # PCIE_LANES and PCIE_GEN go to xvlog through an options file (xvlog.defines); at 4
 # lanes also PIPE_X4, which dumps the four-lane PIPE page (tb.sv).
 TB_PRJ             = $(if $(filter model,$(RC)),$(if $(filter serial,$(IFACE)),tb_rc_serial.prj,$(if $(filter hm,$(PHY)),tb_socket.prj,tb_rc.prj)),tb.prj)
-ANALYSEFLAGS       = -i $(PCIEDIR)/verilog/headers --define VPROC_SV --define VPROC_BYTE_ENABLE --define SIM_FAST_TRAIN $(if $(filter 1,$(SIM_GEN)),--define SIM_GEN1_ONLY) $(if $(filter 1,$(SIM_POLARITY)),--define SIM_POLARITY) $(if $(filter 1,$(SIM_LANE_REVERSE)),--define SIM_LANE_REVERSE) --define SIM_PIPE_CODING $(if $(filter core,$(PHY)),--define SIM_PIPE_PHY)$(if $(filter hm,$(PHY)), --define NO_LTSSM_TRACE) -f xvlog.defines $(CPUDEFINE) $(USRSIMOPTS) --prj $(TB_PRJ)
+ANALYSEFLAGS       = -i $(VIP_DIR)/hdl/headers -i $(VIP_DIR)/hdl --define VPROC_SV --define VPROC_BYTE_ENABLE --define SIM_FAST_TRAIN $(if $(filter 1,$(SIM_GEN)),--define SIM_GEN1_ONLY) $(if $(filter 1,$(SIM_POLARITY)),--define SIM_POLARITY) $(if $(filter 1,$(SIM_LANE_REVERSE)),--define SIM_LANE_REVERSE) --define SIM_PIPE_CODING $(if $(filter core,$(PHY)),--define SIM_PIPE_PHY)$(if $(filter hm,$(PHY)), --define NO_LTSSM_TRACE) -f xvlog.defines $(CPUDEFINE) $(USRSIMOPTS) --prj $(VOBJDIR)/$(TB_PRJ)
+# The .prj files name the models as $BFM/... (openPCIE_BFM) and $VIP/... (the
+# VIP build); obj/<name>.prj has them filled in, and every path absolute (xsim
+# reads a .prj's paths from the .prj's own directory)
+PRJ_SED            = -e 's\#$$BFM\#$(BFM)\#g' -e 's\#$$VIP\#$(VIP_DIR)\#g' -e 's\#^sv work \([^/]\)\#sv work $(CURDIR)/\1\#'
 ELABFLAGS          = -sv_lib $(VPROC_PLI) --timescale 1ps/1ps --debug typical $(XILLIBS) $(TB_NAME) glbl
 # The snapshot xelab produces when two tops are elaborated is named
 # "<top>#glbl". The hash has to be escaped or make treats the rest as a comment.
@@ -461,9 +485,9 @@ SIMEXE          ?= xsim
 # make regress runs it from obj/regress/<seed>/
 JHDL            ?= jhdl
 JHDL_F           = $(VOBJDIR)/jhdl.f
-JHDL_DEFS        = $(filter-out --define -i $(PCIEDIR)/verilog/headers -f xvlog.defines --prj $(TB_PRJ),$(ANALYSEFLAGS)) \
+JHDL_DEFS        = $(filter-out --define -i $(VIP_DIR)/hdl/headers $(VIP_DIR)/hdl -f xvlog.defines --prj $(VOBJDIR)/$(TB_PRJ),$(ANALYSEFLAGS)) \
                    PCIE_LANES=$(SIM_LANES) PCIE_GEN=$(SIM_GEN) $(if $(filter 4,$(SIM_LANES)),PIPE_X4)
-JHDLFLAGS        = --top $(TB_NAME) $(addprefix +define+,$(JHDL_DEFS)) +incdir+$(PCIEDIR)/verilog/headers -f $(JHDL_F) \
+JHDLFLAGS        = --top $(TB_NAME) $(addprefix +define+,$(JHDL_DEFS)) +incdir+$(VIP_DIR)/hdl/headers +incdir+$(VIP_DIR)/hdl -f $(JHDL_F) \
                    --sv-lib $(CURDIR)/$(VPROC_PLI) $(addprefix +,$(PLUSARGS))
 
 # What make run and make regress start
@@ -503,9 +527,13 @@ $(VOBJDIR)/%.o: $(PCIECODEDIR)/%.c
 $(VOBJDIR)/%.o: $(PCIECODEDIR)/%.cpp
 	@$(C++) -c -fPIC -MMD -MP $(OPTFLAG) $(CPPSTD) -Wno-write-strings $(DEFS) $(INCLPATHS) $< -o $@
 
-# Rule to build PCIe LTSSM support model
-$(VOBJDIR)/%.o: $(PCIEDIR)/ltssm/%.c
+# Rule to build PCIe LTSSM support model (openPCIE_BFM 3.sw/ltssm)
+$(VOBJDIR)/%.o: $(LTSSM_DIR)/%.c
 	@$(CC) -c -fPIC -MMD -MP $(OPTFLAG) -Wno-write-strings $(DEFS) $(INCLPATHS) $< -o $@
+
+# Rule to build the Artix-7 RC model (openPCIE_BFM 3.sw/a7rc)
+$(VOBJDIR)/%.o: $(A7RC_DIR)/%.cpp
+	@$(C++) -c -fPIC -MMD -MP $(OPTFLAG) $(CPPSTD) -Wno-write-strings $(DEFS) $(INCLPATHS) $< -o $@
 
 # CPU=vproc: the 3.sw firmware itself, compiled for the host as C++, with
 # main() renamed fw_main() for usercode/VUserMain0.cpp to call. Under VPROC,
@@ -558,9 +586,10 @@ ifeq ($(SIM),janushdl)
 # which nothing instantiates here (DPI-C functions that are not in VProc.so;
 # assertions)
 sysverilog: $(VPROC_PLI) | $(VOBJDIR)
-	@sed -n -e '/mem_model\.sv/d' -e '/pipe_mac_adapter\.sv/d' -e 's#^sv work #$(CURDIR)/#p' $(TB_PRJ) > $(JHDL_F)
+	@sed -n $(PRJ_SED) -e '/mem_model\.sv/d' -e '/pipe_mac_adapter\.sv/d' -e 's#^sv work ##p' $(TB_PRJ) > $(JHDL_F)
 else
 sysverilog: $(VPROC_PLI) $(if $(filter hm,$(RC)),firmware.hex)
+	@sed $(PRJ_SED) $(TB_PRJ) > $(VOBJDIR)/$(TB_PRJ)
 	@echo "--define PCIE_LANES=$(SIM_LANES) --define PCIE_GEN=$(SIM_GEN)$(if $(filter 4,$(SIM_LANES)), --define PIPE_X4)" > xvlog.defines
 	@$(XVLOG) $(ANALYSEFLAGS)
 	@$(XVLOG) $(GLBL)
@@ -609,7 +638,7 @@ run: sysverilog run_us.cfg $(RUN_CFG)
 # The tester over seeds 1 to SEEDS, each in obj/regress/<seed>/ with its own
 # copy of the snapshot (xsim.dir), so seeds can run side by side
 regress: sysverilog run_us.cfg $(RUN_CFG)
-	@bash tools/regress.sh $(SEEDS) $(REGRESS_JOBS) $(REGRESS_S) $(REGRESS_TRIES) $(REGRESS_QUIET) \
+	@bash $(BFM)/4.build/regress.sh $(SEEDS) $(REGRESS_JOBS) $(REGRESS_S) $(REGRESS_TRIES) $(REGRESS_QUIET) \
 	    $(VOBJDIR)/regress "xsim.dir $(notdir $(VPROC_PLI)) run_us.cfg $(RUN_CFG)" -- $(SIM_RUN); s=$$?; \
 	$(if $(filter fail,$(REGRESS_DUMP)),for d in $(VOBJDIR)/regress/*/; do [ ! -e $$d/failed ] || \
 	    $(MAKE) --no-print-directory wavecrux RC=model SEED=$$(basename $$d) WCX_OPEN=0; done;) exit $$s
@@ -625,7 +654,7 @@ wavecrux:
 	$(MAKE) --no-print-directory run SEED=$(SEED) USRSIMOPTS="$(USRSIMOPTS) --define DUMP_VCD"; \
 	if [ ! -f xsim.log ] || [ ! -f $(DUMP_FST) ]; then echo "seed $(SEED): no run or no waveform"; exit 1; fi; \
 	cp xsim.log wavecrux.$(SEED).log; echo "seed $(SEED): $$(grep -a -m1 'RC MODEL RESULT' xsim.log), $(DUMP_FST)"; \
-	$(if $(filter 1,$(WCX_OPEN)),python3 tools/wavecrux.py $(DUMP_FST) wavecrux.$(SEED).log $(WCX_SIGNALS),echo "  open it: make wavecrux RC=model$(if $(filter serial,$(IFACE)), IFACE=serial)$(if $(filter-out none,$(PHY)), PHY=$(PHY)) SEED=$(SEED)")
+	$(if $(filter 1,$(WCX_OPEN)),python3 $(BFM)/4.build/wavecrux.py $(DUMP_FST) wavecrux.$(SEED).log $(WCX_SIGNALS),echo "  open it: make wavecrux RC=model$(if $(filter serial,$(IFACE)), IFACE=serial)$(if $(filter-out none,$(PHY)), PHY=$(PHY)) SEED=$(SEED)")
 
 fst:
 	@bash tools/vcd2fst.sh tb.vcd $(DUMP_FST)
