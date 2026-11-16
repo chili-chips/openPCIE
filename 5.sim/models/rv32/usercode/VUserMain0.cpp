@@ -173,8 +173,8 @@ static void pre_run_setup(rv32* pCpu)
     // Register ISS interrupt callback
     pCpu->register_int_callback(iss_int_callback);
 
-    // Register the VProc IRQ callback, used to update irq status from HDL
-    VRegIrq(vproc_irq_callback, node);
+    // (The VProc IRQ callback is registered at the start of VUserMain0, so
+    // that no reset edge is missed.)
 
     // Set up ICACHE if enabled
     if (vcfg.enable_icache)
@@ -511,6 +511,10 @@ extern "C" void VUserMain0()
     VPrint(  "  * rv32 RISC-V ISS (on VProc) *\n");
     VPrint(  "  *     Copyright (c) 2025     *\n");
     VPrint(  "  ******************************\n\n");
+
+    // Register the VProc IRQ callback, used to update irq and reset status
+    // from HDL, before the first tick, so that the reset release is seen
+    VRegIrq(vproc_irq_callback, node);
 
     VTick(20, node);
 

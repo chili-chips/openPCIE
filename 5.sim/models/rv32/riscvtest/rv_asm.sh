@@ -1,11 +1,7 @@
 #!/usr/bin/bash
 
-if [ "$FNAME" != "" ]
-then
-  FNAME=$1
-else
-  FNAME="main.s"
-fi
+# usage: rv_asm.sh [file.s]   (default main.s) -> main.bin, main.list
+FNAME=${1:-main.s}
 
 ONAME=main
 STARTADDR=0
