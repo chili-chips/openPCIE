@@ -21,8 +21,6 @@
 //     tlp_valid  tlp_data carries a DW this cycle
 //==========================================================================
 
-`timescale 1ns / 1ps
-
 interface tlp_dw_if (
   input logic clk
 );

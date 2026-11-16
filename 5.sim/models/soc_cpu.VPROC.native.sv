@@ -33,8 +33,6 @@
 //   release and restart on a new reset (5.sim/models/rv32/usercode).
 //==========================================================================
 
-`timescale 1ns / 1ps
-
 module soc_cpu_vproc #(
     parameter [3:0] NODE = 0      // VProc node: 0 is the CPU, 1 is the PCIe EP
 )(

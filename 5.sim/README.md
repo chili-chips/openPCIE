@@ -198,7 +198,7 @@ The ready-made `.wavecrux` sessions open the tracked FSTs, named like the bitstr
 | `models/rv32/usercode/VUserMain0.cpp` | no fetch/load wait states; bus credit; waits for reset release, restarts on reset; RV32I-only fetch filter | see [Our Local VIP Improvements](#our-local-vip-improvements) |
 | `models/soc_cpu.VPROC.native.sv` | 2-clock picorv32 handshake; `!resetn` on VProc interrupt bit 3 | see [Our Local VIP Improvements](#our-local-vip-improvements) |
 
-The changes to pcieVHost and VProc, file by file: [openPCIE_BFM, local changes](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#local-changes).
+The changes to pcieVHost and VProc, file by file: [openPCIE_BFM, local changes](https://github.com/chili-chips/openPCIE_BFM/blob/main/1.upstream/README.md#local-changes).
 
 The pcievhost and VProc changes live in [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), the submodule `vip/openPCIE_BFM`: the patches in `1.upstream/patches`, the LTSSM fixes as `3.sw/ltssm/ltssm-openpcie.patch` on upstream's `ltssm.c.orig`. Its `4.build/vip-import.sh` brings in a new upstream; its `4.build/build-vip.sh` builds the libraries and HDL, patches applied, into `5.sim/obj/vip` (the Makefile runs it). [`tools/vip-upgrade.sh`](tools/vip-upgrade.sh) upgrades rv32, built here from its sources (`models/rv32/src`, upstream `774d84fa`).
 
@@ -568,7 +568,7 @@ The PIPE shows the link as symbols. The Endpoint model also reports each TLP and
 
 So the dump now has two TLP views, one at each end of the link: `tb.tlp_view` at the Root Complex's AXI-Stream, `u_pcie_ep` at the Endpoint. Same TLPs (21 down, 20 up), the hard macro and the link apart. The run also shows 67 DLLPs down and 92 up.
 
-The signals by layer, and how the taps work in C and HDL: [openPCIE_BFM, transaction taps](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/integration.md#transaction-taps).
+The signals by layer, and how the taps work in C and HDL: [openPCIE_BFM, transaction taps](https://github.com/chili-chips/openPCIE_BFM/blob/main/2.rtl/README.md#transaction-taps).
 
 ### How long a TLP spends in the hard macro
 
@@ -907,15 +907,15 @@ The `soc_cpu.VPROC.native` wrapper used here has no `mem_model` (the inherited `
 
 ## Driving the PCIE Link
 
-The _openPCIE_ logic has one PCIE PIPE downstream port, x1 or x4, Gen1 and Gen2. The test bench drives it with `pcieVHostPipex1` (x1) or our `pcieVHostPipexN` (x4), built on the _pcieVHost_ VIP. Configuring and driving the model: [the _pcieVHost_ manual in openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/pcievhost/README.md).
+The _openPCIE_ logic has one PCIE PIPE downstream port, x1 or x4, Gen1 and Gen2. The test bench drives it with `pcieVHostPipex1` (x1) or our `pcieVHostPipexN` (x4), built on the _pcieVHost_ VIP. Configuring and driving the model: [the _pcieVHost_ manual in openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/1.upstream/pcievhost-guide/README.md).
 
 <div align=center>
-<img alt="pcieVHost module" width=750 src="https://github.com/chili-chips/openPCIE_BFM/raw/main/0.doc/pcievhost/images/pcievhost_module.png">
+<img alt="pcieVHost module" width=750 src="https://github.com/chili-chips/openPCIE_BFM/raw/main/0.doc/images/pcievhost-pipe-wrapper.drawio.png">
 </div>
 
 ### Three ways to attach pcieVHost
 
-One model, three adapters: on the line, as the PHY of an RTL MAC, or as the MAC over a PIPE PHY: [openPCIE_BFM, three ways to attach pcieVHost](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/integration.md#three-ways-to-attach-pcievhost).
+One model, three adapters: on the line, as the PHY of an RTL MAC, or as the MAC over a PIPE PHY: [openPCIE_BFM, three ways to attach pcieVHost](https://github.com/chili-chips/openPCIE_BFM/blob/main/2.rtl/README.md#three-ways-to-attach-pcievhost).
 
 ## HAL
 
@@ -942,7 +942,7 @@ The build handles three more host differences, so the firmware source has no co-
 
 How our co-simulation models differ from upstream, beyond [Local changes](#local-changes). The pcieVHost fixes and features: [Simulation issues](#simulation-issues), [pcieVHost: what we added or removed](#pcievhost-what-we-added-or-removed).
 
-- **pcieVHost and VProc:** coroutine VProc (about 22 times faster), Data Link and Transaction access points, x4 PIPE, Gen2 speed changes: [openPCIE_BFM, what we added](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#what-we-added).
+- **pcieVHost and VProc:** coroutine VProc (about 22 times faster), Data Link and Transaction access points, x4 PIPE, Gen2 speed changes: [openPCIE_BFM, what we added](https://github.com/chili-chips/openPCIE_BFM/blob/main/1.upstream/README.md#what-we-added).
 - **rv32 ISS built from source.** `models/rv32/src` holds the ISS sources at upstream `774d84fa`; the make file builds the library. Two fixes in `rv32-openpcie.patch`: the timer-compare check no longer adds 2 cycles to every instruction, and `sw`/`sh` take store timing, not load.
 - **Timing measured on our RTL.** `rv32_timing_config.h` holds cycles per instruction class measured in this SOC, so they include its memory latency (fetch included, no wait states):
 
@@ -1127,15 +1127,15 @@ make run RC=model SIM=janushdl                     # in JanusHDL; also make regr
 
 #### Drive and check
 
-The drivers, the 59 rules and their results: [openPCIE_BFM, drive and check](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/rc-model.md#drive-and-check).
+The drivers, the 59 rules and their results: [openPCIE_BFM, drive and check](https://github.com/chili-chips/openPCIE_BFM/blob/main/3.sw/a7rc/README.md#drive-and-check).
 
 #### On the serial line
 
-`make run RC=model IFACE=serial` runs the model on a 1-bit line per lane, in [`tb_rc_serial.sv`](tb_rc_serial.sv). Details and the PIPE/serial comparison: [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/rc-model.md#on-the-serial-line).
+`make run RC=model IFACE=serial` runs the model on a 1-bit line per lane, in [`tb_rc_serial.sv`](tb_rc_serial.sv). Details and the PIPE/serial comparison: [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/3.sw/a7rc/README.md#on-the-serial-line).
 
 #### Driving another project's EP
 
-openCologne-PCIE runs this model as the only host of its co-simulation: [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/rc-model.md#driving-another-projects-ep).
+openCologne-PCIE runs this model as the only host of its co-simulation: [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/3.sw/a7rc/README.md#driving-another-projects-ep).
 
 ### Fault tests: the firmware's error paths
 
@@ -1232,7 +1232,7 @@ TLP traffic (enumeration order, tags, payload sizes) is set by our RC firmware, 
 
 ## Simulation issues
 
-Issues in openPCIE's own models. The pcieVHost and PIPE-wrapper issues, same numbers, are in [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#simulation-issues).
+Issues in openPCIE's own models. The pcieVHost and PIPE-wrapper issues, same numbers, are in [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM/blob/main/1.upstream/README.md#simulation-issues).
 
 | # | Model | Issue | Status |
 |---|---|---|---|
@@ -1245,7 +1245,7 @@ Issues in openPCIE's own models. The pcieVHost and PIPE-wrapper issues, same num
 
 ### pcieVHost: what we added or removed
 
-Every pcieVHost feature we added or removed, with its API: [openPCIE_BFM, what we added or removed](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/model-changes.md#pcievhost-what-we-added-or-removed).
+Every pcieVHost feature we added or removed, with its API: [openPCIE_BFM, what we added or removed](https://github.com/chili-chips/openPCIE_BFM/blob/main/1.upstream/README.md#pcievhost-what-we-added-or-removed).
 
 ## References
 - [VProc](https://github.com/wyvernSemi/vproc)

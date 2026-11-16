@@ -21,8 +21,6 @@
 //   RESULT), or at the time limit of run_us.cfg.
 //==========================================================================
 
-`timescale 1ps/1ps
-
 module tb;
 
   import pcie_pkg::*;
@@ -54,12 +52,12 @@ module tb;
   initial begin
     get_run_length();
     perst_n = 1'b0;
-    #(HALF_REFCLK_PERIOD_PS * RST_CYCLES * 1ps) perst_n = 1'b1;
-    #(RUN_SIM_US * 1us - HALF_REFCLK_PERIOD_PS * RST_CYCLES * 1ps);
+    #(HALF_REFCLK_PERIOD_PS * RST_CYCLES * 1ns / 1000.0) perst_n = 1'b1;
+    #(RUN_SIM_US * 1us - HALF_REFCLK_PERIOD_PS * RST_CYCLES * 1ns / 1000.0);
     $fatal(1, "time limit of %0d us: no RC MODEL RESULT", RUN_SIM_US);
   end
 
-  always #(HALF_REFCLK_PERIOD_PS * 1ps) refclk_p = ~refclk_p;
+  always #(HALF_REFCLK_PERIOD_PS * 1ns / 1000.0) refclk_p = ~refclk_p;
 
 //--------------------------------------------------------------
 // pcie_top, with the user side idle

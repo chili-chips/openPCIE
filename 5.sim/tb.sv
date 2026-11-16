@@ -31,8 +31,6 @@
 //   CSR and the software -- is exactly what goes into the FPGA.
 //==========================================================================
 
-`timescale 1ps/1ps
-
 module tb;
 
   // The run ends RESULT_TAIL_US after the firmware reports its result, so the
@@ -64,7 +62,7 @@ module tb;
       end
     end
 
-    $display("%t  TB     run length %0d us", $time, RUN_SIM_US);
+    $display("%t  TB     run length %0d us", $realtime, RUN_SIM_US);
   endtask
 
 //--------------------------------------------------------------
@@ -88,13 +86,13 @@ module tb;
 
     fork
       begin : board_rst_n
-        #(HALF_REFCLK_PERIOD_PS * RST_CYCLES * 1ps)
+        #(HALF_REFCLK_PERIOD_PS * RST_CYCLES * 1ns / 1000.0)
           perst_n = 1'b1;
-        $display("%t  TB     PERST# released", $time);
+        $display("%t  TB     PERST# released", $realtime);
       end
 
       forever begin : refclk_gen
-        #(HALF_REFCLK_PERIOD_PS * 1ps)
+        #(HALF_REFCLK_PERIOD_PS * 1ns / 1000.0)
           refclk_p = ~refclk_p;
       end
 
@@ -102,12 +100,12 @@ module tb;
         fork
           begin : time_limit
             #(RUN_SIM_US * 1us);
-            $display("\n%t  TB     *** simulation time limit reached ***", $time);
+            $display("\n%t  TB     *** simulation time limit reached ***", $realtime);
           end
           begin : result_tail
             @(result_seen);
             #(RESULT_TAIL_US * 1us);
-            $display("\n%t  TB     *** run ends %0d us after the firmware result ***", $time,
+            $display("\n%t  TB     *** run ends %0d us after the firmware result ***", $realtime,
                      RESULT_TAIL_US);
           end
         join_any
@@ -157,16 +155,16 @@ module tb;
 
   // Individual link status bits, so a stall can be pinned to a layer
   always @(dut.u_pcie.u_core.u_pcie_block.PLPHYLNKUPN)
-    $display("%t  TB     pl_phy_lnk_up = %b", $time, !dut.u_pcie.u_core.u_pcie_block.PLPHYLNKUPN);
+    $display("%t  TB     pl_phy_lnk_up = %b", $realtime, !dut.u_pcie.u_core.u_pcie_block.PLPHYLNKUPN);
   always @(dut.core_rst_n)
-    $display("%t  TB     core_rst_n   = %b", $time, dut.core_rst_n);
+    $display("%t  TB     core_rst_n   = %b", $realtime, dut.core_rst_n);
   always @(dut.trn_link_up)
-    $display("%t  TB     trn_link_up   = %b", $time, dut.trn_link_up);
+    $display("%t  TB     trn_link_up   = %b", $realtime, dut.trn_link_up);
 
   always @(negedge led_link_up[2]) begin
     if (!link_up_seen) begin
       link_up_seen = 1'b1;
-      $display("\n%t  TB     ===> PCIe LINK UP -- SOC released from reset\n", $time);
+      $display("\n%t  TB     ===> PCIe LINK UP -- SOC released from reset\n", $realtime);
     end
   end
 
@@ -180,11 +178,11 @@ module tb;
 `ifndef NO_TLP_TRACE
   always @(posedge dut.user_clk) begin
     if (dut.s_axis_tx.tvalid && dut.s_axis_tx.tready && !dut.s_axis_tx.tlast) begin
-      $display("%t  TX-TLP hdr0=%08h hdr1=%08h", $time,
+      $display("%t  TX-TLP hdr0=%08h hdr1=%08h", $realtime,
                dut.s_axis_tx.tdata[31:0], dut.s_axis_tx.tdata[63:32]);
     end
     if (dut.m_axis_rx.tvalid && dut.m_axis_rx.tready) begin
-      $display("%t  RX-TLP %016h", $time, dut.m_axis_rx.tdata);
+      $display("%t  RX-TLP %016h", $realtime, dut.m_axis_rx.tdata);
     end
   end
 `endif
@@ -297,7 +295,7 @@ module tb;
   // status.phy until the Tx FSM is idle AND the hard macro reports at least one
   // free transmit buffer.
   always @(dut.cfg.tx_buf_avail)
-    $display("%t  CSR    tx_buf_avail = %0d", $time, dut.cfg.tx_buf_avail);
+    $display("%t  CSR    tx_buf_avail = %0d", $realtime, dut.cfg.tx_buf_avail);
 
   // Every CPU access into the CSR window
   integer csr_acc;
@@ -308,7 +306,7 @@ module tb;
         (dut.u_soc.mem.valid && dut.u_soc.is_bridge && dut.u_soc.mem.ready && !(|dut.u_soc.mem.wstrb))) begin
       csr_acc = csr_acc + 1;
       if (csr_acc <= 300 || (csr_acc % 5000) == 0) begin
-        $display("%t  CSR    %s [0x%02h] data=%08h  (#%0d)", $time,
+        $display("%t  CSR    %s [0x%02h] data=%08h  (#%0d)", $realtime,
                  (|dut.u_soc.mem.wstrb) ? "WR" : "RD",
                  dut.u_soc.mem.addr[7:0],
                  (|dut.u_soc.mem.wstrb) ? dut.u_soc.mem.wdata
@@ -329,7 +327,7 @@ module tb;
   always @(posedge dut.user_clk) begin
     if (dut.u_soc.mem.valid && dut.u_soc.mem.ready && first_n < bus_trace_n) begin
       first_n = first_n + 1;
-      $display("%t  BUS  %2d  addr=%08h %s data=%08h", $time, first_n,
+      $display("%t  BUS  %2d  addr=%08h %s data=%08h", $realtime, first_n,
                dut.u_soc.mem.addr,
                (|dut.u_soc.mem.wstrb) ? "WR" : "RD",
                (|dut.u_soc.mem.wstrb) ? dut.u_soc.mem.wdata
@@ -357,7 +355,7 @@ module tb;
   initial forever begin
     #(1000 * 1us);
     $display("%t  CPU    %0d bus accesses, RAM addr range 0x%08h..0x%08h",
-             $time, cpu_acc, cpu_pc_min, cpu_pc_max);
+             $realtime, cpu_acc, cpu_pc_min, cpu_pc_max);
   end
 `endif
 
@@ -428,7 +426,7 @@ module tb;
       if (dut.u_soc.mem.addr[7:0] == 8'h24) begin
         result_marker  = dut.u_soc.mem.wdata;
         mem_rd_payload = rx_data_last;
-        $display("\n%t  TB     ===> FIRMWARE RESULT 0x%08h  (%s)\n", $time,
+        $display("\n%t  TB     ===> FIRMWARE RESULT 0x%08h  (%s)\n", $realtime,
                  dut.u_soc.mem.wdata,
                  (dut.u_soc.mem.wdata == 32'h0000_face) ? "PASS" : "FAIL");
         ->result_seen;
@@ -449,7 +447,7 @@ module tb;
   end
   always @(result_seen) begin
     ipc_on = 1'b0;
-    $display("%t  TB     IPC %0d instructions / %0d cycles = %0.4f", $time, ipc_instrs,
+    $display("%t  TB     IPC %0d instructions / %0d cycles = %0.4f", $realtime, ipc_instrs,
              ipc_cycles, real'(ipc_instrs) / real'(ipc_cycles));
   end
 `endif

@@ -471,7 +471,7 @@ ANALYSEFLAGS       = -i $(VIP_DIR)/hdl/headers -i $(VIP_DIR)/hdl --define VPROC_
 # VIP build); obj/<name>.prj has them filled in, and every path absolute (xsim
 # reads a .prj's paths from the .prj's own directory)
 PRJ_SED            = -e 's\#$$BFM\#$(BFM)\#g' -e 's\#$$VIP\#$(VIP_DIR)\#g' -e 's\#^sv work \([^/]\)\#sv work $(CURDIR)/\1\#'
-ELABFLAGS          = -sv_lib $(VPROC_PLI) --timescale 1ps/1ps --debug typical $(XILLIBS) $(TB_NAME) glbl
+ELABFLAGS          = -sv_lib $(VPROC_PLI) --timescale 1ns/10ps --debug typical $(XILLIBS) $(TB_NAME) glbl
 # The snapshot xelab produces when two tops are elaborated is named
 # "<top>#glbl". The hash has to be escaped or make treats the rest as a comment.
 SIMFLAGS           = work.$(TB_NAME)\#work.glbl $(addprefix -testplusarg ,$(PLUSARGS))

@@ -24,8 +24,6 @@
 //   RESULT), or at the time limit of run_us.cfg.
 //==========================================================================
 
-`timescale 1ps/1ps
-
 module tb;
 
   int RUN_SIM_US;
@@ -63,8 +61,8 @@ module tb;
     ep_nreset = 1'b0;
   end
 
-  always #(CLK_HALF_PS * 1ps) clk    = ~clk;
-  always #(SER_HALF_PS * 1ps) serclk = ~serclk;
+  always #(CLK_HALF_PS * 1ns / 1000.0) clk    = ~clk;
+  always #(SER_HALF_PS * 1ns / 1000.0) serclk = ~serclk;
 
   initial begin
     get_run_length();

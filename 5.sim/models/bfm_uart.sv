@@ -51,8 +51,6 @@
 //  Use +define+UART_DEBUG for printout of debug messages.
 //==========================================================================
 
-`timescale 1ns / 1ns
-
 module bfm_uart (
    input  logic  uart_rx,
    output logic  uart_tx

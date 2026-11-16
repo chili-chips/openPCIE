@@ -29,8 +29,6 @@
 //   trace off).
 //==========================================================================
 
-`timescale 1ps/1ps
-
 module pcie_core
   import link_pkg::*;
   import pcie_pkg::*;

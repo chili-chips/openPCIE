@@ -46,8 +46,6 @@
 //   aligned, and it follows the link rate when the LTSSM changes speed.
 //==========================================================================
 
-`timescale 1ps/1ps
-
 module phy_top
   import link_pkg::*;
 (
@@ -95,7 +93,7 @@ module phy_top
 
   bit   txoutclk;
 
-  always #(TXOUTCLK_HALF_PS * 1ps) txoutclk = ~txoutclk;
+  always #(TXOUTCLK_HALF_PS * 1ns / 1000.0) txoutclk = ~txoutclk;
 
   // Rate follows PIPETXRATE, which the LTSSM drives on a speed change.
   // It has to be resolved to a hard 0/1 first: PIPETXRATE is X before the hard
@@ -315,7 +313,7 @@ module phy_top
           tx_last_id   = sym;
           tx_last_link = tx_link;
           tx_last_lane = tx_lane;
-          $display("%t  PIPE   RC --> EP  %s link=%02h lane=%02h", $time,
+          $display("%t  PIPE   RC --> EP  %s link=%02h lane=%02h", $realtime,
                    os_name(sym), tx_link, tx_lane);
         end
         tx_pos = -1;
@@ -336,7 +334,7 @@ module phy_top
           rx_last_id   = sym;
           rx_last_link = rx_link;
           rx_last_lane = rx_lane;
-          $display("%t  PIPE   EP --> RC  %s link=%02h lane=%02h", $time,
+          $display("%t  PIPE   EP --> RC  %s link=%02h lane=%02h", $realtime,
                    os_name(sym), rx_link, rx_lane);
         end
         rx_pos = -1;
@@ -362,8 +360,8 @@ module phy_top
   initial if (!$value$plusargs("PIPE_DUMP_FROM=%d", dump_from)) dump_from = 0;
 
   always @(posedge pipe_clk)
-    if (pipe_rst_n && mac_rx_valid[0] && dump_n < 40 && $time > dump_from) begin
-      $display("%t  RAW  tx=%02h%s %02h%s   rx=%02h%s %02h%s", $time,
+    if (pipe_rst_n && mac_rx_valid[0] && dump_n < 40 && $realtime > dump_from * 1ns / 1000.0) begin
+      $display("%t  RAW  tx=%02h%s %02h%s   rx=%02h%s %02h%s", $realtime,
                pipe_mac.tx[0].data[7:0],  pipe_mac.tx[0].char_is_k[0] ? "K" : "d",
                pipe_mac.tx[0].data[15:8], pipe_mac.tx[0].char_is_k[1] ? "K" : "d",
                ep_tx_data[7:0],       ep_tx_datak[0] ? "K" : "d",
@@ -385,7 +383,7 @@ module phy_top
     ltssm_q <= pl_ltssm_state;
 
     if (pipe_rst_n && ltssm_q !== pl_ltssm_state) begin
-      $display("%t  LTSSM  0x%02h -> 0x%02h %s", $time, ltssm_q, pl_ltssm_state,
+      $display("%t  LTSSM  0x%02h -> 0x%02h %s", $realtime, ltssm_q, pl_ltssm_state,
                ltssm_name(pl_ltssm_state));
     end
   end

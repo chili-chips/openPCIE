@@ -23,8 +23,6 @@
 //   the viewer lists such an alias only once.
 //==========================================================================
 
-`timescale 1ns / 1ps
-
 module tlp_wavecrux_view (
     tlp_dw_if.sink tx,     // RC -> EP
     tlp_dw_if.sink rx      // EP -> RC

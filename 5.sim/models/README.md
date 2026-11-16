@@ -41,7 +41,7 @@ _VProc_ (virtual processor) and _mem_model_ (sparse memory, part of _pcievhost_)
 * Logic reaches the same space through the `mem_model` HDL component, also used in the PCIe interface driver.
 * Code on the _pcievhost_ VIP's own _VProc_ reaches it through the API.
 
-How they work, their C and C++ APIs: [openPCIE_BFM, VProc and mem_model](https://github.com/chili-chips/openPCIE_BFM/blob/main/0.doc/integration.md#vproc-and-mem_model).
+How they work, their C and C++ APIs: [openPCIE_BFM, VProc and mem_model](https://github.com/chili-chips/openPCIE_BFM/blob/main/2.rtl/README.md#vproc-and-mem_model).
 
 ### Their use in _openPCIE_
 

@@ -20,8 +20,6 @@
 //   the two directions for the WaveCrux decoder plugin.
 //==========================================================================
 
-`timescale 1ns / 1ps
-
 module tlp_dw_monitor (
     input  logic [63:0] axis_tdata,
     input  logic [7:0]  axis_tkeep,

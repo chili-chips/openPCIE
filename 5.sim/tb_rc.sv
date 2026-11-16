@@ -26,8 +26,6 @@
 //   RESULT), or at the time limit of run_us.cfg.
 //==========================================================================
 
-`timescale 1ps/1ps
-
 module tb;
 
   import pipe_sym_pkg::*;
@@ -74,7 +72,7 @@ module tb;
   // A hard 0/1: an X delay expression is a zero delay, which hangs the simulator
   always @(rc_gen2) rate_sel = (rc_gen2 === 1'b1);
 
-  always #((rate_sel ? PCLK_HALF_GEN2_PS : PCLK_HALF_GEN1_PS) * 1ps) pclk = ~pclk;
+  always #((rate_sel ? PCLK_HALF_GEN2_PS : PCLK_HALF_GEN1_PS) * 1ns / 1000.0) pclk = ~pclk;
 
   initial begin
     get_run_length();
