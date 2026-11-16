@@ -190,6 +190,10 @@ One [test bench](5.sim/README.md), three interchangeable CPUs: the RTL core that
 
 openPCIE_BFM is a submodule (`5.sim/vip/openPCIE_BFM`): clone with `git clone --recurse-submodules`, or run `git submodule update --init` in a clone.
 
+<div align="center">
+  <a href="https://github.com/chili-chips/openPCIE_BFM"><img width="13%" alt="openPCIE_BFM logo" src="0.doc/artwork/openPCIE_BFM.hex.png"></a>
+</div>
+
 **A first for open source:** to our knowledge, no open-source, rule-based PCIE protocol checker exists at any layer. Our Artix-7 RC model drives the EP and [checks every TLP and DLLP](5.sim/README.md#drive-and-check) against PCIe Base 2.1 rules, failing the run on any violation ([the gap](5.sim/README.md#open-source-pcie-validation-stacks)).
 
 Follow the co-simulation at TLP level in [WaveCrux](https://wavecrux.app), with the [open-source PCIE TLP decoder plugin](https://github.com/Ferrite-Engineering/wavecrux-decoders/tree/main/decoders/pcie-tlp) and a ready-made session. Here the firmware sizes BAR0 by read-back and places it at `0x80000000` ([more](5.sim/README.md#viewing-the-tlps-in-wavecrux)):
