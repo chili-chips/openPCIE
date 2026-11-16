@@ -15,10 +15,10 @@ module tb_power_up;
   logic clk = 1'b0;
   logic arst_n = 1'b0;
   always begin
-    #5 clk = ~clk;
+    #5ns clk = ~clk;
   end
   initial begin
-    #25 arst_n = 1'b1;
+    #25ns arst_n = 1'b1;
   end
 
   logic rvfi_valid, rvfi_trap, rvfi_halt, rvfi_intr;
@@ -75,15 +75,15 @@ module tb_power_up;
   );
 
   task automatic show();
-    $display("t=%0t ns arst_n=%b state=%b rvfi_valid=%b rvfi_order=%0d", $time, arst_n, uut.state,
+    $display("t=%0d ns arst_n=%b state=%b rvfi_valid=%b rvfi_order=%0d", $time, arst_n, uut.state,
              rvfi_valid, rvfi_order);
   endtask
 
   initial begin
-    #0 show();
-    #2 show();
+    #0ns show();
+    #2ns show();
     @(posedge clk);
-    #1 show();
+    #1ns show();
     $finish;
   end
 endmodule : tb_power_up
