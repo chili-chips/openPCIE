@@ -526,7 +526,6 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 |---|---|---|---|
 | openXC7 nextpnr | [nextpnr#21](https://github.com/openXC7/nextpnr/issues/21) | GT attribute defaults differ from Xilinx's | open |
 | openXC7 nextpnr | [nextpnr#182](https://github.com/openXC7/nextpnr/issues/182) | `set_multicycle_path`: `-from` drops the constraint; inferred registers cannot be selected | open |
-| openXC7 nextpnr | [nextpnr#183](https://github.com/openXC7/nextpnr/issues/183) | `BEL` attribute: the reported name is rejected, an accepted one ignored | open |
 | fpga-assembler | [`282ef7c2`](https://github.com/lromor/fpga-assembler/commit/282ef7c2) | `fpga-as` writes `RXCDR_CFG` wrong on every GTP lane | fixed upstream, not yet in the toolchain |
 | Yosys | [yosys#6498](https://github.com/YosysHQ/yosys/issues/6498) | wrong `IBUFDS_GTE2.CLKSWING_CFG` default | open |
 | fpga-assembler | [lromor/fpga-assembler#66](https://github.com/lromor/fpga-assembler/issues/66) | compressed bitstreams (Multiple Frame Write), as Vivado makes | open |
@@ -536,6 +535,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 | JanusHDL | [#1](https://github.com/chili-chips/openPCIE/issues/1) | 0.17.0: what simulates and what does not | open |
 | openXC7 nextpnr | nextpnr#84, #88, #90, #92, #93, #94, #146 | GT PLL settings; `TXPI_SYNFREQ_PPM`; unconstrained clock timed at 12 MHz; `--placer sa`; truncated FASM assembled; contradicting GT `LOC`; falling-edge FFs | fixed on main, not yet released |
 | openXC7 nextpnr | PRs nextpnr#145, #149, #150, #152, #153, #154 | `set_multicycle_path`: setup sign, Fmax, skew, tag check, XDC selectors, LUT-RAM tags | merged on main, not yet released |
+| openXC7 nextpnr | [nextpnr#183](https://github.com/openXC7/nextpnr/issues/183) | `BEL` attribute: the reported name is rejected, an accepted one ignored | closed (fixed on main by [nextpnr#192](https://github.com/openXC7/nextpnr/pull/192), not yet released) |
 | openXC7 nextpnr-xilinx | [nextpnr-xilinx#100](https://github.com/openXC7/nextpnr-xilinx/issues/100) | `IBUFDS_GTE2.O` driving a GT and a `BUFG`: dead fabric clock | closed (fixed on main) |
 | EBMC | hw-cbmc#2274 | 6.1: a typed parameter passed to a child parameter | closed (fixed in 6.2) |
 | WaveCrux | wavecrux#22 | decoder transactions drawn at the wrong time (time units) | closed (fixed in 1.0.1) |
