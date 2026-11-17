@@ -329,7 +329,7 @@ module picorv32 #(
           .pcpi_rs2   (pcpi_rsrc2),  //i[31:0]
 
           .pcpi_wr    (pcpi_div_wr),    //o
-          .pcpi_rdst  (pcpi_div_rdst),  //o[31:0]
+          .pcpi_rd    (pcpi_div_rdst),  //o[31:0]
           .pcpi_wait  (pcpi_div_wait),  //o
           .pcpi_ready (pcpi_div_ready)  //o
       );
