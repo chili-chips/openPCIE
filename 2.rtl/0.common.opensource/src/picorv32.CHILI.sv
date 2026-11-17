@@ -240,7 +240,7 @@ module picorv32 #(
   //=============================================================
   // pcpi_insn: registered only when WITH_PCPI (it feeds the PCPI cores
   // below), tied to 0 otherwise -- one driver either way.
-  // picorv32.ORIG.sv registers it on every Stage-2 decode regardless.
+  // Upstream PicoRV32 registers it on every Stage-2 decode regardless.
   // stage2_decode_trigger is declared here, ahead of its first use; it is
   // assigned next to the decoder signals below.
   logic stage2_decode_trigger;
@@ -1417,7 +1417,7 @@ module picorv32 #(
   assign buserror_irq_allowed = ENABLE_IRQ && !irq_mask[IRQ_BUSERROR] && !irq_active;
 
   // NOTE: the alu_out_0 case below uses is_slti_blt_slt / is_sltiu_bltu_sltu
-  // without picorv32.ORIG.sv's TWO_CYCLE_COMPARE guard: they are exclusive
+  // without upstream PicoRV32's TWO_CYCLE_COMPARE guard: they are exclusive
   // with instr_beq/bne/bge/bgeu by construction (see their assignment).
 
   logic [31:0] alu_add_sub;
