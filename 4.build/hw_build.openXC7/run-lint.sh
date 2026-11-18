@@ -66,7 +66,7 @@ VIVADO=${VIVADO:-vivado}
 LANES=${LANES:-4}
 GEN=${GEN:-}
 CPU=${CPU:-edubos5}
-PICORV32_SV="src/picorv32.CHILI.sv"
+PICORV32_SV="src/CPU.eduBOS5/edubos5_pkg.sv src/picorv32.CHILI.sv"  # riscv_pcie_soc imports edubos5_pkg
 EDUBOS5_SV=$(for f in pkg rf alu; do echo src/CPU.eduBOS5/edubos5_$f.sv; done; echo src/CPU.eduBOS5/edubos5.sv)
 case $CPU in
   picorv32) CPU_SV=$PICORV32_SV; OTHER_CPU_SV=$EDUBOS5_SV; CPU_DEF=SOC_CPU_PICORV32 ;;

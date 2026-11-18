@@ -30,7 +30,11 @@
 #   5. no logical operator (&&, ||, !) in an assign or a net declared with an
 #      expression (wire x = ...;) (reported, not fixed): the
 #      bitwise ones (&, |, ~) on 1-bit operands; an integer parameter as a
-#      flag is (P != 0), a vector under ! is ~|v.
+#      flag is (P != 0), a vector under ! is ~|v;
+#   6. no macro that stands in for code (reported, not fixed): a `define
+#      with arguments or a body over more lines; write the code (a loop,
+#      function, struct or interface). Flags, include guards and value
+#      macros are fine. eduBOS5 keeps its own (MACRO_OK_FILES).
 #
 # usage:  bash run-format.sh            format every RTL file in place
 #         bash run-format.sh --check    only report the files that are not
@@ -298,6 +302,30 @@ PY
 [ -n "$log_out" ] && printf '%s\n' "$log_out"
 nlo=$(printf '%s' "$log_out" | grep -c ':[0-9]')
 echo "-- logical operators in assigns: $nlo finding(s)"
+
+# Macros that stand in for code: a `define with arguments or a continued body.
+# Reported in both modes. MACRO_OK_FILES: a regex of file paths that keep theirs.
+MACRO_OK_FILES=${MACRO_OK_FILES:-/cpu\.EDUBOS5/|/CPU\.eduBOS5/}
+mac_out=$(MACRO_OK_FILES="$MACRO_OK_FILES" python3 - "${FILES[@]}" <<'PY'
+import os, re, sys
+ok = re.compile(os.environ['MACRO_OK_FILES'])
+TOK = re.compile(r'"(?:\\.|[^"\\\n])*"|/\*.*?\*/|//[^\n]*', re.S)
+DEF = re.compile(r'^[ \t]*`define[ \t]+(\w+)(\()?([^\n]*)', re.M)
+for f in sys.argv[1:]:
+    if ok.search(f):
+        continue
+    s = open(f, encoding='utf-8', errors='replace').read()
+    s = TOK.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), s)
+    for m in DEF.finditer(s):
+        why = 'arguments' if m.group(2) else 'a body over more lines' if m.group(3).rstrip().endswith('\\') else ''
+        if why:
+            line = s.count('\n', 0, m.start()) + 1
+            print(f"macro `{m.group(1)} with {why}: write the code: {f.split('/')[-1]}:{line}")
+PY
+)
+[ -n "$mac_out" ] && printf '%s\n' "$mac_out"
+nm=$(printf '%s' "$mac_out" | grep -c ':[0-9]')
+echo "-- code macros: $nm finding(s)"
 [ $bad -eq 0 ] && [ $ncr -eq 0 ] && [ $nf -eq 0 ] && [ $nl -eq 0 ] && [ $nc -eq 0 ] && [ $np -eq 0 ] &&
   [ $ni -eq 0 ] && [ $nlo -eq 0 ]
 

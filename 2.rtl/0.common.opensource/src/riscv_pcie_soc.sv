@@ -40,11 +40,7 @@
 module riscv_pcie_soc
   import pcie_pkg::*;
   import csr_pkg::*;
-`ifndef SOC_CPU_VPROC
-`ifndef SOC_CPU_PICORV32
-  import edubos5_pkg::*;  // eduBOS5 builds only: they compile edubos5_pkg.sv
-`endif
-`endif
+  import edubos5_pkg::*;  // every build compiles edubos5_pkg.sv (types only)
 (
     input  logic   clk,
     input  logic   resetn,
@@ -174,10 +170,10 @@ module riscv_pcie_soc
   // eduBOS5 would take it for the data of a load that follows. Only the ready
   // of a load still waiting for its data goes through.
   cpu_pc_t        imem_addr;
-  logic                 [18:0] NC_imem_addr_hi;  // the RAM decodes [12:2]
-  logic                 [31:0] imem_rdat;
-  logic                        load_wait;
-  logic                        edubos5_rdy;
+  logic    [18:0] NC_imem_addr_hi;  // the RAM decodes [12:2]
+  logic    [31:0] imem_rdat;
+  logic           load_wait;
+  logic           edubos5_rdy;
 
   assign NC_imem_addr_hi = imem_addr[31:13];
 
@@ -279,9 +275,9 @@ module riscv_pcie_soc
     SEND_CYCLE_1 = 2'd1,
     SEND_CYCLE_2 = 2'd2
   } tx_state_e;
-  tx_state_e          tx_state;
+  tx_state_e tx_state;
 
-  logic               rx_phase;
+  logic      rx_phase;
 
   // Configuration TLPs are routed by bus number (switched topology).
   // The bus number is taken from the address dword the software wrote into

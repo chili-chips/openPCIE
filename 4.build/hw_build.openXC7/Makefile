@@ -257,7 +257,7 @@ SV_PCIE_REST = $(filter-out $(SV_PKG) $(SV_IF), $(sort $(wildcard $(PCIE_DIR)/*.
 # The CPU is SystemVerilog (always_ff, typedef enum, unique case), so it goes
 # through sv2v together with the rest of the design.
 EDUBOS5_DIR = $(SRC_DIR)/CPU.eduBOS5
-SV_CPU_picorv32 = $(SRC_DIR)/picorv32.CHILI.sv
+SV_CPU_picorv32 = $(EDUBOS5_DIR)/edubos5_pkg.sv $(SRC_DIR)/picorv32.CHILI.sv  # riscv_pcie_soc imports edubos5_pkg
 SV_CPU_edubos5  = $(addprefix $(EDUBOS5_DIR)/,edubos5_pkg.sv edubos5_rf.sv edubos5_alu.sv edubos5.sv)
 SV_CPU_edubos5_3stg = $(SV_CPU_edubos5)
 CPU_DEFS = $(if $(filter picorv32,$(CPU)),-DSOC_CPU_PICORV32) \
