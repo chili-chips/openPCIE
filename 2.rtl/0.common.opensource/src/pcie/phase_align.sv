@@ -107,11 +107,11 @@ module phase_align
   end
 
   logic  dlyrst_done_edge;
-  assign dlyrst_done_edge  = (!txdlyrst_r3 && txdlyrst_r2);
+  assign dlyrst_done_edge  = (~txdlyrst_r3 & txdlyrst_r2);
   logic  phinit_done_edge;
-  assign phinit_done_edge  = (!txphinit_r3 && txphinit_r2);
+  assign phinit_done_edge  = (~txphinit_r3 & txphinit_r2);
   logic  phalign_done_edge;
-  assign phalign_done_edge = (!txphalign_r3 && txphalign_r2);
+  assign phalign_done_edge = (~txphalign_r3 & txphalign_r2);
 
   logic txdlyen, txdlyen_nx;
   logic txsync_done_nx;

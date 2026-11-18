@@ -46,9 +46,9 @@ module rvfi_wrapper (
   end
 `ifdef EDUBOS5_STORE_WAIT
   wire store_req = dmem_vld && dmem_we != 4'b0000;
-  assign dmem_rdy = dmem_ready && (load_wait || store_req);
+  assign dmem_rdy = dmem_ready & (load_wait | store_req);
 `else
-  assign dmem_rdy = dmem_ready && load_wait;
+  assign dmem_rdy = dmem_ready & load_wait;
 `endif
 
 // Legal, aligned code: eduBOS5 has no illegal-instruction and no misaligned

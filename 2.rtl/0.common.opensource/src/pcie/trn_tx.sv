@@ -62,13 +62,13 @@ module trn_tx
   logic                            reg_tsrc_rdy;
 
   logic  axi_beat_live;
-  assign axi_beat_live  = s_axis_tx.tvalid && s_axis_tx.tready;
+  assign axi_beat_live  = s_axis_tx.tvalid & s_axis_tx.tready;
   logic  axi_end_packet;
-  assign axi_end_packet = axi_beat_live && s_axis_tx.tlast;
+  assign axi_end_packet = axi_beat_live & s_axis_tx.tlast;
 
   assign trn.td         = {reg_tdata[31:0], reg_tdata[63:32]};
 
-  assign trn.tsof       = reg_tvalid && !trn_in_packet;
+  assign trn.tsof       = reg_tvalid & ~trn_in_packet;
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -111,7 +111,7 @@ module trn_tx
       end
     end
   end
-  assign disable_trn   = reg_disable_trn || !trn.link_up;
+  assign disable_trn   = reg_disable_trn | ~trn.link_up;
 
   assign trn.trem      = reg_trem;
 

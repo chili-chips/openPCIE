@@ -39,6 +39,12 @@
 
 module riscv_pcie_soc
   import pcie_pkg::*;
+  import csr_pkg::*;
+`ifndef SOC_CPU_VPROC
+`ifndef SOC_CPU_PICORV32
+  import edubos5_pkg::*;  // eduBOS5 builds only: they compile edubos5_pkg.sv
+`endif
+`endif
 (
     input  logic   clk,
     input  logic   resetn,
@@ -167,7 +173,7 @@ module riscv_pcie_soc
   // ready, so the ready a store gets back, one cycle later, must not reach it:
   // eduBOS5 would take it for the data of a load that follows. Only the ready
   // of a load still waiting for its data goes through.
-  edubos5_pkg::cpu_pc_t        imem_addr;
+  cpu_pc_t        imem_addr;
   logic                 [18:0] NC_imem_addr_hi;  // the RAM decodes [12:2]
   logic                 [31:0] imem_rdat;
   logic                        load_wait;
@@ -181,11 +187,11 @@ module riscv_pcie_soc
 
   generate
     if (CSR_RD_FLOP == 1'b1) begin : g_rdy_flop
-      assign edubos5_rdy = mem.ready && load_wait;
+      assign edubos5_rdy = mem.ready & load_wait;
     end
     else begin : g_rdy_comb
       // the CSR answers in the load's request cycle, the RAM one cycle later
-      assign edubos5_rdy = mem.ready && (load_wait || mem.valid && mem.wstrb == '0);
+      assign edubos5_rdy = mem.ready & (load_wait | mem.valid & mem.wstrb == '0);
     end
   endgenerate
 
@@ -287,8 +293,8 @@ module riscv_pcie_soc
   // Type 0 / Type 1 selector. The device number needs no such treatment --
   // it already travels in DW2, where the completer expects it.
   // PeakRDL-generated CSR ports (u_soc_csr below)
-  csr_pkg::csr__in_t  csr_in;
-  csr_pkg::csr__out_t csr_out;
+  csr__in_t  csr_in;
+  csr__out_t csr_out;
 
   pcie_tlp_dw0_t tx_dw0, tx_dw0_routed;
   pcie_cfg_dw2_t tx_cfg_dw2;
@@ -477,7 +483,7 @@ module riscv_pcie_soc
     other_rdy <= mem.valid && !is_ram && !is_bridge;
   end
 
-  assign mem.ready = ram_ready || bridge_rdy || other_rdy;
+  assign mem.ready = ram_ready | bridge_rdy | other_rdy;
 
 endmodule
 

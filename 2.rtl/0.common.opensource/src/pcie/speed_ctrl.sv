@@ -135,8 +135,8 @@ module speed_ctrl
   logic ratedone;
 
   logic latch_phase;
-  assign latch_phase = (state == ST_RATE_WAIT) || (state == ST_RXPMA_DN) ||
-                     (state == ST_DRP20_REQ) || (state == ST_DRP20_ACK);
+  assign latch_phase = (state == ST_RATE_WAIT) | (state == ST_RXPMA_DN) |
+                     (state == ST_DRP20_REQ) | (state == ST_DRP20_ACK);
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -208,8 +208,8 @@ module speed_ctrl
   end
 
   assign rate_ctrl.pipe_clk_sel = pipe_clk_sel;
-  assign rate_ctrl.drp_start    = (state == ST_DRP16_REQ) || (state == ST_DRP20_REQ);
-  assign rate_ctrl.drp_x16      = (state == ST_DRP16_REQ) || (state == ST_DRP16_ACK);
+  assign rate_ctrl.drp_start    = (state == ST_DRP16_REQ) | (state == ST_DRP20_REQ);
+  assign rate_ctrl.drp_x16      = (state == ST_DRP16_REQ) | (state == ST_DRP16_ACK);
   assign rate_ctrl.rate         = rate_out;
   assign rate_ctrl.txsync_start = (state == ST_TXSYNC_REQ);
   assign rate_ctrl.done         = (state == ST_DONE);

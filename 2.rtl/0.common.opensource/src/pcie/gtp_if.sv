@@ -37,15 +37,17 @@
 //              https://opensource.org/license/bsd-3-clause
 //--------------------------------------------------------------------------
 
-interface gtp_if #(
-    parameter int LANES = link_pkg::PCIE_LANES
+interface gtp_if
+  import link_pkg::*;
+#(
+    parameter int LANES = PCIE_LANES
 );
   // gtp_wrapper <-> lane_xcvr. One instance; lane_xcvr #(LANE) drives and reads
   // its own slice [LANE]. gtp_wrapper derives the cross-lane values from the
   // per-lane status and sends them back.
 
   // ---- reset sequencing from init_ctrl, common to all lanes
-  link_pkg::gtp_rst_t rst;
+  gtp_rst_t rst;
 
   // ---- cross-lane, from gtp_wrapper
   logic txsyncallin;  // TX phase aligned on all active lanes

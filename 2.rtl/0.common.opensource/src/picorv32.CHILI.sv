@@ -389,7 +389,7 @@ module picorv32 #(
   assign mem_la_firstword = COMPRESSED_ISA
                                      & (mem_do_prefetch | mem_do_rinst)
                                      &  next_pc[1]
-                                     & !mem_la_secondword;
+                                     & ~mem_la_secondword;
 
   logic mem_la_firstword_xfer;
   assign mem_la_firstword_xfer = COMPRESSED_ISA
@@ -437,9 +437,9 @@ module picorv32 #(
   assign mem_rdata_latched_noshuffle = (mem_xfer | LATCHED_MEM_RDATA) ? mem_rdata : mem_rdata_q;
 
   assign mem_rdata_latched =
-      COMPRESSED_ISA && mem_la_use_prefetched_high_word ? {16'hxxxx, mem_16bit_buffer} :
-      COMPRESSED_ISA && mem_la_secondword ? {mem_rdata_latched_noshuffle[15:0], mem_16bit_buffer} :
-      COMPRESSED_ISA && mem_la_firstword ? {16'hxxxx, mem_rdata_latched_noshuffle[31:16]} :
+      COMPRESSED_ISA & mem_la_use_prefetched_high_word ? {16'hxxxx, mem_16bit_buffer} :
+      COMPRESSED_ISA & mem_la_secondword ? {mem_rdata_latched_noshuffle[15:0], mem_16bit_buffer} :
+      COMPRESSED_ISA & mem_la_firstword ? {16'hxxxx, mem_rdata_latched_noshuffle[31:16]} :
       mem_rdata_latched_noshuffle;
 
   // Declared here, ahead of its first use in the decoder below.
@@ -448,7 +448,7 @@ module picorv32 #(
   // mem_rdata_q-populating pass and the instr_jalr-setting pass both check
   // this same bit pattern of mem_rdata_latched.
   logic is_c_jalr;
-  assign is_c_jalr = mem_rdata_latched[12] != 0 && mem_rdata_latched[11:7] != 0 &&
+  assign is_c_jalr = mem_rdata_latched[12] != 0 & mem_rdata_latched[11:7] != 0 &
                      mem_rdata_latched[6:2] == 0;
 
   always_ff @(posedge clk or negedge resetn) begin
@@ -887,7 +887,7 @@ module picorv32 #(
   // instead of repeating `decoder_trigger && !decoder_pseudo_trigger`
   // verbatim at each use site (the main FSM's Stage-2 decode block, and
   // the pcpi_insn generate block above, where it is declared).
-  assign stage2_decode_trigger = decoder_trigger && !decoder_pseudo_trigger;
+  assign stage2_decode_trigger = decoder_trigger & ~decoder_pseudo_trigger;
 
   logic is_lui_auipc_jal;
   logic is_lb_lh_lw_lbu_lhu;
@@ -904,7 +904,7 @@ module picorv32 #(
   logic is_alu_reg_reg;
   logic is_compare;
 
-  assign instr_trap = (CATCH_ILLINSN || WITH_PCPI) && !{
+  assign instr_trap = (CATCH_ILLINSN | WITH_PCPI) & ~|{
       instr_lui, instr_auipc, instr_jal, instr_jalr,
       instr_beq, instr_bne, instr_blt, instr_bge, instr_bltu, instr_bgeu,
       instr_lb, instr_lh, instr_lw, instr_lbu, instr_lhu, instr_sb, instr_sh, instr_sw,
@@ -1382,7 +1382,7 @@ module picorv32 #(
   assign next_pc = (latched_store & latched_branch) ? reg_out[31:1] : reg_next_pc[31:1];
 `ifdef CPU_DEBUG
   logic  next_pc_0;
-  assign next_pc_0 = !(latched_store & latched_branch) & reg_next_pc[0];
+  assign next_pc_0 = ~(latched_store & latched_branch) & reg_next_pc[0];
 `endif
 
   logic [3:0] pcpi_timeout_counter;
@@ -1401,20 +1401,20 @@ module picorv32 #(
   // is_sll_srl_sra-vs-default unique case, and the plain default case a few
   // states later) instead of repeating this formula verbatim in two places.
   logic  alu_wait_needed;
-  assign alu_wait_needed = TWO_CYCLE_ALU || (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
+  assign alu_wait_needed = TWO_CYCLE_ALU | (TWO_CYCLE_COMPARE & is_beq_bne_blt_bge_bltu_bgeu);
 
   logic  alu_wait_2_needed;
-  assign alu_wait_2_needed = TWO_CYCLE_ALU && (TWO_CYCLE_COMPARE && is_beq_bne_blt_bge_bltu_bgeu);
+  assign alu_wait_2_needed = TWO_CYCLE_ALU & (TWO_CYCLE_COMPARE & is_beq_bne_blt_bge_bltu_bgeu);
 
   // Whether each maskable trap-IRQ is currently allowed to be raised.
   // Computed once and reused at every trap-raising site in the FSM below,
   // instead of repeating `ENABLE_IRQ && !irq_mask[IRQ_x] && !irq_active`
   // verbatim at each one (3 sites each for EBREAK and BUSERROR).
   logic  ebreak_irq_allowed;
-  assign ebreak_irq_allowed = ENABLE_IRQ && !irq_mask[IRQ_EBREAK] && !irq_active;
+  assign ebreak_irq_allowed = ENABLE_IRQ & ~irq_mask[IRQ_EBREAK] & ~irq_active;
 
   logic  buserror_irq_allowed;
-  assign buserror_irq_allowed = ENABLE_IRQ && !irq_mask[IRQ_BUSERROR] && !irq_active;
+  assign buserror_irq_allowed = ENABLE_IRQ & ~irq_mask[IRQ_BUSERROR] & ~irq_active;
 
   // NOTE: the alu_out_0 case below uses is_slti_blt_slt / is_sltiu_bltu_sltu
   // without upstream PicoRV32's TWO_CYCLE_COMPARE guard: they are exclusive
@@ -1645,8 +1645,8 @@ module picorv32 #(
 `ifdef CPU_DEBUG
   logic launch_next_insn;
   assign launch_next_insn = (cpu_state == FETCH_WR_REG)
-            && decoder_trigger
-            && (!ENABLE_IRQ || irq_delay || irq_active || !any_irq_pending_masked);
+            & decoder_trigger
+            & (~ENABLE_IRQ | irq_delay | irq_active | ~any_irq_pending_masked);
 
   `FORMAL_KEEP
   logic [31:0] dbg_rsrc1val;

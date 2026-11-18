@@ -173,11 +173,11 @@ module init_ctrl
   logic userrdy_q;
 
   logic gtpll0_reset_d;
-  assign gtpll0_reset_d = (state == ST_GTPLL0_HOLD)  || (state == ST_DRP16_REQ) ||
+  assign gtpll0_reset_d = (state == ST_GTPLL0_HOLD)  | (state == ST_DRP16_REQ) |
                           (state == ST_DRP16_ACK);
   logic gtreset_d;
-  assign gtreset_d = (state == ST_GTPLL0_HOLD)  || (state == ST_DRP16_REQ) ||
-                     (state == ST_DRP16_ACK) || (state == ST_GTPLL0_LOCK);
+  assign gtreset_d = (state == ST_GTPLL0_HOLD)  | (state == ST_DRP16_REQ) |
+                     (state == ST_DRP16_ACK) | (state == ST_GTPLL0_LOCK);
   logic  userrdy_d;
   assign userrdy_d = (state == ST_LOCK_WAIT) ? mmcm_locked : userrdy_q;
 

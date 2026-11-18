@@ -166,13 +166,13 @@ module rx_eios_filter
     end
   end
 
-  assign user_rx.valid = gt_rxvalid_q;
-  assign user_rx.char_is_k[0] = gt_rxvalid_q ? gt_rxcharisk_q[0] : 1'b0;
-  assign user_rx.char_is_k[1] = (gt_rxvalid_q && !reg_symbol_after_eios) ? gt_rxcharisk_q[1] : 1'b0;
-  assign user_rx.data = gt_rxdata_q;
-  assign user_rx.status = gt_rx_status_q;
-  assign user_rx.phy_status = gt_rx_phy_status_q;
-  assign user_rx.elec_idle = gt_rxelecidle_q;
+  assign user_rx.valid         = gt_rxvalid_q;
+  assign user_rx.char_is_k[0]  = gt_rxvalid_q ? gt_rxcharisk_q[0] : 1'b0;
+  assign user_rx.char_is_k[1]  = (gt_rxvalid_q & ~reg_symbol_after_eios) ? gt_rxcharisk_q[1] : 1'b0;
+  assign user_rx.data          = gt_rxdata_q;
+  assign user_rx.status        = gt_rx_status_q;
+  assign user_rx.phy_status    = gt_rx_phy_status_q;
+  assign user_rx.elec_idle     = gt_rxelecidle_q;
   assign user_rx.chanisaligned = gt_rx.chanisaligned;  // not filtered
 
 endmodule

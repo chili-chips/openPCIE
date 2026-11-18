@@ -21,7 +21,16 @@
 #      ports (run-format-align.py; Verible aligns each group on its own);
 #      an interface port, which has no direction, starts in the direction column;
 #   0. no CR (^M) in these files (removed unless --check);
-#   3. no ?: in a port connection (reported, not fixed).
+#   3. no ?: in a port connection (reported, not fixed);
+#   4. package imports (reported, not fixed): a module's or interface's
+#      imports in its header (module m import p::*; (...)), not after the port
+#      list; only wildcard imports (import p::*;), no selective ones
+#      (import p::name;); no p:: prefix on a name outside an import line;
+#      no import outside a module or interface (at file level);
+#   5. no logical operator (&&, ||, !) in an assign or a net declared with an
+#      expression (wire x = ...;) (reported, not fixed): the
+#      bitwise ones (&, |, ~) on 1-bit operands; an integer parameter as a
+#      flag is (P != 0), a vector under ! is ~|v.
 #
 # usage:  bash run-format.sh            format every RTL file in place
 #         bash run-format.sh --check    only report the files that are not
@@ -222,7 +231,75 @@ port_out=$(perl -e '
 [ -n "$port_out" ] && printf '%s\n' "$port_out"
 np=$(printf '%s' "$port_out" | grep -c '?:')
 echo "-- port connections: $np with ?:"
-[ $bad -eq 0 ] && [ $ncr -eq 0 ] && [ $nf -eq 0 ] && [ $nl -eq 0 ] && [ $nc -eq 0 ] && [ $np -eq 0 ]
+# Package imports: in the header, wildcard only, no p:: prefixes. Reported in
+# both modes: moving an import or dropping a prefix is a manual edit.
+imp_out=$(python3 - "${FILES[@]}" <<'PY'
+import re, sys
+files = sys.argv[1:]
+
+TOK = re.compile(r'"(?:\\.|[^"\\\n])*"|/\*.*?\*/|//[^\n]*', re.S)
+
+def code(f):  # the file without comments and strings, line numbers kept
+    s = open(f, encoding='utf-8', errors='replace').read()
+    # a DPI import names a C function, not a package: not an import here
+    s = re.sub(r'\bimport\s+"DPI(?:-C)?"[^;]*;', lambda m: re.sub(r'[^\n]', ' ', m.group(0)), s)
+    return TOK.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), s).split('\n')
+
+pkgs = {m for f in files for l in code(f) for m in re.findall(r'^\s*package\s+(\w+)\s*;', l)}
+for f in files:
+    name = f.split('/')[-1]
+    where = None  # 'header' from 'module m' to the end of its port list, then 'body'
+    for n, l in enumerate(code(f), 1):
+        if re.match(r'\s*(module|interface)\s+\w+', l):
+            where = 'body' if re.search(r';\s*$', l) else 'header'
+        elif where == 'header' and re.match(r'\s*\)\s*;', l):
+            where = 'body'
+        elif re.match(r'\s*package\s+\w+', l):
+            where = 'package'  # a package imports in its body
+        elif re.match(r'\s*end(module|interface|package)\b', l):
+            where = None
+        imp = re.match(r'\s*import\s+(.*);', l)
+        if imp:
+            for item in imp.group(1).split(','):
+                if not item.strip().endswith('::*'):
+                    print(f'selective import ({item.strip()}): {name}:{n}')
+            if where == 'body':
+                print(f'import after the port list: {name}:{n}')
+            elif where is None:
+                print(f'import outside a module (put it in the header): {name}:{n}')
+            continue
+        for p in re.findall(r'\b(\w+)::\w', l):
+            if p in pkgs or p.endswith('_pkg'):
+                print(f'{p}:: prefix (import it in the header): {name}:{n}')
+PY
+)
+[ -n "$imp_out" ] && printf '%s\n' "$imp_out"
+ni=$(printf '%s' "$imp_out" | grep -c ':[0-9]')
+echo "-- package imports: $ni finding(s)"
+
+# Logical operators in an assign: &&, || and ! (not !=, !==). Reported in both
+# modes: the bitwise rewrite needs the operand widths, so it is a manual edit.
+log_out=$(python3 - "${FILES[@]}" <<'PY'
+import re, sys
+# strings and comments blanked in one pass (a /* inside a string is text), lines kept
+TOK = re.compile(r'"(?:\\.|[^"\\\n])*"|/\*.*?\*/|//[^\n]*', re.S)
+# an assign, or a net declared with an expression (wire x = ...;), which is one too
+STMT = re.compile(r'\bassign\b[^;]*;|\b(?:wire|tri|wand|wor)\b[^;=]*=[^;]*;')
+for f in sys.argv[1:]:
+    s = open(f, encoding='utf-8', errors='replace').read()
+    s = TOK.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), s)
+    for m in STMT.finditer(s):
+        ops = sorted(set(re.findall(r'&&|\|\||!(?!=)', m.group(0))))
+        if ops:
+            line = s.count('\n', 0, m.start()) + 1
+            print(f"{' '.join(ops)} in an assign (use & | ~): {f.split('/')[-1]}:{line}")
+PY
+)
+[ -n "$log_out" ] && printf '%s\n' "$log_out"
+nlo=$(printf '%s' "$log_out" | grep -c ':[0-9]')
+echo "-- logical operators in assigns: $nlo finding(s)"
+[ $bad -eq 0 ] && [ $ncr -eq 0 ] && [ $nf -eq 0 ] && [ $nl -eq 0 ] && [ $nc -eq 0 ] && [ $np -eq 0 ] &&
+  [ $ni -eq 0 ] && [ $nlo -eq 0 ]
 
 # -----------------------------------------------------------------------------
 # Project:     openPCIE

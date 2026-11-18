@@ -182,13 +182,12 @@ module lane_xcvr
     end
   end
 
-  assign gtp.resetdone[LANE] = txresetdone_2 && rxresetdone_2;
-  assign active_lane = !(txelecidle_2 && txcompliance_2);
-  assign pipe_phy.rx[LANE].valid    = gt_rxvalid && (rxvalid_cnt == RXVALID_MAX) && rst_idle_2 &&
+  assign gtp.resetdone[LANE] = txresetdone_2 & rxresetdone_2;
+  assign active_lane = ~(txelecidle_2 & txcompliance_2);
+  assign pipe_phy.rx[LANE].valid    = gt_rxvalid & (rxvalid_cnt == RXVALID_MAX) & rst_idle_2 &
                                         rate_idle_2;
-  assign pipe_phy.rx[LANE].phy_status = (!rst_idle_2) || (rate_idle_2 && gt_phystatus) ||
-                                        rate_done_2;
-  assign gtp.phystatus_rst[LANE] = !rst_idle_2;
+  assign pipe_phy.rx[LANE].phy_status = (~rst_idle_2) | (rate_idle_2 & gt_phystatus) | rate_done_2;
+  assign gtp.phystatus_rst[LANE] = ~rst_idle_2;
 
   speed_ctrl u_speed_ctrl (
       .clk            (pipe_clk),

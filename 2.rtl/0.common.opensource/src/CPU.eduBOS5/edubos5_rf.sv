@@ -34,8 +34,8 @@ module edubos5_rf
     end
   end
 
-  assign rs1 = (TARGET_IS_ASIC && rs1_addr == '0) ? '0 : rf[rs1_addr];
-  assign rs2 = (TARGET_IS_ASIC && rs2_addr == '0) ? '0 : rf[rs2_addr];
+  assign rs1 = (TARGET_IS_ASIC & rs1_addr == '0) ? '0 : rf[rs1_addr];
+  assign rs2 = (TARGET_IS_ASIC & rs2_addr == '0) ? '0 : rf[rs2_addr];
 
   always_ff @(posedge clk) begin : rf_writeback
     if (rf_we == HI) begin

@@ -77,7 +77,7 @@ module trn_rx
   logic                  reg_dsc_detect;
   logic                  trn_rsrc_dsc_d;
 
-  assign rsrc_rdy_filtered = trn.rsrc_rdy && (trn_in_packet || (trn.rsof && !trn.rsrc_dsc));
+  assign rsrc_rdy_filtered = trn.rsrc_rdy & (trn_in_packet | (trn.rsof & ~trn.rsrc_dsc));
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -120,7 +120,7 @@ module trn_rx
     end
   end
 
-  assign data_hold = (!m_axis_rx.tready && m_axis_rx.tvalid);
+  assign data_hold = (~m_axis_rx.tready & m_axis_rx.tvalid);
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -227,8 +227,8 @@ module trn_rx
     end
   end
 
-  assign dsc_detect = trn.rsrc_dsc && !trn_rsrc_dsc_d && trn_in_packet &&
-                         (!trn.rsof || trn.reof) && !(trn.rdst_rdy && trn.reof);
+  assign dsc_detect = trn.rsrc_dsc & ~trn_rsrc_dsc_d & trn_in_packet &
+                         (~trn.rsof | trn.reof) & ~(trn.rdst_rdy & trn.reof);
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -247,7 +247,7 @@ module trn_rx
     end
   end
 
-  assign dsc_flag = dsc_detect || reg_dsc_detect;
+  assign dsc_flag = dsc_detect | reg_dsc_detect;
 
   // ---- null generator: finishes an RX packet the core discontinued, with -----
   // ---- filler beats up to the length in its header                       -----

@@ -203,7 +203,7 @@ module chan_retune
   end
 
   assign drp_req.addr = addr_reg;
-  assign drp_req.en   = (state == ST_READ) || (state == ST_WRITE);
+  assign drp_req.en   = (state == ST_READ) | (state == ST_WRITE);
   assign drp_req.di   = di_reg;
   assign drp_req.we   = (state == ST_WRITE);
 

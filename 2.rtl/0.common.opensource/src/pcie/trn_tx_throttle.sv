@@ -105,7 +105,7 @@ module trn_tx_throttle
   logic axi_thrtl_ok;
   logic tx_ecrc_pause;
 
-  assign lnk_up_trig = !trn.link_up;
+  assign lnk_up_trig = ~trn.link_up;
   assign lnk_up_exit = trn.tdst_rdy;
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
@@ -138,12 +138,12 @@ module trn_tx_throttle
     end
   end
 
-  assign gap_trig_tlast = (trn.tbuf_av <= TBUF_AV_GAP) &&
-                            s_axis_tx.tvalid && tready_thrtl && s_axis_tx.tlast;
+  assign gap_trig_tlast = (trn.tbuf_av <= TBUF_AV_GAP) &
+                            s_axis_tx.tvalid & tready_thrtl & s_axis_tx.tlast;
 
-  assign gap_trig_decr = (trn.tbuf_av == (TBUF_AV_GAP)) && (tbuf_av_d == (TBUF_AV_GAP + 1));
+  assign gap_trig_decr = (trn.tbuf_av == (TBUF_AV_GAP)) & (tbuf_av_d == (TBUF_AV_GAP + 1));
 
-  assign tbuf_av_gap_trig = gap_trig_tlast || gap_trig_decr;
+  assign tbuf_av_gap_trig = gap_trig_tlast | gap_trig_decr;
   assign tbuf_av_gap_exit = (tbuf_gap_cnt == 0);
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
@@ -173,7 +173,7 @@ module trn_tx_throttle
     end
   end
 
-  assign ppm_l1_trig = (cfg_pcie_link_state_d == LINKSTATE_L0) &&
+  assign ppm_l1_trig = (cfg_pcie_link_state_d == LINKSTATE_L0) &
                        (cfg_pcie_link_state == LINKSTATE_PPM_L1_TRANS);
   assign ppm_l1_exit = cfg_pcie_link_state == LINKSTATE_L0;
 
@@ -207,16 +207,16 @@ module trn_tx_throttle
     end
   end
 
-  assign axi_in_pkt = s_axis_tx.tvalid || reg_axi_in_pkt;
-  assign axi_pkt_ending = s_axis_tx.tvalid && s_axis_tx.tlast;
-  assign axi_throttled = !tready_thrtl;
-  assign axi_thrtl_ok = !axi_in_pkt || axi_pkt_ending || axi_throttled;
+  assign axi_in_pkt     = s_axis_tx.tvalid | reg_axi_in_pkt;
+  assign axi_pkt_ending = s_axis_tx.tvalid & s_axis_tx.tlast;
+  assign axi_throttled  = ~tready_thrtl;
+  assign axi_thrtl_ok   = ~axi_in_pkt | axi_pkt_ending | axi_throttled;
 
-  assign pre_throttle = tbuf_av_min_trig || tbuf_av_gap_trig || lnk_up_trig || ppm_l1_trig;
+  assign pre_throttle   = tbuf_av_min_trig | tbuf_av_gap_trig | lnk_up_trig | ppm_l1_trig;
 
-  assign reg_throttle = tbuf_av_min_thrtl || tbuf_av_gap_thrtl || lnk_up_thrtl || ppm_l1_thrtl;
+  assign reg_throttle   = tbuf_av_min_thrtl | tbuf_av_gap_thrtl | lnk_up_thrtl | ppm_l1_thrtl;
 
-  assign exit_crit = !tbuf_av_min_thrtl && !tbuf_av_gap_thrtl && !lnk_up_thrtl && !ppm_l1_thrtl;
+  assign exit_crit      = ~tbuf_av_min_thrtl & ~tbuf_av_gap_thrtl & ~lnk_up_thrtl & ~ppm_l1_thrtl;
 
   always_comb begin
     unique case (cur_state)
@@ -265,11 +265,11 @@ module trn_tx_throttle
 
   // packet length in DW = header (3 or 4) + payload (if any); only its parity
   // matters: an even-length TLP without digest needs the ECRC pause
-  assign packet_len_odd = !tx_dw0.fmt[0] ^ (tx_dw0.fmt[1] & tx_dw0.length[0]);
-  assign pause_needed = !packet_len_odd && !tx_dw0.td;
+  assign packet_len_odd = ~tx_dw0.fmt[0] ^ (tx_dw0.fmt[1] & tx_dw0.length[0]);
+  assign pause_needed = ~packet_len_odd & ~tx_dw0.td;
 
-  assign tx_ecrc_pkt = tx_tuser.ecrc_gen && pause_needed &&
-                        tready_thrtl && s_axis_tx.tvalid && !reg_axi_in_pkt;
+  assign tx_ecrc_pkt = tx_tuser.ecrc_gen & pause_needed &
+                        tready_thrtl & s_axis_tx.tvalid & ~reg_axi_in_pkt;
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -285,8 +285,8 @@ module trn_tx_throttle
     end
   end
 
-  assign tx_ecrc_pause = ((tx_ecrc_pkt || reg_tx_ecrc_pkt) &&
-                       s_axis_tx.tlast && s_axis_tx.tvalid && tready_thrtl);
+  assign tx_ecrc_pause = ((tx_ecrc_pkt | reg_tx_ecrc_pkt) &
+                       s_axis_tx.tlast & s_axis_tx.tvalid & tready_thrtl);
 
 
 endmodule
