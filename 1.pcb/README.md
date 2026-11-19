@@ -55,6 +55,12 @@ The system-wide PERST# reset signal is distributed to all slots and can be trigg
 
 Provides a direct, point-to-point, 4-lane PCIE link between two connectors.
 
+Recent examples of the same Direct link: an FPGA card as RC drives an M.2 NVMe drive through a PuZhi SSD adapter, used by [LiteNVMe](https://github.com/enjoy-digital/litenvme) ([setup](https://x.com/enjoy_digital/status/2016815521606307888)) and by regymm's [pci_eerie](https://github.com/regymm/pci_eerie). The adapter is a mini backplane: it supplies the 100 MHz REFCLK and swaps TX/RX; reset comes from the FPGA card. It does not route 3.3V to the PCIE slot by default, so the FPGA card needs a fly wire (orange, below) to power on.
+
+<div align="center">
+ <img alt="pci_eerie setup: Kintex-7 480T card as PCIE root port, plugged into a PuZhi SSD adapter with an Intel Optane M.2 drive; an orange fly wire brings 3.3V to the slot" width="50%" src="0.doc/images/setup_k480t_optane.jpg">
+</div>
+
 **RC4 (Root Complex)**  
 - 4-lane connector intended for a card acting as the Root Complex.  
 - Mechanical option: *M.2 (M-key, PCIE)*.

@@ -52,6 +52,12 @@ Our openPCIE Backplane, SQRL Acorn CLE-215+ FPGA modules and PCIE adapters form 
     <img alt="openPCIE backplane block diagram" width="50%" src="1.pcb/0.doc/openPCIE-BlockDiagram.jpg">
 </div>
 
+Why a backplane: an RC and an EP card do not plug into each other. Without one, the TX and RX diff pairs get crossed by hand, the crude way:
+
+<div align="center">
+ <img alt="Cut PCIE traces with hand-soldered magnet wires crossing over to swap a diff pair" width="60%" src="1.pcb/0.doc/images/PCIE-diff-pair-swap--The-Crude-Way.jpg">
+</div>
+
 Details: [1.pcb](1.pcb). KiCad library: [1.pcb/KiCad-library](1.pcb/KiCad-library/README.md). Plain-text versions of the PDF and slide documents: [0.doc/1.pcb](0.doc/1.pcb/README.md).
 
 ### FPGA Carrier
@@ -142,6 +148,7 @@ Details: [RTL README](2.rtl/README.md#systemverilog-interfaces). Per design: [co
 #### References:
 - [Basic PCIE EP for LiteFury](https://github.com/hdlguy/litefury_pcie)
 - [Regymm PCIE](https://github.com/regymm/pcie_7x)
+- [Regymm pci_eerie: open-source PCIE EP soft stack, replaces the 7-series HM](https://github.com/regymm/pci_eerie)
 - [LiteX PCIE EP](https://github.com/enjoy-digital/litepcie)
 - [PCIE EP DMA - Wupper](https://gitlab.nikhef.nl/franss/wupper)
 - [Xilinx UG477 - 7Series Integrated Block PCIe](https://docs.xilinx.com/v/u/en-US/ug477_7Series_IntBlock_PCIe)
