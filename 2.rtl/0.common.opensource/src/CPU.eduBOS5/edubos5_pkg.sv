@@ -106,7 +106,8 @@ package edubos5_pkg;
   //funct7 types
   typedef enum logic [6:0] {
     SEL_FIRST  = 7'b000_0000,  //default, or selects first (ADD_SUB ADD would be selected)
-    SEL_SECOND = 7'b010_0000
+    SEL_SECOND = 7'b010_0000,
+    SEL_MULDIV = 7'b000_0001   //RV32M, ALUREG only (USE_HW_MUL)
   } funct7_t;  //only ALUREG and ALUIMM instr
   //shared func3 fields differentiated in grp_imm_t
   // 6 instruction type groups (part that's selected by opcode)

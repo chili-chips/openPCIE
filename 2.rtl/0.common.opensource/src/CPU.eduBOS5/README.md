@@ -17,6 +17,7 @@
 | x0 = 0, ASIC | `TARGET_IS_ASIC=1`: read mux | `TARGET_IS_ASIC=1`: read mux |
 | store on a bus that can make it wait | `STORE_WAITS_RDY=1`: the store holds its request until `dmem_rdy`, stalling the core; 0 cycles more when `dmem_rdy` comes in the request cycle | waits on `mem_ready` always |
 | counters (Zicntr) | `EN_COUNTERS=1`: `rdcycle`, `rdtime` (= cycle), `rdinstret` and the `h` halves, 64-bit (`csrrs`/`csrrc` with `x0`, or `csrrsi`/`csrrci` with 0); any other CSR access halts; no extra cycle. 0 (default): none, no logic. The SOC sets 1 (`make COUNTERS=0` for none) | `ENABLE_COUNTERS`: the same, set by the SOC alike |
+| multiply, divide (RV32M) | `USE_HW_MUL=1`: all 8 M instructions, each in a fixed count of clocks, whatever its operands; `USE_DSP48E1=1` multiplies in one DSP48E1 primitive (Xilinx 7-series). 0 (default): RV32I, no logic. The SOC leaves it 0 ([RV32M](#rv32m-multiply-and-divide-use_hw_mul)) | `ENABLE_MUL`, `ENABLE_DIV`: not set by the SOC |
 
 x0 is never written, so it must read 0 from the start: an FPGA RAM has a power-up value (its INIT), an ASIC does not, hence the mux.
 
@@ -24,13 +25,13 @@ x0 is never written, so it must read 0 from the start: an FPGA RAM has a power-u
 
 | File | |
 |---|---|
-| `edubos5.sv` | the core: control FSM, decode, load/store |
+| `edubos5.sv` | the core: control FSM, decode, load/store; multiply and divide (`USE_HW_MUL`) |
 | `edubos5_alu.sv` | ALU, registered output |
 | `edubos5_rf.sv` | register file: 2 asynchronous read ports, 1 synchronous write port |
 | `edubos5_pkg.sv` | common types and opcodes |
 | [`formal/`](formal) | the multicycle proof ([formal proving](#getting-started-with-formal-proving-a-worked-example)) and [riscv-formal](#riscv-formal-every-instruction-against-the-isa): harnesses and scripts |
 | [`wavecrux/`](wavecrux) | the CPU's RVFI view and its pictures ([WaveCrux](#watching-the-cpu-in-wavecrux)) |
-| [`sim/`](sim) | the core before reset acts, in Icarus and Verilator ([below](#a-retirement-before-reset-seen-only-in-simulation)) |
+| [`sim/`](sim) | the core before reset acts, in Icarus and Verilator ([below](#a-retirement-before-reset-seen-only-in-simulation)); the RV32M test ([below](#rv32m-multiply-and-divide-use_hw_mul)) |
 
 Cycles per instruction (`EN_WAIT4REGS` selects the pipeline):
 
@@ -40,6 +41,8 @@ Cycles per instruction (`EN_WAIT4REGS` selects the pipeline):
 | `jal`, `jalr`, branch taken | 2 | 4 |
 | load, eduBOS5 own: memory `ready` with `valid` | 4 | 5 |
 | load in the openPCIE SOC: RAM/CSR `ready` 1 cycle after `valid` | 5 | 6 |
+| `mul`, `mulh`, `mulhsu`, `mulhu` (`USE_HW_MUL=1`) | 8 | 9 |
+| `div`, `divu`, `rem`, `remu` (`USE_HW_MUL=1`) | 36 | 37 |
 
 The 3-stage is built for Fmax: `FETCH_INSTR` fetches `pc + 1`, so the RAM address never waits for the ALU, and a jump refetches from its target (`FETCH_TARGET`, 1 cycle); the ALU registers the shift result, like add and sub. The 2-stage has neither.
 
@@ -53,8 +56,8 @@ The rv32 ISS models both (`-V EDUBOS5STG2`, `-V EDUBOS5STG3`, see [5.sim](../../
 |---|---|---|---|
 | Vivado simulator (`xsim`) | 2026.1 | co-simulation with the firmware; the SVA multicycle check (dynamic) | [5.sim](../../../../5.sim/README.md), `` `define EDUBOS5_MCP_CHECK `` |
 | rv32 ISS | 1.3.3, modified | instruction-level model, cycle-exact against the RTL | [5.sim](../../../../5.sim/README.md), `make CPU=iss` |
-| Verilator | 5.052 | lint; accepts the SVA too (`--assert`); 2-state power-up | `run-lint.sh`, [`sim/run-power-up.sh`](sim/run-power-up.sh) |
-| Icarus Verilog + sv2v | 13.0, v0.0.13 | 4-state power-up | [`sim/run-power-up.sh`](sim/run-power-up.sh) |
+| Verilator | 5.052 | lint; accepts the SVA too (`--assert`); 2-state power-up; RV32M test (5.055) | `run-lint.sh`, [`sim/run-power-up.sh`](sim/run-power-up.sh), [`sim/run-muldiv.sh`](sim/run-muldiv.sh) |
+| Icarus Verilog + sv2v | 13.0, v0.0.13 | 4-state power-up; RV32M test, also with the DSP48E1 primitive (14.0) | [`sim/run-power-up.sh`](sim/run-power-up.sh), [`sim/run-muldiv.sh`](sim/run-muldiv.sh) |
 | Verible | v0.0-4296-g0f262651 | style lint, format | `run-lint.sh`, `run-format.sh` |
 | Yosys + slang (`read_slang`), openXC7 v1.0.0 | 0.69 | lint; equivalence (LEQ): an RTL change keeps behaviour | `run-lint.sh`, `run-leq.sh` |
 | ABC `pdr` (`yosys-abc`) | 1.01, in Yosys 0.69 | the static multicycle proof, unbounded | [`formal/run-mcp-formal.sh`](formal/run-mcp-formal.sh) |
@@ -111,6 +114,50 @@ Does the CSR's output register favour one CPU? By default the CSR registers its 
 - The comb read saves 33 FF (the 32-bit read data and ready) and costs up to 23 LUT.
 - Both pass the co-simulation, under 1% sooner: the PCIE link sets the pace, not the CSR accesses.
 - Same setup as the table above. The default stays the flop.
+
+## RV32M: multiply and divide (`USE_HW_MUL`)
+
+`USE_HW_MUL=1` adds the M extension: `mul`, `mulh`, `mulhsu`, `mulhu`, `div`, `divu`, `rem`, `remu`. Build the firmware with `-march=rv32im` (and `-mabi=ilp32`); with `USE_HW_MUL=0` keep `-march=rv32i`.
+
+**Constant time.** Each M instruction takes the same clocks for any operands, so a multiply or divide leaks no secret through timing. On RV32I, libgcc's shift-and-add loops do (X25519, Poly1305). The instruction stays in `EXECUTE` for a fixed count, then retires in `FETCH_INSTR` like an ALU one. Only a store the bus holds (`STORE_WAITS_RDY=1`) adds clocks, as for any instruction.
+
+| Clocks per instruction | 2-stage | 3-stage |
+|---|---|---|
+| `mul`, `mulh`, `mulhsu`, `mulhu` | 8 | 9 |
+| `div`, `divu`, `rem`, `remu` | 36 | 37 |
+
+**Multiply: one DSP48E1, 4 partial products.** One signed 33x33 multiply covers all four: each operand is sign- or zero-extended by `funct3`. Split into 17-bit halves (low unsigned, high signed), the 4 partial products go through one DSP48E1 (25x18), one per clock, and its post-adder sums them: `p1 = al*bl`, `p2 = (p1 >>> 17) + al*bh`, `p3 = p2 + ah*bl`, `p4 = (p3 >>> 17) + ah*bh`. The adder's Z input is 0, P or P >>> 17 (OPMODE Z = `000`, `010`, `110`; ALUMODE `0000`), so the sum needs no fabric adder. The low 17 bits of `p1` and `p3` are kept as they shift out; the product is `{p4[29:0], p3[16:0], p1[16:0]}`. All DSP registers are used: A, B, M, OPMODE and P. Clocks: 1 to load `rs1_reg`/`rs2_reg`, 4 to issue, 2 more for the M and P registers, 1 to retire.
+
+**Divide: restoring, 32 steps.** One quotient bit per clock on the magnitudes, always 32 steps, then the signs. The ISA's corner cases need no special path: divide by 0 gives quotient all ones and remainder the dividend; `INT_MIN / -1` gives `INT_MIN`, remainder 0.
+
+`USE_DSP48E1=1` instantiates the primitive. `USE_DSP48E1=0` (default) is the same registers in plain RTL, for simulation, lint, formal and other FPGAs; neither tool infers the shifted-P accumulation from it. Yosys packs only the M register into the DSP48E1, Vivado the A, B and product registers (the product as P), and both build the accumulator in fabric (Vivado: +48 LUT, +50 FF). On Xilinx, set 1.
+
+Cost and Fmax, the CPU alone (out of context, xc7a200t-2; LUT/FF after synthesis, Fmax after routing at a 4 ns target, 2026-11-23):
+
+| | 2-stage | 3-stage |
+|---|---|---|
+| LUT / FF / DSP48E1, Vivado 2026.2, `USE_HW_MUL=0` | 748 / 468 / 0 | 710 / 459 / 0 |
+| LUT / FF / DSP48E1, Vivado 2026.2, `USE_HW_MUL=1 USE_DSP48E1=1` | 1235 / 607 / 1 | 1096 / 600 / 1 |
+| Fmax, Vivado, `USE_HW_MUL=0` / `1` | 232 / 213 MHz | 248 / 233 MHz |
+| LUT (+ RAM32M) / FF / DSP48E1, Yosys 0.70 `synth_xilinx`, `USE_HW_MUL=0` | 785 (+12) / 464 / 0 | 800 (+12) / 462 / 0 |
+| the same, `USE_HW_MUL=1 USE_DSP48E1=1` | 1106 (+12) / 603 / 1 | 1096 (+12) / 601 / 1 |
+
+- **The DSP48E1:** Vivado and Yosys both keep AREG, BREG, MREG, PREG, OPMODEREG = 1. Its paths have slack to spare: DSP P -> register file 3.1 ns, operand mux -> DSP B 3.0 ns. Far above 80 MHz.
+- **The critical path stays the core's own:** ALU shifter -> register-file write. The M result is one more input on its mux.
+- **Most of the LUTs are the divider:** a 34-bit subtractor, and negations for the signs.
+
+Checks:
+
+| Check | Result |
+|---|---|
+| [`sim/run-muldiv.sh`](sim/run-muldiv.sh): 8 instructions on 16x16 corner pairs (0, ±1, ±2, `INT_MIN`, `INT_MAX`, ...) and 20,000 random pairs, against a reference; both pipelines, `STORE_WAITS_RDY` 0 and 1, Verilator | 0 errors; with `STORE_WAITS_RDY=0`, every M instruction takes exactly 8 or 36 (3-stage 9 or 37) clocks |
+| the same, Icarus, 500 random pairs, the RTL multiplier and the DSP48E1 primitive (AMD's `unisims/DSP48E1.v`) | 0 errors, same clocks |
+| riscv-formal, `MUL=1 LEGAL=1`, all checks, bound 16 | 52 pass, both pipelines |
+| riscv-formal, `MUL=1 LEGAL=1 DEPTH=44`, the 8 M `insn` checks | 8 pass, both pipelines (2 to 17 s each) |
+| riscv-formal, `LEGAL=1`, `USE_HW_MUL=0` | 44 pass, both pipelines, as before |
+| `run-leq.sh`, `USE_HW_MUL=0` against the RTL before it | PASS, both pipelines: 79,377 (3-stage 79,341) `$equiv` cells proven, the whole design |
+
+riscv-formal runs with `RISCV_FORMAL_ALTOPS`: for M, the core returns riscv-formal's stand-in results (sum or difference XOR a constant). So it checks decode, operands, timing, write-back and the PC, not the arithmetic: a SAT solver cannot prove a 32-bit multiplier or divider in reasonable time. The arithmetic is the simulation's job. `MODE=cover` shows a multiply retires within bound 16, a divide only within 44: at 16 the divide checks pass without being exercised. A test of the test: a wrong stand-in for `div` or `mulhu` fails its check.
 
 ## Watching the CPU in WaveCrux
 
@@ -201,11 +248,13 @@ RISCV_FORMAL=<riscv-formal clone> ALIGNED=1 bash formal/run-riscv-formal.sh 1  #
 RISCV_FORMAL=<riscv-formal clone> EXTRA=1 NO_SYSTEM=1 LEGAL=1 bash formal/run-riscv-formal.sh 0  # + liveness, hang, memory model
 RISCV_FORMAL=<riscv-formal clone> LEGAL=1 DEPTH=32 bash formal/run-riscv-formal.sh 0  # deeper bound (default 16)
 RISCV_FORMAL=<riscv-formal clone> MODE=cover bash formal/run-riscv-formal.sh 0 "" "ill_ch0 insn_add_ch0"  # is each check exercised?
+RISCV_FORMAL=<riscv-formal clone> MUL=1 LEGAL=1 bash formal/run-riscv-formal.sh 0  # RV32IM (USE_HW_MUL=1)
 ```
 
 - `LEGAL=1` is two halves, each settable alone: `ALIGNED=1` (natural alignment, word-aligned targets) and `LEGAL_STORES=1` (stores have a legal `funct3`).
 - `EXTRA=1` adds `liveness`, `hang`, `causal_mem` and `causal_io`. `NO_SYSTEM=1` keeps SYSTEM and unknown opcodes out of IMEM, which the first two need (see below).
 - `DEPTH=<n>` sets the bound of the standard checks.
+- `MUL=1` checks RV32IM with `USE_HW_MUL=1` ([RV32M](#rv32m-multiply-and-divide-use_hw_mul)).
 - `MODE=cover` asks whether each check's cover statement can be reached at all. A FAIL there means the check is never exercised, so its PASS in the normal run proves nothing.
 
 Two files set it up:
@@ -397,7 +446,7 @@ Formal found two things in eduBOS5 itself, and pointed to a third improvement:
    - `dmem_addr` is never built from an unsettled value, which removes the multicycle part of finding 2.
    - It does not fix finding 1: an illegal store still makes a bus cycle without write strobes.
 
-**Kept simple: unknown variants of known opcodes.** eduBOS5 halts on an unknown major opcode, but its ALU looks only at `funct3` and bit 5 of `funct7`, so an instruction from a missing extension can run as an RV32I one: a `mul` (`funct7` = 1, `funct3` = 0) runs as an `add`. We keep the decoder small. The firmware is built with `-march=rv32i`, and in co-simulation the ISS halts on every word outside RV32I ([RV32I only](../../../../5.sim/README.md#our-local-vip-improvements)), so code built for the wrong ISA shows up there first.
+**Kept simple: unknown variants of known opcodes.** eduBOS5 halts on an unknown major opcode, but its ALU looks only at `funct3` and bit 5 of `funct7`, so an instruction from a missing extension can run as an RV32I one: with `USE_HW_MUL=0`, a `mul` (`funct7` = 1, `funct3` = 0) runs as an `add`. We keep the decoder small. The firmware is built with `-march=rv32i`, and in co-simulation the ISS halts on every word outside RV32I ([RV32I only](../../../../5.sim/README.md#our-local-vip-improvements)), so code built for the wrong ISA shows up there first.
 
 ### Open-source formal tools
 
