@@ -183,6 +183,7 @@ module speed_ctrl
       ST_TXSYNC_REQ:   state_nx = (!txsync_r2) ? ST_TXSYNC_ACK : ST_TXSYNC_REQ;
       ST_TXSYNC_ACK:   state_nx = txsync_r2 ? ST_DONE : ST_TXSYNC_ACK;
       ST_DONE:         state_nx = ST_IDLE;
+      default:         state_nx = ST_IDLE;
     endcase
   end
 

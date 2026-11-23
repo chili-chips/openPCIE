@@ -166,6 +166,7 @@ module init_ctrl
       ST_RESET_DONE:  state_nx = (resetdone_hi && phystatus_lo) ? ST_TXSYNC_REQ : ST_RESET_DONE;
       ST_TXSYNC_REQ:  state_nx = txsync_lo ? ST_TXSYNC_ACK : ST_TXSYNC_REQ;
       ST_TXSYNC_ACK:  state_nx = txsync_hi ? ST_IDLE : ST_TXSYNC_ACK;
+      default:        state_nx = ST_IDLE;
     endcase
   end
 

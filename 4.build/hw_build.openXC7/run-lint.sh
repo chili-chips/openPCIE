@@ -6,7 +6,8 @@
 # Lint of the opensource RTL (2.rtl/0.common.opensource/src): syntax and
 # limited semantic checks with a set of opensource tools, run in this order:
 #
-#   tags       every /*LINT:OK*/ sits on an output port (no tool needed)
+#   tags       every /*LINT:OK*/ sits on an output port, and every unique and
+#              priority case of our RTL has a default (no tool needed)
 #   verilator  Verilator --lint-only -Wall: unused/undriven signals, widths,
 #              implicit nets, multiple drivers, blocking vs non-blocking, case
 #   yosys      Yosys check on the read_slang netlist: combinational loops,
@@ -192,6 +193,32 @@ for f in files:
             d = dirs.get(typ, {}).get(m.group(1))
             if d != 'output':
                 print(f'{f}:{n}: LINT:OK on {d or "unknown"} port {typ}.{m.group(1)}')
+# our RTL rule: every unique and priority case has a default, also a full one
+# (no tool checks it: Verible's case-missing-default skips unique, Verilator
+# and slang only flag values no item covers); unique0 has none
+tok = re.compile(r'\b(?:(unique0|unique|priority)\s+)?(case[zx]?|endcase|default)\b|([{}])')
+blank = re.compile(r'"(?:\\.|[^"\\\n])*"|//[^\n]*|/\*.*?\*/', re.S)
+for f in files:
+    if re.search(r'picorv32|^csr(_pkg)?\.sv$|\.v$', f):  # PicoRV32, the PeakRDL CSR, stubs
+        continue
+    # strings and comments blanked, newlines kept, so line numbers stay
+    t = blank.sub(lambda m: re.sub(r'[^\n]', ' ', m.group(0)), text[f])
+    stack, braces = [], 0  # one [qualifier, line, brace depth, has default] per open case
+    for m in tok.finditer(t):
+        if m.group(3):
+            braces += 1 if m.group(3) == '{' else -1
+        elif m.group(2).startswith('case'):
+            stack.append([m.group(1), t.count('\n', 0, m.start()) + 1, braces, False])
+        elif m.group(2) == 'default':
+            # a case label, not '{default: ...} in an assignment pattern
+            if stack and stack[-1][2] == braces:
+                stack[-1][3] = True
+        elif stack:
+            q, n, _, has = stack.pop()
+            if q in ('unique', 'priority') and not has:
+                print(f'{f}:{n}: {q} case without default')
+    for q, n, _, _ in stack:
+        print(f'{f}:{n}: case without endcase (an `ifdef around case or endcase?)')
 EOF
   local rc=$?
   [ $rc -eq 0 ] || { failed tags "exit $rc"; return; }

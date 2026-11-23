@@ -186,6 +186,7 @@ module chan_retune
         index_nx = index + 5'd1;
         done_nx  = 1'b0;
       end
+      default: state_nx = ST_IDLE;
     endcase
   end
 

@@ -279,10 +279,11 @@ module trn_rx
     unique case ({
       ng_dw0.fmt[0], ng_dw0.td
     })
-      2'b00: ng_packet_overhead = 2'b01;
-      2'b01: ng_packet_overhead = 2'b10;
-      2'b10: ng_packet_overhead = 2'b10;
-      2'b11: ng_packet_overhead = 2'b11;
+      2'b00:   ng_packet_overhead = 2'b01;
+      2'b01:   ng_packet_overhead = 2'b10;
+      2'b10:   ng_packet_overhead = 2'b10;
+      2'b11:   ng_packet_overhead = 2'b11;
+      default: ng_packet_overhead = 2'b01;
     endcase
   end
 
@@ -292,6 +293,7 @@ module trn_rx
   assign ng_pkt_done    = (ng_q.pkt_len <= NG_INTERFACE_WIDTH_DWORDS);
 
   always_comb begin
+    ng_d = ng_q;
     unique case (ng_q.state)
       NG_IDLE: begin
         if (m_axis_rx.tvalid && m_axis_rx.tready && !m_axis_rx.tlast) begin
@@ -313,6 +315,7 @@ module trn_rx
           ng_d.state   = NG_IN_PACKET;
         end
       end
+      default: ng_d.state = NG_IDLE;
     endcase
   end
 

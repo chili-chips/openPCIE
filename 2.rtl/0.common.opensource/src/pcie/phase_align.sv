@@ -158,6 +158,7 @@ module phase_align
         txdlyen_nx     = !slave;
         txsync_done_nx = 1'b0;
       end
+      default: fsm_tx_nx = TX_IDLE;
     endcase
   end
 

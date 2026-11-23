@@ -381,6 +381,7 @@ module riscv_pcie_soc
             tx_state         <= IDLE;
           end
         end
+        default: tx_state <= IDLE;
       endcase
     end
   end

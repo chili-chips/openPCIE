@@ -242,6 +242,10 @@ module trn_tx_throttle
         end
 
       end
+      default: begin
+        tready_thrtl_mux = 1'b0;
+        next_state       = IDLE;
+      end
     endcase
   end
 

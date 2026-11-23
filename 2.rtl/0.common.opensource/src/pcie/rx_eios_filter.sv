@@ -162,6 +162,7 @@ module rx_eios_filter
 
         EIOS_DET_DONE: reg_state_eios_det <= EIOS_DET_IDL;
 
+        default: reg_state_eios_det <= EIOS_DET_IDL;
       endcase
     end
   end
