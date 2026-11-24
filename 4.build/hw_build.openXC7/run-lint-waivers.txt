@@ -102,7 +102,9 @@ slang ^src/.*\.sv:[0-9]+:[0-9]+: warning: .case[zx]?. marked .(unique|priority).
 # RV32M (no prefix).
 #   eduBOS5: operands, load/store offset, data address, ALU result and operand
 #   signs, the divider's data path; the SoC: the instruction word from the RAM;
-#   PicoRV32 (CPU=picorv32): its read data, the RAM's read data
+#   PicoRV32 (CPU=picorv32): its read data, the RAM's read data, the PCPI
+#   instruction word, and its multiplier's and divider's operands (RV32M)
 reset '(u_soc\.cpu\.)?(rs1_reg|rs2_reg|ls_offset_reg|dmem_addr|g_md\.(div_res|dvs|r_sh))'
 reset '(u_soc\.cpu\.)?u_alu\.(alu_minus_reg|aluin_[12]_31_reg)'
 reset 'u_soc\.(imem_rdat|ram_rdata|cpu\.mem_rdata_q)'
+reset 'u_soc\.cpu\.(pcpi_insn|g_enable_mul\.pcpi_mul\.rs1|g_enable_div\.pcpi_div\.(dividend|divisor))'

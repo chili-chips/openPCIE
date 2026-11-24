@@ -19,7 +19,8 @@
 # Co-simulation models
 # ---------------------------------------------------------------------
 # $BFM: openPCIE_BFM (vip/openPCIE_BFM); $VIP: its VIP build. make fills both in (obj/tb.prj).
-sv work $BFM/2.rtl/mem_model.sv
+sv work $BFM/2.rtl/openPCIE_BFM_pkg.sv
+sv work $VIP/hdl/f_mem_model.sv
 sv work $VIP/hdl/f_VProc.sv
 # VProc as the SOC's CPU, on its native memory bus. Only reached when the design is analysed with
 # --define SOC_CPU_VPROC (make CPU=vproc / CPU=iss); otherwise it is compiled
@@ -27,7 +28,6 @@ sv work $VIP/hdl/f_VProc.sv
 sv work models/soc_cpu.VPROC.native.sv
 sv work $VIP/hdl/pcieVHost.sv
 sv work $VIP/hdl/pcieVHostPipex1.sv
-sv work $BFM/2.rtl/pipe_sym_pkg.sv
 sv work $BFM/2.rtl/pcieVHostPipexN.sv
 sv work $BFM/2.rtl/PIPExN__pcieVHost.sv
 sv work $BFM/2.rtl/pipe_phy_core.sv
@@ -78,6 +78,8 @@ sv work models/phy_top.EP-PIPE-BFM.sv
 # DUT: SOC and top level
 # ---------------------------------------------------------------------
 sv work ../2.rtl/0.common.opensource/src/picorv32.CHILI.sv
+sv work ../2.rtl/0.common.opensource/src/picorv32_pcpi_mul.sv
+sv work ../2.rtl/0.common.opensource/src/picorv32_pcpi_div.sv
 sv work ../2.rtl/0.common.opensource/src/CPU.eduBOS5/edubos5_pkg.sv
 sv work ../2.rtl/0.common.opensource/src/CPU.eduBOS5/edubos5_rf.sv
 sv work ../2.rtl/0.common.opensource/src/CPU.eduBOS5/edubos5_alu.sv

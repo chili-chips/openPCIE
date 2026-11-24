@@ -17,7 +17,7 @@
 | x0 = 0, ASIC | `TARGET_IS_ASIC=1`: read mux | `TARGET_IS_ASIC=1`: read mux |
 | store on a bus that can make it wait | `STORE_WAITS_RDY=1`: the store holds its request until `dmem_rdy`, stalling the core; 0 cycles more when `dmem_rdy` comes in the request cycle | waits on `mem_ready` always |
 | counters (Zicntr) | `EN_COUNTERS=1`: `rdcycle`, `rdtime` (= cycle), `rdinstret` and the `h` halves, 64-bit (`csrrs`/`csrrc` with `x0`, or `csrrsi`/`csrrci` with 0); any other CSR access halts; no extra cycle. 0 (default): none, no logic. The SOC sets 1 (`make COUNTERS=0` for none) | `ENABLE_COUNTERS`: the same, set by the SOC alike |
-| multiply, divide (RV32M) | `USE_HW_MUL=1`: all 8 M instructions, each in a fixed count of clocks, whatever its operands; `USE_DSP48E1=1` multiplies in one DSP48E1 primitive (Xilinx 7-series). 0 (default): RV32I, no logic. The SOC leaves it 0 ([RV32M](#rv32m-multiply-and-divide-use_hw_mul)) | `ENABLE_MUL`, `ENABLE_DIV`: not set by the SOC |
+| multiply, divide (RV32M) | `USE_HW_MUL=1`: all 8 M instructions, each in a fixed count of clocks, whatever its operands; `USE_DSP48E1=1` multiplies in one DSP48E1 primitive (Xilinx 7-series). 0 (default): RV32I, no logic. The SOC sets both to 1 (`make MUL=0`: 0; [RV32M](#rv32m-multiply-and-divide-use_hw_mul)) | `ENABLE_MUL`, `ENABLE_DIV`: the SOC sets both to 1 (`make MUL=0`: 0) |
 
 x0 is never written, so it must read 0 from the start: an FPGA RAM has a power-up value (its INIT), an ASIC does not, hence the mux.
 

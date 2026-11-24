@@ -139,7 +139,7 @@ CPU    ?= $(CPU_DEF)
 ifeq ($(filter picorv32 edubos5 edubos5_3stg,$(CPU)),)
     $(error CPU must be picorv32, edubos5 or edubos5_3stg, got "$(CPU)")
 endif
-CPU_SFX = $(if $(filter-out $(CPU_DEF),$(CPU)),.$(CPU))$(if $(filter 0,$(COUNTERS)),.nocnt)
+CPU_SFX = $(if $(filter-out $(CPU_DEF),$(CPU)),.$(CPU))$(if $(filter 0,$(COUNTERS)),.nocnt)$(if $(filter 0,$(MUL)),.nomul)
 
 # COUNTERS=1 (default): the CPU's cycle counter, and the firmware's waits use
 # it; 0: neither (SOC_NO_COUNTERS), the waits count loops. One switch, so the
@@ -147,6 +147,13 @@ CPU_SFX = $(if $(filter-out $(CPU_DEF),$(CPU)),.$(CPU))$(if $(filter 0,$(COUNTER
 COUNTERS ?= 1
 ifeq ($(filter 0 1,$(COUNTERS)),)
     $(error COUNTERS must be 0 or 1, got "$(COUNTERS)")
+endif
+
+# MUL=1 (default): RV32M in the CPU (eduBOS5: one DSP48E1) and an rv32im
+# firmware; 0: RV32I only (SOC_NO_MUL). One switch, as COUNTERS
+MUL ?= 1
+ifeq ($(filter 0 1,$(MUL)),)
+    $(error MUL must be 0 or 1, got "$(MUL)")
 endif
 
 TOP        = RC_opensource
@@ -213,7 +220,7 @@ CHIPDB    = $(WORK_ROOT)/chipdb
 
 # every build asks sw_build again (about a second), as the variant may differ
 $(FIRMWARE): FORCE
-	@$(MAKE) --no-print-directory -C ../sw_build VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) LINK=$(LINK) \
+	@$(MAKE) --no-print-directory -C ../sw_build VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) MUL=$(MUL) LINK=$(LINK) \
 	    OUT=$(abspath $(dir $(FIRMWARE)))
 
 CONV_DIR      = $(WORK)/converted
@@ -257,12 +264,14 @@ SV_PCIE_REST = $(filter-out $(SV_PKG) $(SV_IF), $(sort $(wildcard $(PCIE_DIR)/*.
 # The CPU is SystemVerilog (always_ff, typedef enum, unique case), so it goes
 # through sv2v together with the rest of the design.
 EDUBOS5_DIR = $(SRC_DIR)/CPU.eduBOS5
-SV_CPU_picorv32 = $(EDUBOS5_DIR)/edubos5_pkg.sv $(SRC_DIR)/picorv32.CHILI.sv  # riscv_pcie_soc imports edubos5_pkg
+SV_CPU_picorv32 = $(EDUBOS5_DIR)/edubos5_pkg.sv $(SRC_DIR)/picorv32.CHILI.sv \
+                  $(SRC_DIR)/picorv32_pcpi_mul.sv $(SRC_DIR)/picorv32_pcpi_div.sv  # riscv_pcie_soc imports edubos5_pkg
 SV_CPU_edubos5  = $(addprefix $(EDUBOS5_DIR)/,edubos5_pkg.sv edubos5_rf.sv edubos5_alu.sv edubos5.sv)
 SV_CPU_edubos5_3stg = $(SV_CPU_edubos5)
 CPU_DEFS = $(if $(filter picorv32,$(CPU)),-DSOC_CPU_PICORV32) \
            $(if $(filter edubos5_3stg,$(CPU)),-DSOC_EDUBOS5_3STG) \
-           $(if $(filter 0,$(COUNTERS)),-DSOC_NO_COUNTERS)
+           $(if $(filter 0,$(COUNTERS)),-DSOC_NO_COUNTERS) \
+           $(if $(filter 0,$(MUL)),-DSOC_NO_MUL)
 
 SV_TOP = \
     $(SV_CPU_$(CPU)) \
@@ -446,7 +455,7 @@ ifeq ($(FRONTEND),slang)
 # unknown module. SYN_YOSYS_BUG makes the RTL leave out what sv-elab cannot
 # take yet (real-valued primitive parameters, povik/sv-elab#282).
 XILINX_PRIMS = PCIE_2_1 GTPE2_CHANNEL GTPE2_COMMON MMCME2_ADV IBUFDS_GTE2 \
-               BUFG BUFGCTRL FDCE RAMB36E1
+               BUFG BUFGCTRL FDCE RAMB36E1 DSP48E1
 SLANG_DEFS   = -D SYN_YOSYS_BUG -D PCIE_LANES=$(LANES) -D PCIE_GEN=$(GEN) $(CPU_DEFS)
 
 $(WORK)/top.json: $(SV_ORDERED) $(PURE_V_FILES) $(FIRMWARE) gen_xilinx_bb.py FORCE
@@ -462,6 +471,8 @@ $(WORK)/top.json: $(SV_ORDERED) $(PURE_V_FILES) $(FIRMWARE) gen_xilinx_bb.py FOR
 	          proc; opt; clean; \
 	          synth_xilinx -flatten -abc9 -arch xc7 -top $(TOP); \
 	          write_json $@"
+	@# no large memory in LUTs: it belongs in block RAM (check-lutram.py)
+	python3 check-lutram.py $@
 	@echo "OK -> $@"
 else
 $(WORK)/top.json: $(EXTRACT_TIMESTAMP) $(PURE_V_FILES) $(FIRMWARE)
@@ -478,6 +489,8 @@ $(WORK)/top.json: $(EXTRACT_TIMESTAMP) $(PURE_V_FILES) $(FIRMWARE)
 	          proc; opt; clean; \
 	          synth_xilinx -flatten -abc9 -arch xc7 -top $(TOP); \
 	          write_json $@"
+	@# no large memory in LUTs: it belongs in block RAM (check-lutram.py)
+	python3 check-lutram.py $@
 	@echo "OK -> $@"
 endif
 

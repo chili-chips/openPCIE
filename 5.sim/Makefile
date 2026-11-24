@@ -57,6 +57,8 @@ override BUILD   = DEFAULT
 # with the packet display off (REGRESS_QUIET=0: as hex/ContDisps.hex), a time
 # limit of REGRESS_S seconds, and again (up to REGRESS_TRIES times) when it
 # hits the limit with no result (openPCIE_BFM 4.build/regress.sh).
+# MIX (RC=model): the tester's random mix, N writes and reads (default 64),
+# read at run time (A7RC_MIX): sustained load, as a hardware BAR test
 RC                ?= hm
 ifdef RC_LINE
   $(error RC_LINE is now IFACE=pipe|serial)
@@ -64,6 +66,8 @@ endif
 IFACE             ?= pipe
 A7RC              ?= 0
 SEED              ?= 1
+MIX               ?= 64
+export A7RC_MIX    = $(MIX)
 SEEDS             ?= 10
 REGRESS_S         ?= 900
 REGRESS_TRIES     ?= 3
@@ -71,7 +75,8 @@ REGRESS_JOBS      ?= 1
 REGRESS_QUIET     ?= 1
 REGRESS_DUMP      ?= none
 # make mutants: the checker against broken endpoints, MUTANT_JOBS at a time,
-# each in obj/mutants/<name>/; each must fail the rule it breaks (tools/mutants.py)
+# each in obj/mutants/<name>/; each must fail the rule it breaks (openPCIE_BFM
+# 4.build/mutants.py: 6 PL, 5 DL and 1 FC mutant of the endpoint model)
 MUTANT_JOBS       ?= 3
 # make wavecrux RC=model SEED=N: that seed again with its waveform (DUMP_VCD, then
 # the FST), opened in WaveCrux at the checker's first violation (openPCIE_BFM 4.build/wavecrux.py;
@@ -289,6 +294,20 @@ ifeq ($(COUNTERS),0)
   CPUDEFINE     += --define SOC_NO_COUNTERS
 endif
 
+# MUL=1 (default): RV32M in the CPU and an rv32im firmware; 0: RV32I only
+# (SOC_NO_MUL). JanusHDL has no Xilinx models: there eduBOS5 multiplies in
+# RTL (SOC_MUL_RTL), with the DSP48E1's registers and timing
+MUL             ?= 1
+ifeq ($(filter 0 1,$(MUL)),)
+  $(error MUL must be 0 or 1 (got "$(MUL)"))
+endif
+ifeq ($(MUL),0)
+  CPUDEFINE     += --define SOC_NO_MUL
+endif
+ifeq ($(SIM),janushdl)
+  CPUDEFINE     += --define SOC_MUL_RTL
+endif
+
 # DUMP_SOC_CPU (the CPU in WaveCrux, tb.sv) and SOC_IPC (the IPC count, tb.sv)
 # need the core's RVFI outputs
 ifneq ($(findstring DUMP_SOC_CPU,$(USRSIMOPTS))$(findstring SOC_IPC,$(USRSIMOPTS)),)
@@ -350,8 +369,9 @@ ifeq ("$(BUILD)", "ISS")
                    rv32f_cpu rv32d_cpu rv32c_cpu rv32zba_cpu rv32zbb_cpu rv32zbs_cpu rv32zbc_cpu
   RV32OBJS       = $(addprefix $(RV32OBJDIR)/, $(RV32_CPP:=.o))
   # options come from iss.cfg: vusermain.cfg with CORE's timing model
-  # COUNTERS=1: the core reads its counters, so the ISS's RV32I filter lets them through
-  ISS_DEFS       = -DCFGFILENAME=\"iss.cfg\" $(if $(filter 1,$(COUNTERS)),-DCORE_COUNTERS)
+  # COUNTERS=1: the core reads its counters, and MUL=1 has RV32M, so the ISS's
+  # RV32I filter lets them through
+  ISS_DEFS       = -DCFGFILENAME=\"iss.cfg\" $(if $(filter 1,$(COUNTERS)),-DCORE_COUNTERS) $(if $(filter 1,$(MUL)),-DCORE_MUL)
   RUN_CFG        = iss.cfg
 endif
 
@@ -554,12 +574,12 @@ $(VOBJDIR)/fw_main.o: $(FW_SRC_DIR)/RC-$(VARIANT)/main.c $(FW_HOST_DEPS) | $(VOB
 
 # The user code differs per CPU option (VUserMain0, the ISS and its defines),
 # per VARIANT (the switch model, the firmware), per SIM_GEN/SIM_SPEED_TEST/SIM_FAULT
-# (the endpoint), per RC, IFACE and A7RC (the RC model), per SIM_LANE_REV (both) and per COUNTERS (ISS_DEFS): a change of any throws the objects and the library away, so
+# (the endpoint), per RC, IFACE and A7RC (the RC model), per SIM_LANE_REV (both) and per COUNTERS and MUL (ISS_DEFS): a change of any throws the objects and the library away, so
 # that the next build cannot mix them. obj/.cpu holds them for the last build.
 CPU_STAMP = $(VOBJDIR)/.cpu
 $(CPU_STAMP): FORCE | $(VOBJDIR)
-	@if [ "$$(cat $@ 2>/dev/null)" != "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(HM_PROBE) $(SIM_LANE_REV)" ]; then \
-	    rm -f $(VOBJDIR)/*.o $(USERLIB) $(VPROC_PLI); echo "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(HM_PROBE) $(SIM_LANE_REV)" > $@; fi
+	@if [ "$$(cat $@ 2>/dev/null)" != "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(MUL) $(HM_PROBE) $(SIM_LANE_REV)" ]; then \
+	    rm -f $(VOBJDIR)/*.o $(USERLIB) $(VPROC_PLI); echo "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(MUL) $(HM_PROBE) $(SIM_LANE_REV)" > $@; fi
 
 # Rule to build library of user code
 $(USERLIB): $(CPU_STAMP) $(VOBJS)
@@ -601,7 +621,7 @@ endif
 # carry timestamps from the future, and a stale image would then look newer
 # than its sources.
 firmware.hex: FORCE
-	@$(MAKE) --no-print-directory -C $(BLD_DIR)/sw_build SIM=1 VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) HM_PROBE=$(HM_PROBE) \
+	@$(MAKE) --no-print-directory -C $(BLD_DIR)/sw_build SIM=1 VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) MUL=$(MUL) HM_PROBE=$(HM_PROBE) \
 	    LINK=x$(SIM_LANES)g$(SIM_GEN) OUT=$(FW_DIR)
 	@cp -f $(FW_DIR)/firmware.hex $@
 
@@ -646,7 +666,8 @@ regress: sysverilog run_us.cfg $(RUN_CFG)
 
 # The checker against broken endpoints: each mutant must fail its rule
 mutants:
-	@python3 tools/mutants.py $(MUTANT_JOBS) $(VOBJDIR)/mutants
+	@python3 $(BFM)/4.build/mutants.py --jobs $(MUTANT_JOBS) --out $(VOBJDIR)/mutants \
+	    --need gen2= --need gen1-rc="SIM_RC_GEN=1 SIM_SPEED_TEST=1" -- run RC=model
 
 # One seed with its waveform, opened in WaveCrux at the first violation
 wavecrux:

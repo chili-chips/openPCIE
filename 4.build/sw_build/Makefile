@@ -75,6 +75,18 @@ ifeq ($(COUNTERS),1)
     CNT_ARCH   = _zicsr_zicntr
 endif
 
+# ---- Multiply and divide ----------------------------------------------------
+# MUL=1 (default): the SOC's CPU has RV32M (riscv_pcie_soc.sv: eduBOS5
+# USE_HW_MUL, PicoRV32 ENABLE_MUL/DIV), the firmware is built for rv32im.
+# MUL=0: RV32I only (SOC_NO_MUL); gcc then needs no libgcc, as the firmware
+# has no multiply or divide it cannot do with shifts. The hardware must match:
+# 5.sim and hw_build.openXC7 pass the same MUL.
+MUL ?= 1
+ifeq ($(filter 0 1,$(MUL)),)
+    $(error MUL must be 0 or 1, got "$(MUL)")
+endif
+MUL_ARCH = $(if $(filter 1,$(MUL)),m)
+
 # ---- Paths ------------------------------------------------------------------
 # Sources live in 3.sw/; this Makefile only builds, it does not hold sources.
 # 3.sw/common/ holds what both variants share (start.S, sections.lds, the PCIe
@@ -104,9 +116,9 @@ OUT    ?= .
 RM_OUT  = rm -f $(OUT)/firmware.elf $(OUT)/firmware.bin $(OUT)/firmware.hex
 
 # ---- Flags ------------------------------------------------------------------
-# rv32i only -- picorv32 is configured without M/C extensions.
+# rv32im (MUL=1) or rv32i, plus the counters (COUNTERS=1); no C extension.
 # -ffreestanding -nostdlib: no libc, no crt0; start.S provides the entry point.
-ARCH    = -march=rv32i$(CNT_ARCH) -mabi=ilp32
+ARCH    = -march=rv32i$(MUL_ARCH)$(CNT_ARCH) -mabi=ilp32
 # FW_OPT: an optimisation level, for QA (5.sim: make run FW_OPT=-O2); default none,
 # as the tracked board build. The result must not depend on it
 FW_OPT ?=
@@ -147,6 +159,7 @@ help:
 	@echo  make                     build firmware.elf + .bin + .hex
 	@echo  make VARIANT=switched    build the RC-switched firmware
 	@echo  make SIM=1               short start-up delay, for co-simulation
+	@echo  make MUL=0               RV32I only: no multiply or divide (default MUL=1, rv32im)
 	@echo  make info                print the resolved configuration
 	@echo  make clean               remove the three generated files
 	@echo ================================================================
@@ -154,6 +167,8 @@ help:
 info:
 	@echo VARIANT : $(VARIANT)
 	@echo SIM     : $(SIM)
+	@echo MUL     : $(MUL)
+	@echo ARCH    : $(ARCH)
 	@echo OUT     : $(OUT)
 	@echo SW_DIR  : $(SW_DIR)
 	@echo CC      : $(CC)
@@ -164,7 +179,7 @@ info:
 # ---- 1) link ----------------------------------------------------------------
 $(OUT)/firmware.elf: $(DEPS)
 	@echo ================================================================
-	@echo  Compile and link into firmware.elf   [$(VARIANT), SIM=$(SIM)]
+	@echo  Compile and link into firmware.elf   [$(VARIANT), SIM=$(SIM), MUL=$(MUL)]
 	@echo ================================================================
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(SRCS)

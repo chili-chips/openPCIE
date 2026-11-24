@@ -69,7 +69,7 @@ VIVADO=${VIVADO:-vivado}
 LANES=${LANES:-4}
 GEN=${GEN:-}
 CPU=${CPU:-edubos5}
-PICORV32_SV="src/CPU.eduBOS5/edubos5_pkg.sv src/picorv32.CHILI.sv"  # riscv_pcie_soc imports edubos5_pkg
+PICORV32_SV="src/CPU.eduBOS5/edubos5_pkg.sv src/picorv32.CHILI.sv src/picorv32_pcpi_mul.sv src/picorv32_pcpi_div.sv"  # riscv_pcie_soc imports edubos5_pkg
 EDUBOS5_SV=$(for f in pkg rf alu; do echo src/CPU.eduBOS5/edubos5_$f.sv; done; echo src/CPU.eduBOS5/edubos5.sv)
 case $CPU in
   picorv32) CPU_SV=$PICORV32_SV; OTHER_CPU_SV=$EDUBOS5_SV; CPU_DEF=SOC_CPU_PICORV32 ;;
@@ -102,7 +102,7 @@ SV_REST=$(ls $P/*.sv | grep -v -e '_if\.sv$' -e '_pkg\.sv$')
 SV=$(echo $P/link_pkg.sv $P/pcie_pkg.sv csr_pkg.sv $SV_IF $SV_REST csr.sv src/soc_csr.sv \
           $CPU_SV src/riscv_pcie_soc.sv src/$TOP.sv)
 SHIMS="unimacro_shim.v"
-PRIMS="PCIE_2_1 GTPE2_CHANNEL GTPE2_COMMON MMCME2_ADV IBUFDS_GTE2 BUFG BUFGCTRL FDCE RAMB36E1"
+PRIMS="PCIE_2_1 GTPE2_CHANNEL GTPE2_COMMON MMCME2_ADV IBUFDS_GTE2 BUFG BUFGCTRL FDCE RAMB36E1 DSP48E1"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 declare -A RESULT

@@ -7,11 +7,11 @@
 # pcie_core and phy_top. No SOC.
 
 # $BFM: openPCIE_BFM (vip/openPCIE_BFM); $VIP: its VIP build. make fills both in (obj/tb_socket.prj).
-sv work $BFM/2.rtl/mem_model.sv
+sv work $BFM/2.rtl/openPCIE_BFM_pkg.sv
+sv work $VIP/hdl/f_mem_model.sv
 sv work $VIP/hdl/f_VProc.sv
 sv work $VIP/hdl/pcieVHost.sv
 sv work $VIP/hdl/pcieVHostPipex1.sv
-sv work $BFM/2.rtl/pipe_sym_pkg.sv
 sv work $BFM/2.rtl/pcieVHostPipexN.sv
 sv work $BFM/2.rtl/PIPExN__pcieVHost.sv
 sv work $BFM/2.rtl/pipe_phy_core.sv

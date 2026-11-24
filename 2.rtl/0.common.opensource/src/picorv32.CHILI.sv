@@ -1888,7 +1888,7 @@ module picorv32 #(
           end
         end
         else begin
-          pcpi_timeout_counter <= ~0;
+          pcpi_timeout_counter <= '1;
         end
 
         pcpi_timeout <= ~|pcpi_timeout_counter;
@@ -2091,7 +2091,7 @@ module picorv32 #(
                   end
 
                   pcpi_valid <= 1;
-                  reg_sh     <= cpuregs_rsrc2;
+                  reg_sh     <= cpuregs_rsrc2[4:0];
                   reg_op2    <= cpuregs_rsrc2;
 
 `ifdef CPU_DEBUG

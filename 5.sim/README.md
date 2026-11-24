@@ -281,7 +281,7 @@ make gui                            # same, with waveforms
 
 `make` always rebuilds the firmware, into `obj/fw`, with `SIM=1`. That cuts the firmware's 100 ms start-up wait (PCIe asks it of a Root Port) to 75 µs, the Completion wait to 2.18 ms and the CRS retry wait to 374 µs ([`4.build/sw_build`](../4.build/sw_build/README.md#timing-the-waits)); a run then fits in about 0.4 ms (0.66 ms with `CORE=picorv32`). The tracked `4.build/sw_build/firmware.hex` stays the board build; no simulation touches it.
 
-`COUNTERS=1` (default) gives the CPU its cycle counter, and the firmware times its waits with `rdcycle` (with `CPU=iss`, the ISS's cycle count, from its timing model). `COUNTERS=0` builds neither, and the waits count loops (HM direct: 369.127 µs).
+`COUNTERS=1` (default) gives the CPU its cycle counter, and the firmware times its waits with `rdcycle` (with `CPU=iss`, the ISS's cycle count, from its timing model). `COUNTERS=0` builds neither, and the waits count loops (HM direct: 369.127 µs). `MUL=1` (default) gives the CPU RV32M and builds the firmware for `rv32im`; `MUL=0` neither. JanusHDL has no Xilinx models, so with `SIM=janushdl` eduBOS5 multiplies in RTL (`SOC_MUL_RTL`), with the DSP48E1's timing.
 
 Make options (`make help` lists them too):
 
@@ -298,7 +298,7 @@ Make options (`make help` lists them too):
 | `WCX_OPEN` | `1` (default), `0` | `make wavecrux RC=model SEED=N`: that seed with its waveform, opened in WaveCrux at the checker's first violation ([`wavecrux.py`](https://github.com/chili-chips/openPCIE_BFM/blob/main/4.build/wavecrux.py); WaveCrux started with `--wcp-port 54321`); `0`: the waveform only |
 | `REGRESS_JOBS` | `1` (default), any | seeds run side by side, each in `obj/regress/<seed>/` with its own copy of the snapshot ([`regress.sh`](https://github.com/chili-chips/openPCIE_BFM/blob/main/4.build/regress.sh)) |
 | `REGRESS_QUIET` | `1` (default), `0` | the packet display off in `regress` (`0`: as `hex/ContDisps.hex`) |
-| `MUTANT_JOBS` | `3` (default), any | `make mutants`: the checker against broken endpoints, side by side, each in `obj/mutants/<name>/`; each must fail the rule it breaks ([`tools/mutants.py`](tools/mutants.py)) |
+| `MUTANT_JOBS` | `3` (default), any | `make mutants`: the checker against broken endpoints, side by side, each in `obj/mutants/<name>/`; each must fail the rule it breaks (openPCIE_BFM [`4.build/mutants.py`](https://github.com/chili-chips/openPCIE_BFM/blob/main/3.sw/a7rc/README.md): 6 PL, 5 DL and 1 FC mutant) |
 | `OPTFLAG` | `-O2 -g` (default) | our user code and `ltssm.c` (the VIP libraries are built `-O2 -g` by openPCIE_BFM's `build-vip.sh`); `-O0` and `-O2` must give the same result ([issue 28](#simulation-issues)) |
 | `VARIANT` | `direct` (default), `switched` | one endpoint, or a switch with endpoints behind it ([below](#rc-switched-a-switch-behind-the-link)) |
 | `SIM_LANES` | `1` (default), `4` | the link width |
@@ -956,7 +956,7 @@ How our co-simulation models differ from upstream, beyond [Local changes](#local
 - **Bus credit.** A load or store to the simulation takes real clocks on the VProc bus, but the timing table already counts them. So the ISS takes those clocks (2 per access) off its next synchronisation, and an access costs only its table cycles. No double billing.
 - **2-clock bus.** `soc_cpu.VPROC.native.sv` runs picorv32's handshake: `mem_valid` with the request, `mem_ready` as the ack, one idle cycle after. Was 4 clocks.
 - **Reset input.** `!resetn` drives VProc interrupt bit 3. The ISS starts at reset release, as the RTL core does, and restarts at the reset vector on a new reset.
-- **RV32I only.** The ISS decodes every extension it was built with, but our cores are plain RV32I. For `-V` EDUBOS5STG2, EDUBOS5STG3 and PICORV32, a fetched word outside RV32I (M/A/F/D/C/Zb*, CSR instructions such as `rdcycle`, `fence.i`) becomes an illegal instruction; with `COUNTERS=1` (the default) the counter reads (`rdcycle`, `rdinstret`) are allowed: the ISS reports it and, with `-H`, halts. So firmware built with the wrong `-march` fails in the ISS too, not only on the RTL core. PicoRV32 traps it as well; eduBOS5 halts on an unknown opcode, but runs an unknown variant of a known one as an RV32I operation (a `mul` as an `add`): kept so for a small decoder ([eduBOS5 README](../2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md#bonus-goodies-from-fv)).
+- **RV32I only.** The ISS decodes every extension it was built with, but our cores are plain RV32I. For `-V` EDUBOS5STG2, EDUBOS5STG3 and PICORV32, a fetched word outside RV32I (M/A/F/D/C/Zb*, CSR instructions such as `rdcycle`, `fence.i`) becomes an illegal instruction; with `COUNTERS=1` (the default) the counter reads (`rdcycle`, `rdinstret`) are allowed, and with `MUL=1` (the default) RV32M: the ISS reports it and, with `-H`, halts. So firmware built with the wrong `-march` fails in the ISS too, not only on the RTL core. PicoRV32 traps it as well; eduBOS5 halts on an unknown opcode, but runs an unknown variant of a known one as an RV32I operation (a `mul` as an `add`): kept so for a small decoder ([eduBOS5 README](../2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md#bonus-goodies-from-fv)).
 
 Result: the ISS lands within 0.6% of the RTL core it models ([What they cost](#what-they-cost)).
 

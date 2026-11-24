@@ -28,7 +28,7 @@
 
 module tb;
 
-  import pipe_sym_pkg::*;
+  import openPCIE_BFM_pkg::*;
 
   int RUN_SIM_US;
 

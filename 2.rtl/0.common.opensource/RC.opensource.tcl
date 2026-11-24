@@ -106,7 +106,9 @@ set soc_sv "$src_dir/riscv_pcie_soc.sv"
 # CPU: eduBOS5 (the default, riscv_pcie_soc.sv) and picorv32 (SOC_CPU_PICORV32)
 set cpu_v  [list {*}[lmap f {edubos5_pkg.sv edubos5_rf.sv edubos5_alu.sv edubos5.sv} \
                        {file join $src_dir CPU.eduBOS5 $f}] \
-                 "$src_dir/picorv32.CHILI.sv"]
+                 "$src_dir/picorv32.CHILI.sv" \
+                 "$src_dir/picorv32_pcpi_mul.sv" \
+                 "$src_dir/picorv32_pcpi_div.sv"]
 set cpu_defines [dict get {edubos5 {} edubos5_3stg SOC_EDUBOS5_3STG picorv32 SOC_CPU_PICORV32} $cpu]
 # The 3-stage pipeline's multicycle paths, implementation only (post-synthesis names)
 set mcp_xdc [expr { $cpu eq "edubos5_3stg" ? "$src_dir/CPU.eduBOS5/edubos5.3STG-ONLY.mcp.tcl" : "" }]

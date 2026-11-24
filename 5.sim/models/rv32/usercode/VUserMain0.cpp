@@ -109,7 +109,8 @@ uint32_t iss_int_callback   (const rv32i_time_t time, rv32i_time_t *wakeup_time)
 // openPCIE: RV32I-only fetch filter
 // ---------------------------------------------
 
-// RV32I with FENCE, ECALL and EBREAK: no M/A/F/D/C/Zb*, no FENCE.I. CSR
+// RV32I with FENCE, ECALL and EBREAK: no A/F/D/C/Zb*, no FENCE.I; M only with
+// CORE_MUL (make MUL=1). CSR
 // instructions only with CORE_COUNTERS (make COUNTERS=1), and only the counter
 // reads the core has: csrrs/csrrc rd, cycle|time|instret[h], x0 (or csrrsi/csrrci, uimm 0)
 static bool is_rv32i(const uint32_t insn)
@@ -129,6 +130,9 @@ static bool is_rv32i(const uint32_t insn)
                     : funct3 == 5 ? funct7 == 0x00 || funct7 == 0x20  // SRLI, SRAI
                     : true;                                           // ADDI .. ANDI
     case 0x33: return funct7 == 0x00 ||                               // ADD .. AND
+#ifdef CORE_MUL
+                      funct7 == 0x01 ||                               // MUL .. REMU
+#endif
                       (funct7 == 0x20 && (funct3 == 0 || funct3 == 5)); // SUB, SRA
     case 0x0f: return funct3 == 0;                                    // FENCE
 #ifdef CORE_COUNTERS

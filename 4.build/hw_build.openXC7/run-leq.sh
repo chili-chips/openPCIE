@@ -57,7 +57,7 @@ W=$(mktemp -d); cd "$W"
 cp "$HERE/../sw_build/firmware.hex" .
 
 "$OPENXC7_PYTHON" "$HERE/gen_xilinx_bb.py" "$("$YOSYS_CONFIG" --datdir)/xilinx" bb.sv \
-  PCIE_2_1 GTPE2_CHANNEL GTPE2_COMMON MMCME2_ADV IBUFDS_GTE2 BUFG BUFGCTRL RAMB36E1 >/dev/null
+  PCIE_2_1 GTPE2_CHANNEL GTPE2_COMMON MMCME2_ADV IBUFDS_GTE2 BUFG BUFGCTRL RAMB36E1 DSP48E1 >/dev/null
 
 cat > bram_bb.sv <<'EOF'
 (* blackbox *)
@@ -93,7 +93,7 @@ cpu_files() {  # $1 = src dir
     local E=$1/CPU.eduBOS5
     echo $E/edubos5_pkg.sv $E/edubos5_rf.sv $E/edubos5_alu.sv $E/edubos5.sv
   else
-    echo $1/CPU.eduBOS5/edubos5_pkg.sv $1/picorv32.CHILI.sv  # riscv_pcie_soc imports edubos5_pkg
+    echo $1/CPU.eduBOS5/edubos5_pkg.sv $1/picorv32.CHILI.sv $1/picorv32_pcpi_mul.sv $1/picorv32_pcpi_div.sv  # riscv_pcie_soc imports edubos5_pkg
   fi
 }
 files() {  # $1 = src dir; same order as SV_ORDERED in the Makefile

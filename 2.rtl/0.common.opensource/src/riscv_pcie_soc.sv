@@ -113,6 +113,15 @@ module riscv_pcie_soc
 `else
   localparam bit CPU_COUNTERS = 1'b1;
 `endif
+
+  // RV32M, multiply and divide: the firmware is built for rv32im. eduBOS5
+  // multiplies in one DSP48E1, PicoRV32 in its PCPI multiplier and divider.
+  // `define SOC_NO_MUL: RV32I only (make MUL=0 builds both)
+`ifdef SOC_NO_MUL
+  localparam bit CPU_MUL = 1'b0;
+`else
+  localparam bit CPU_MUL = 1'b1;
+`endif
 `ifdef SOC_CPU_VPROC
   soc_cpu_vproc #(
       .NODE (4'd0)
@@ -131,7 +140,9 @@ module riscv_pcie_soc
       .PROGADDR_RESET  (32'h0000_0000),
       .STACKADDR       (32'h0000_2000),
       .BARREL_SHIFTER  (0),              // shifts by 4, then by 1, per cycle; the firmware has few
-      .ENABLE_COUNTERS (CPU_COUNTERS)    // rdcycle/rdinstret: the firmware's waits
+      .ENABLE_COUNTERS (CPU_COUNTERS),   // rdcycle/rdinstret: the firmware's waits
+      .ENABLE_MUL      (CPU_MUL),        // RV32M: the same firmware as eduBOS5
+      .ENABLE_DIV      (CPU_MUL)
   ) cpu (
       .clk          (clk),
       .resetn       (resetn),
@@ -202,9 +213,19 @@ module riscv_pcie_soc
   localparam int EDUBOS5_WAIT4REGS = 0;  // 2-stage pipeline
 `endif
 
+  // RV32M in one DSP48E1. SOC_MUL_RTL: the multiply in plain RTL, same timing
+  // (a simulator without the Xilinx models)
+`ifdef SOC_MUL_RTL
+  localparam bit CPU_MUL_DSP = 1'b0;
+`else
+  localparam bit CPU_MUL_DSP = 1'b1;
+`endif
+
   edubos5 #(
       .EN_WAIT4REGS (EDUBOS5_WAIT4REGS),
-      .EN_COUNTERS  (CPU_COUNTERS)
+      .EN_COUNTERS  (CPU_COUNTERS),
+      .USE_HW_MUL   (CPU_MUL),
+      .USE_DSP48E1  (CPU_MUL_DSP)
   ) cpu (
       .clk         (clk),
       .arst_n      (resetn),

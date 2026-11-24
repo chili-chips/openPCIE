@@ -41,6 +41,7 @@ The register map comes from `../csr_build/generated-files/` (`csr.h`, `csr_top.h
 | `make VARIANT=switched` | the same three files, but for RC-switched |
 | `make SIM=1` | short start-up delay, for co-simulation (see below; `5.sim` does this itself) |
 | `make COUNTERS=0` | waits count loops, for a CPU without `rdcycle` ([below](#timing-the-waits)) |
+| `make MUL=0` | `-march=rv32i`, for a CPU without RV32M (default `MUL=1`: `rv32im`) |
 | `make OUT=<dir>` | write the three files to `<dir>` instead of this folder |
 | `make info` | print the resolved configuration |
 | `make clean` | remove the three generated files |
@@ -82,7 +83,7 @@ You do not run it by hand: `make` in [`5.sim`](../../5.sim) builds its own copy 
 
 ## Notes
 
-- `-march=rv32i -mabi=ilp32` only: eduBOS5 is RV32I, and PicoRV32 here has no M or C extension.
+- `-march=rv32im -mabi=ilp32` (`MUL=1`, default): the SOC builds eduBOS5 with `USE_HW_MUL=1` (one DSP48E1) and PicoRV32 with `ENABLE_MUL`/`ENABLE_DIV`. `MUL=0`: `rv32i`, and the SOC without RV32M (`SOC_NO_MUL`). No C extension. 5.sim and hw_build.openXC7 pass the same `MUL` to both.
 - `-ffreestanding -nostdlib`: no libc, no crt0. `start.S` provides the reset vector, so it stays first on the command line.
 - `firmware.elf` differs on every rebuild: gcc embeds a randomly named temporary object for the `start.S` pass in the symbol table. `firmware.bin` and `firmware.hex`, the ones that matter, are stable.
 

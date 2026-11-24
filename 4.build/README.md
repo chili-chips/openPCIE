@@ -123,7 +123,7 @@ cd sw_build && make             # RC-direct
 make VARIANT=switched           # RC-switched
 ```
 
-Builds the [`3.sw`](../3.sw) sources (xPack `riscv-none-elf-` GCC, `rv32i`) into `firmware.elf`, `.bin` and `.hex` in `4.build/sw_build`, using the step 1 headers. The hardware build embeds `firmware.hex`. Every `make` rebuilds (about a second), so switching variants needs no `make clean`. Details: [`sw_build/README.md`](./sw_build/README.md).
+Builds the [`3.sw`](../3.sw) sources (xPack `riscv-none-elf-` GCC, `rv32im`, or `rv32i` with `MUL=0`) into `firmware.elf`, `.bin` and `.hex` in `4.build/sw_build`, using the step 1 headers. The hardware build embeds `firmware.hex`. Every `make` rebuilds (about a second), so switching variants needs no `make clean`. Details: [`sw_build/README.md`](./sw_build/README.md).
 
 ## HW Compilation
 
