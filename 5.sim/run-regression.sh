@@ -86,7 +86,7 @@ run model-literal       RC=model A7RC=1 "$@"
 run model-load          RC=model MIX=1000 "$@"
 run model-fault-crs     RC=model SIM_FAULT=crs "$@"
 run model-fault-late    RC=model SIM_FAULT=late "$@"
-run model-fault-nocpl   RC=model SIM_FAULT=nocpl "$@"
+run model-fault-nocpl   RC=model SIM_FAULT=nocpl RUN_US=3000 "$@"
 
 # 100 seeds of the tester
 t0=$SECONDS

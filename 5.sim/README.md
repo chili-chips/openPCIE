@@ -347,7 +347,7 @@ make run RC=model IFACE=serial    # on the serial line
 make run RC=model SIM_LANES=4     # x4
 ```
 
-**Regression**, before a push: `bash run-regression.sh`. The sanity runs, and:
+**Regression**, before a push: `bash run-regression.sh`, 29 checks, about 30 minutes. The sanity runs, and:
 
 - Hard macro: Gen1, the speed-change test, x4 at Gen1 and Gen2, `VARIANT=switched`, `CPU=iss`, `CORE=picorv32`, and the endpoint's faults (`SIM_FAULT=crs`, `late`, `nocpl`).
 - RC model: Gen1, the speed-change test, x4, serial, both PIPE PHYs (`PHY=core`, `PHY=hm`), the literal lab RC (`A7RC=1`), 1000 mixed requests (`MIX=1000`), and the same three faults.
