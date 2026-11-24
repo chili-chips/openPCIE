@@ -168,7 +168,7 @@ module rx_eios_filter
   end
 
   assign user_rx.valid         = gt_rxvalid_q;
-  assign user_rx.char_is_k[0]  = gt_rxvalid_q ? gt_rxcharisk_q[0] : 1'b0;
+  assign user_rx.char_is_k[0]  = gt_rxvalid_q                            ? gt_rxcharisk_q[0] : 1'b0;
   assign user_rx.char_is_k[1]  = (gt_rxvalid_q & ~reg_symbol_after_eios) ? gt_rxcharisk_q[1] : 1'b0;
   assign user_rx.data          = gt_rxdata_q;
   assign user_rx.status        = gt_rx_status_q;

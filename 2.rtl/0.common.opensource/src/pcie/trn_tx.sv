@@ -136,7 +136,7 @@ module trn_tx
       reg_trem     <= s_axis_tx.tkeep[7];
       reg_tlast    <= s_axis_tx.tlast;
       reg_tuser    <= s_axis_tx.tuser;
-      reg_tsrc_rdy <= axi_beat_live && !disable_trn;
+      reg_tsrc_rdy <= axi_beat_live & ~disable_trn;
     end
   end
 

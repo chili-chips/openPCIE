@@ -98,13 +98,21 @@ module clk_rst_gen
   // so this reset works before the PLL0 power-up sequence in init_ctrl.
   logic [1:0] rst_sync;
 
+  // the reset synchronizer's clear: PERST#, or no MMCM lock
+  logic  rst_sync_clr;
+  assign rst_sync_clr   = ~(perst_n & mmcm_lock);
+  logic  perst;  // PERST#, active high: the MMCM re-locks on a stable refclk
+  assign perst          = ~perst_n;
+  logic  pipe_clk_sel_n;  // the PIPE clock mux selects 125 MHz
+  assign pipe_clk_sel_n = ~pipe_clk_sel;
+
   (* ASYNC_REG = "TRUE" *)
   FDCE #(
       .INIT (1'b0)
   ) u_rst_sync0 (  // INIT = 0: reset asserted after configuration
       .C   (clk125),
       .CE  (1'b1),
-      .CLR (~(perst_n & mmcm_lock)),  // PERST# or no MMCM lock: reset, asynchronously
+      .CLR (rst_sync_clr),  // PERST# or no MMCM lock: reset, asynchronously
       .D   (1'b1),
       .Q   (rst_sync[0])
   );
@@ -115,7 +123,7 @@ module clk_rst_gen
   ) u_rst_sync1 (  // INIT = 0: reset asserted after configuration
       .C   (clk125),
       .CE  (1'b1),
-      .CLR (~(perst_n & mmcm_lock)),
+      .CLR (rst_sync_clr),
       .D   (rst_sync[0]),
       .Q   (rst_sync[1])
   );
@@ -205,7 +213,7 @@ module clk_rst_gen
       .CLKIN2       (1'd0),
       .CLKINSEL     (1'd1),
       .CLKFBIN      (mmcm_fb),
-      .RST          (~perst_n),       // PERST#: re-lock on a stable refclk
+      .RST          (perst),          // PERST#: re-lock on a stable refclk
       .PWRDWN       (1'd0),
       .CLKFBOUT     (mmcm_fb),
       .CLKFBOUTB    (  /*LINT:OK*/),
@@ -243,7 +251,7 @@ module clk_rst_gen
       .I1      (clk_250mhz),
       .IGNORE0 (1'd0),
       .IGNORE1 (1'd0),
-      .S0      (~pipe_clk_sel),
+      .S0      (pipe_clk_sel_n),
       .S1      (pipe_clk_sel),
       .O       (pipe_clk)
   );

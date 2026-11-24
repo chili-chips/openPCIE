@@ -8,3 +8,10 @@
 # are not checked. NC_ (no-connect) is the one upper-case prefix allowed.
 +signal-name-style=style_regex:(NC_)?[a-z][a-z0-9_]*
 parameter-name-style=parameter_style:ALL_CAPS;localparam_style:ALL_CAPS
+
+# -----------------------------------------------------------------------------
+# Project:     openPCIE
+# Description: NLnet-sponsored open-source implementation
+# Version:     1.0
+# Date:        May 24, 2024
+# -----------------------------------------------------------------------------

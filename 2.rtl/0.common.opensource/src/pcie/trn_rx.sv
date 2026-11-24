@@ -147,7 +147,7 @@ module trn_rx
           m_axis_rx.tuser  <= '0;
         end
         else if (data_prev) begin
-          m_axis_rx.tvalid <= (trn_rsrc_rdy_prev || dsc_flag);
+          m_axis_rx.tvalid <= (trn_rsrc_rdy_prev | dsc_flag);
           reg_tlast <= trn_reof_prev;
           reg_tkeep <= tkeep_prev;
           m_axis_rx.tuser <= pcie_rx_tuser_t'{
@@ -157,7 +157,7 @@ module trn_rx
           };
         end
         else begin
-          m_axis_rx.tvalid <= (rsrc_rdy_filtered || dsc_flag);
+          m_axis_rx.tvalid <= (rsrc_rdy_filtered | dsc_flag);
           reg_tlast <= trn.reof;
           reg_tkeep <= tkeep;
           m_axis_rx.tuser <= pcie_rx_tuser_t'{
@@ -173,7 +173,7 @@ module trn_rx
   assign m_axis_rx.tlast = reg_tlast;
   assign m_axis_rx.tkeep = reg_tkeep;
 
-  assign tkeep           = trn.rrem ? 8'hFF : 8'h0F;
+  assign tkeep           = trn.rrem      ? 8'hFF : 8'h0F;
   assign tkeep_prev      = trn_rrem_prev ? 8'hFF : 8'h0F;
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
@@ -227,8 +227,11 @@ module trn_rx
     end
   end
 
-  assign dsc_detect = trn.rsrc_dsc & ~trn_rsrc_dsc_d & trn_in_packet &
-                         (~trn.rsof | trn.reof) & ~(trn.rdst_rdy & trn.reof);
+  assign dsc_detect = trn.rsrc_dsc
+                    & ~trn_rsrc_dsc_d
+                    & trn_in_packet
+                    & (~trn.rsof | trn.reof)
+                    & ~(trn.rdst_rdy & trn.reof);
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -259,8 +262,8 @@ module trn_rx
   } ng_state_e;
 
   typedef struct packed {
-    ng_state_e   state;
-    logic [11:0] pkt_len;  // DWs of the packet still to come
+    ng_state_e   state;    // [12]
+    logic [11:0] pkt_len;  // [11:0] DWs of the packet still to come
   } ng_t;
 
   ng_t ng_q, ng_d;

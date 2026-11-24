@@ -58,6 +58,9 @@ module lane_xcvr
 );
 
   localparam bit MULTILANE = (PCIE_LANES > 1);
+  localparam bit MASTER = (LANE == 0);  // lane 0 leads TX sync and channel bonding
+  localparam bit SLAVE = (LANE > 0);
+  localparam logic [2:0] CHBOND_LEVEL = 3'(PCIE_LANES - 1 - LANE);
   localparam logic [2:0] TXOUTCLK_SEL = (LANE == 0) ? 3'd3 : 3'd0;  // lane 0: TXOUTCLK from the PLL
   // PCIE_LANES <= 4: one GTP quad, channel bonding chain lane 0 -> 1 -> 2 -> 3
   localparam int CLK_COR_MIN_LAT = (PCIE_LANES == 1) ? 13 : (PCIE_LANES == 4) ? 19 : 18;
@@ -189,9 +192,18 @@ module lane_xcvr
   assign pipe_phy.rx[LANE].phy_status = (~rst_idle_2) | (rate_idle_2 & gt_phystatus) | rate_done_2;
   assign gtp.phystatus_rst[LANE] = ~rst_idle_2;
 
+  logic  gtpll0_rst_n, drp_rst_n;
+  assign gtpll0_rst_n = ~gtp.rst.gtpll0_reset;
+  assign drp_rst_n    = ~gtp.rst.drp_clk_reset;
+  // a TX sync and a DRP rewrite: for a rate change, or from init_ctrl
+  logic  txsync_start, drp_x16, drp_start;
+  assign txsync_start = gtp.rst.txsync_start | rate.txsync_start;
+  assign drp_x16      = gtp.rst.drp_x16 | rate.drp_x16;
+  assign drp_start    = gtp.rst.drp_start | rate.drp_start;
+
   speed_ctrl u_speed_ctrl (
       .clk            (pipe_clk),
-      .rst_n          (!gtp.rst.gtpll0_reset),
+      .rst_n          (gtpll0_rst_n),
       .rate           (pipe_phy.tx_ctrl.rate),
       .drp_done       (drp_done),
       .rxpmaresetdone (gt_rxpmaresetdone),
@@ -211,12 +223,12 @@ module lane_xcvr
 
   phase_align u_phase_align (
       .clk         (pipe_clk),
-      .rst_n       (!gtp.rst.gtpll0_reset),
-      .slave       (LANE > 0),
+      .rst_n       (gtpll0_rst_n),
+      .slave       (SLAVE),
       .mmcm_lock   (clk_mmcm_lock),
       .active_lane (active_lane),
 
-      .txsync_start (rate.txsync_start || gtp.rst.txsync_start),
+      .txsync_start (txsync_start),
       .tx_stat      (sync_tx_stat),
       .tx_ctrl      (sync_tx),
       .txsync_done  (sync_txsync_done)
@@ -224,9 +236,9 @@ module lane_xcvr
 
   chan_retune u_chan_retune (
       .clk     (clk125),
-      .rst_n   (!gtp.rst.drp_clk_reset),
-      .x16     (gtp.rst.drp_x16 || rate.drp_x16),
-      .start   (gtp.rst.drp_start || rate.drp_start),
+      .rst_n   (drp_rst_n),
+      .x16     (drp_x16),
+      .start   (drp_start),
       .drp_req (drp_req),
       .drp_rsp (drp_rsp),
       .done    (drp_done)
@@ -642,7 +654,7 @@ module lane_xcvr
       .TXPHINITDONE    (gtp.txphinitdone[LANE]),    // async (UG482)
       .TXDLYSRESETDONE (gtp.txdlysresetdone[LANE]), // async (UG482)
 
-      .TXSYNCMODE  (LANE == 0),
+      .TXSYNCMODE  (MASTER),
       .TXSYNCIN    (gtp.txsyncin),
       .TXSYNCALLIN (gtp.txsyncallin),
 
@@ -666,7 +678,7 @@ module lane_xcvr
       .RXPHSLIPMONITOR (  /*LINT:OK*/),
       .RXDLYSRESETDONE (  /*LINT:OK*/),
 
-      .RXSYNCMODE  (LANE == 0),
+      .RXSYNCMODE  (MASTER),
       .RXSYNCIN    (gtp.rxsyncin),
       .RXSYNCALLIN (gtp.rxsyncallin),
 
@@ -684,9 +696,9 @@ module lane_xcvr
 
       .RXCHBONDEN     (MULTILANE),
       .RXCHBONDI      (gtp.rxchbondi[LANE]),
-      .RXCHBONDLEVEL  (3'(PCIE_LANES - 1 - LANE)),
-      .RXCHBONDMASTER (LANE == 0),
-      .RXCHBONDSLAVE  (LANE > 0),
+      .RXCHBONDLEVEL  (CHBOND_LEVEL),
+      .RXCHBONDMASTER (MASTER),
+      .RXCHBONDSLAVE  (SLAVE),
 
       .RXCHANBONDSEQ   (  /*LINT:OK*/),
       .RXCHANISALIGNED (pipe_phy.rx[LANE].chanisaligned),  // RXUSRCLK2 = pipe_clk

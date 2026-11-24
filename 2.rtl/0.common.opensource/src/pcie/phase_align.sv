@@ -138,24 +138,24 @@ module phase_align
         txsync_done_nx = 1'b0;
       end
       TX_PHINIT: begin
-        fsm_tx_nx      = (phinit_done_edge || (!active_lane)) ? TX_DONE1 : TX_PHINIT;
+        fsm_tx_nx      = (phinit_done_edge | (~active_lane)) ? TX_DONE1 : TX_PHINIT;
         txdlyen_nx     = 1'b0;
         txsync_done_nx = 1'b0;
       end
       TX_DONE1: begin
-        fsm_tx_nx      = (phalign_done_edge || (!active_lane)) ? TX_DONE2 : TX_DONE1;
+        fsm_tx_nx      = (phalign_done_edge | (~active_lane)) ? TX_DONE2 : TX_DONE1;
         txdlyen_nx     = 1'b0;
         txsync_done_nx = 1'b0;
       end
       TX_DONE2:
       if (phalign_done_edge || (!active_lane) || slave) begin
         fsm_tx_nx      = TX_IDLE;
-        txdlyen_nx     = !slave;
+        txdlyen_nx     = ~slave;
         txsync_done_nx = 1'b1;
       end
       else begin
         fsm_tx_nx      = TX_DONE2;
-        txdlyen_nx     = !slave;
+        txdlyen_nx     = ~slave;
         txsync_done_nx = 1'b0;
       end
       default: fsm_tx_nx = TX_IDLE;

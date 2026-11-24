@@ -135,8 +135,10 @@ module speed_ctrl
   logic ratedone;
 
   logic latch_phase;
-  assign latch_phase = (state == ST_RATE_WAIT) | (state == ST_RXPMA_DN) |
-                     (state == ST_DRP20_REQ) | (state == ST_DRP20_ACK);
+  assign latch_phase = (state == ST_RATE_WAIT)
+                     | (state == ST_RXPMA_DN)
+                     | (state == ST_DRP20_REQ)
+                     | (state == ST_DRP20_ACK);
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -173,14 +175,14 @@ module speed_ctrl
       ST_IDLE:         state_nx = (rate_in_r2 != rate_in_r1) ? ST_TXDATA_WAIT : ST_IDLE;
       ST_TXDATA_WAIT:  state_nx = txdata_wait_done ? ST_PIPE_CLK_SEL : ST_TXDATA_WAIT;
       ST_PIPE_CLK_SEL: state_nx = ST_DRP16_REQ;
-      ST_DRP16_REQ:    state_nx = (!drp_done_r2) ? ST_DRP16_ACK : ST_DRP16_REQ;
+      ST_DRP16_REQ:    state_nx = (~drp_done_r2) ? ST_DRP16_ACK : ST_DRP16_REQ;
       ST_DRP16_ACK:    state_nx = drp_done_r2 ? ST_RATE_SEL : ST_DRP16_ACK;
       ST_RATE_SEL:     state_nx = ST_RXPMA_DN;
-      ST_RXPMA_DN:     state_nx = (!rxpma_r2) ? ST_DRP20_REQ : ST_RXPMA_DN;
-      ST_DRP20_REQ:    state_nx = (!drp_done_r2) ? ST_DRP20_ACK : ST_DRP20_REQ;
+      ST_RXPMA_DN:     state_nx = (~rxpma_r2) ? ST_DRP20_REQ : ST_RXPMA_DN;
+      ST_DRP20_REQ:    state_nx = (~drp_done_r2) ? ST_DRP20_ACK : ST_DRP20_REQ;
       ST_DRP20_ACK:    state_nx = drp_done_r2 ? ST_RATE_WAIT : ST_DRP20_ACK;
       ST_RATE_WAIT:    state_nx = ratedone ? ST_TXSYNC_REQ : ST_RATE_WAIT;
-      ST_TXSYNC_REQ:   state_nx = (!txsync_r2) ? ST_TXSYNC_ACK : ST_TXSYNC_REQ;
+      ST_TXSYNC_REQ:   state_nx = (~txsync_r2) ? ST_TXSYNC_ACK : ST_TXSYNC_REQ;
       ST_TXSYNC_ACK:   state_nx = txsync_r2 ? ST_DONE : ST_TXSYNC_ACK;
       ST_DONE:         state_nx = ST_IDLE;
       default:         state_nx = ST_IDLE;

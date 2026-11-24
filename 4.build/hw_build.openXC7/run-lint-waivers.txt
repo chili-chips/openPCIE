@@ -5,7 +5,7 @@
 # Accepted lint findings, read by run-lint.sh.
 #
 # One waiver per line:  <phase> <regex>
-#   <phase>  verilator | yosys | slang | verible | cdc
+#   <phase>  tags | verilator | yosys | reset | slang | verible | cdc
 #   <regex>  extended regex (grep -E), matched against one finding line as it
 #            appears in <phase>.all of a run-lint.sh work directory
 # A finding that matches is waived. Put the reason on a comment line above it.
@@ -95,3 +95,14 @@ verible ^src/pcie/pcie_core\.sv:[0-9:-]+ .*\(got: DISABLE_(ASPM_L1_TIMER|BAR_FIL
 # illegal opcode halts, an unknown store width writes nothing): unique checks
 # that the items never overlap, the default that no value goes unhandled
 slang ^src/.*\.sv:[0-9]+:[0-9]+: warning: .case[zx]?. marked .(unique|priority). has .default. label
+
+# reset: data and address flops need no reset (our rule: control flops and
+# flags do). These reach a select through a compare or an address decode. Each
+# name is anchored to its instance path: the SoC (u_soc.) or eduBOS5 alone with
+# RV32M (no prefix).
+#   eduBOS5: operands, load/store offset, data address, ALU result and operand
+#   signs, the divider's data path; the SoC: the instruction word from the RAM;
+#   PicoRV32 (CPU=picorv32): its read data, the RAM's read data
+reset '(u_soc\.cpu\.)?(rs1_reg|rs2_reg|ls_offset_reg|dmem_addr|g_md\.(div_res|dvs|r_sh))'
+reset '(u_soc\.cpu\.)?u_alu\.(alu_minus_reg|aluin_[12]_31_reg)'
+reset 'u_soc\.(imem_rdat|ram_rdata|cpu\.mem_rdata_q)'

@@ -78,6 +78,7 @@ module soc_csr
 );
 
   logic        cpuif_req;
+  logic        cpuif_req_is_wr;  // a write: any byte strobe
   logic [31:0] cpuif_wr_biten;
   logic        cpuif_rd_ack;
   logic        cpuif_wr_ack;
@@ -157,12 +158,14 @@ module soc_csr
   end
 
 
+  assign cpuif_req_is_wr = |mem.wstrb;
+
   csr u_csr (
       .clk    (clk),
       .arst_n (resetn),
 
       .s_cpuif_req          (cpuif_req),
-      .s_cpuif_req_is_wr    (|mem.wstrb),
+      .s_cpuif_req_is_wr    (cpuif_req_is_wr),
       .s_cpuif_addr         ({mem.addr[CSR_MIN_ADDR_WIDTH-1:2], 2'b00}),
       .s_cpuif_wr_data      (mem.wdata),
       .s_cpuif_wr_biten     (cpuif_wr_biten),

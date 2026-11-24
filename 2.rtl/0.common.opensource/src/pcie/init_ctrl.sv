@@ -153,7 +153,7 @@ module init_ctrl
     unique case (state)
       ST_IDLE:        state_nx = ST_IDLE;
       ST_CFG_WAIT:    state_nx = cfg_wait_done ? ST_GTPLL0_HOLD : ST_CFG_WAIT;
-      ST_GTPLL0_HOLD: state_nx = (!gtpll0_locked && resetdone_lo) ? ST_DRP16_REQ : ST_GTPLL0_HOLD;
+      ST_GTPLL0_HOLD: state_nx = (~gtpll0_locked & resetdone_lo) ? ST_DRP16_REQ : ST_GTPLL0_HOLD;
       ST_DRP16_REQ:   state_nx = drp_busy ? ST_DRP16_ACK : ST_DRP16_REQ;
       ST_DRP16_ACK:   state_nx = drp_ready ? ST_GTPLL0_LOCK : ST_DRP16_ACK;
       ST_GTPLL0_LOCK: state_nx = gtpll0_locked ? ST_GT_RELEASE : ST_GTPLL0_LOCK;
@@ -163,7 +163,7 @@ module init_ctrl
       ST_DRP20_REQ:   state_nx = drp_busy ? ST_DRP20_ACK : ST_DRP20_REQ;
       ST_DRP20_ACK:   state_nx = drp_ready ? ST_LOCK_WAIT : ST_DRP20_ACK;
       ST_LOCK_WAIT:   state_nx = mmcm_locked ? ST_RESET_DONE : ST_LOCK_WAIT;
-      ST_RESET_DONE:  state_nx = (resetdone_hi && phystatus_lo) ? ST_TXSYNC_REQ : ST_RESET_DONE;
+      ST_RESET_DONE:  state_nx = (resetdone_hi & phystatus_lo) ? ST_TXSYNC_REQ : ST_RESET_DONE;
       ST_TXSYNC_REQ:  state_nx = txsync_lo ? ST_TXSYNC_ACK : ST_TXSYNC_REQ;
       ST_TXSYNC_ACK:  state_nx = txsync_hi ? ST_IDLE : ST_TXSYNC_ACK;
       default:        state_nx = ST_IDLE;
@@ -174,11 +174,14 @@ module init_ctrl
   logic userrdy_q;
 
   logic gtpll0_reset_d;
-  assign gtpll0_reset_d = (state == ST_GTPLL0_HOLD)  | (state == ST_DRP16_REQ) |
-                          (state == ST_DRP16_ACK);
+  assign gtpll0_reset_d = (state == ST_GTPLL0_HOLD)
+                        | (state == ST_DRP16_REQ)
+                        | (state == ST_DRP16_ACK);
   logic gtreset_d;
-  assign gtreset_d = (state == ST_GTPLL0_HOLD)  | (state == ST_DRP16_REQ) |
-                     (state == ST_DRP16_ACK) | (state == ST_GTPLL0_LOCK);
+  assign gtreset_d = (state == ST_GTPLL0_HOLD)
+                   | (state == ST_DRP16_REQ)
+                   | (state == ST_DRP16_ACK)
+                   | (state == ST_GTPLL0_LOCK);
   logic  userrdy_d;
   assign userrdy_d = (state == ST_LOCK_WAIT) ? mmcm_locked : userrdy_q;
 
@@ -203,8 +206,8 @@ module init_ctrl
       gtp.rst.drp_x16   <= 1'b0;
     end
     else begin
-      gtp.rst.drp_start <= (state == ST_DRP16_REQ) || (state == ST_DRP20_REQ);
-      gtp.rst.drp_x16   <= (state == ST_DRP16_REQ) || (state == ST_DRP16_ACK);
+      gtp.rst.drp_start <= (state == ST_DRP16_REQ) | (state == ST_DRP20_REQ);
+      gtp.rst.drp_x16   <= (state == ST_DRP16_REQ) | (state == ST_DRP16_ACK);
     end
   end
 
@@ -225,9 +228,16 @@ module init_ctrl
   logic drp_clk_rst_r1;
   logic drp_clk_rst_r2;
 
-  always_ff @(posedge clk125) begin
-    drp_clk_rst_r1 <= (state == ST_CFG_WAIT);
-    drp_clk_rst_r2 <= drp_clk_rst_r1;
+  // clk125 has no reset of its own: pipe_rst_n holds the DRP side in reset
+  always_ff @(posedge clk125 or negedge pipe_rst_n) begin
+    if (!pipe_rst_n) begin
+      drp_clk_rst_r1 <= 1'b1;
+      drp_clk_rst_r2 <= 1'b1;
+    end
+    else begin
+      drp_clk_rst_r1 <= (state == ST_CFG_WAIT);
+      drp_clk_rst_r2 <= drp_clk_rst_r1;
+    end
   end
 
   assign gtp.rst.gtpll0_reset   = gtpll0_reset_req;

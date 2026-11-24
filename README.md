@@ -8,7 +8,10 @@
 [![Verible](https://badgen.net/github/checks/chili-chips/openPCIE/main/verible?label=Verible)](https://github.com/chili-chips/openPCIE/actions/workflows/verible.yml)
 [![Sim:Pass](https://badgen.net/badge/Sim/Pass/green)](5.sim)
 [![WaveCrux:YES](https://badgen.net/badge/WaveCrux/YES/green)](https://wavecrux.app)
-[![JanusHDL:WIP](https://badgen.net/badge/JanusHDL/WIP/orange)](https://que.no/janushdl/)
+[![Verilator:YES](https://badgen.net/badge/Verilator/YES/grey)](4.build/hw_build.openXC7/run-lint.sh)
+[![Icarus:YES](https://badgen.net/badge/Icarus/YES/grey)](2.rtl/0.common.opensource/src/CPU.eduBOS5/sim)
+[![XSIM:YES](https://badgen.net/badge/XSIM/YES/green)](5.sim)
+[![JanusHDL:YES](https://badgen.net/badge/JanusHDL/YES/grey)](https://que.no/janushdl/)
 [![openXC7:Pass](https://badgen.net/badge/openXC7/Pass/green)](4.build/hw_build.openXC7)
 [![PCIE:Pass](https://badgen.net/badge/PCIE/Pass/green)](https://github.com/chili-chips/openPCIE#bench-validation-results)
 
@@ -475,6 +478,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 <div align="center">
   <a href="https://wavecrux.app"><img alt="WaveCrux logo" width="35%" src="0.doc/artwork/WaveCrux.logo.png"></a>
   <a href="https://verilator.org"><img alt="Verilator logo" width="25%" src="0.doc/artwork/Verilator.logo.png"></a>
+  <a href="https://github.com/steveicarus/iverilog"><img alt="Icarus Verilog logo" width="15%" src="0.doc/artwork/Icarus-Verilog.logo.png"></a>
   <a href="https://que.no/janushdl/"><img alt="JanusHDL logo" width="25%" src="0.doc/artwork/JanusHDL.logo.png"></a>
 </div>
 

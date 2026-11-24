@@ -169,8 +169,10 @@ module edubos5
 
       // csrrs/csrrc with rs1 x0, or csrrsi/csrrci with uimm 0 (no write; the
       // same bits), of 0xC00-0xC02 or 0xC80-0xC82
-      assign cnt_rd = instr.grp.imm.func3[1] & (instr.grp.reg2reg.rs1 == '0)
-                    & (instr.grp.imm.imm11_0[11:8] == 4'hC) & (instr.grp.imm.imm11_0[6:2] == '0)
+      assign cnt_rd = instr.grp.imm.func3[1]
+                    & (instr.grp.reg2reg.rs1 == '0)
+                    & (instr.grp.imm.imm11_0[11:8] == 4'hC)
+                    & (instr.grp.imm.imm11_0[6:2] == '0)
                     & (instr.grp.imm.imm11_0[1:0] != 2'b11);
 
       // [1]: instret, else cycle or time; [7]: the high half
@@ -208,8 +210,11 @@ module edubos5
       assign cnt_rdat = '0;
     end
   endgenerate
-  always_ff @(posedge clk) begin : _instr_decode_flop
-    if (go2exec) begin
+  always_ff @(negedge arst_n or posedge clk) begin : _instr_decode_flop
+    if (arst_n == LO) begin
+      instr_decode_reg <= '0;
+    end
+    else if (go2exec) begin
       instr_decode_reg <= instr_decode;
     end
   end : _instr_decode_flop
@@ -262,12 +267,22 @@ module edubos5
 
   assign NC_imm_low = {imm_brnch[1:0], imm_jump[1:0], imm_uload_reg[1:0]};
 
+  // the functs select: reset; the immediates are data
+  always_ff @(negedge arst_n or posedge clk) begin
+    if (arst_n == LO) begin
+      funct3_brnch <= funct3_brnch_t'(0);
+      funct7_alu   <= 1'b0;
+      funct3_imm   <= funct3_load_t'(0);
+    end
+    else if (go2exec) begin
+      funct3_brnch <= instr.grp.brnch.func3;
+      funct7_alu   <= instr.grp.reg2reg.func7[5];
+      funct3_imm   <= instr.grp.imm.func3;
+    end
+  end
+
   always_ff @(posedge clk) begin
     if (go2exec) begin
-      funct3_brnch  <= instr.grp.brnch.func3;
-      funct7_alu    <= instr.grp.reg2reg.func7[5];
-      funct3_imm    <= instr.grp.imm.func3;
-
       pc_imm_reg    <= pc_imm;
       imm_uload_reg <= imm_uload;
     end
@@ -424,11 +439,11 @@ module edubos5
   always_comb begin : _branch
     unique case (funct3_brnch)
       BEQ:     take_brnch = eq;
-      BNE:     take_brnch = !eq;
+      BNE:     take_brnch = ~eq;
       BLT:     take_brnch = lt;
-      BGE:     take_brnch = !lt;
+      BGE:     take_brnch = ~lt;
       BLTU:    take_brnch = ltu;
-      BGEU:    take_brnch = !ltu;
+      BGEU:    take_brnch = ~ltu;
       default: take_brnch = eq;
     endcase
   end : _branch
@@ -606,6 +621,7 @@ module edubos5
       .SHIFT_PRE_REG (EN_WAIT4REGS == 1)  //3-stage: shift before the register
   ) u_alu (
       .clk            (clk),                         //i
+      .arst_n         (arst_n),                      //i
       .reset          (1'b0),                        //i
       .ce             (go2exec),                     //i
       .aluin_1        (aluin_1),                     //i
@@ -657,8 +673,11 @@ module edubos5
         end
       end : _md_cnt
 
-      always_ff @(posedge clk) begin : _md_sel
-        if (go2exec) begin
+      always_ff @(negedge arst_n or posedge clk) begin : _md_sel
+        if (arst_n == LO) begin
+          md_sel <= 1'b0;
+        end
+        else if (go2exec) begin
           md_sel <= md_op;
         end
       end : _md_sel
@@ -695,7 +714,9 @@ module edubos5
       assign a_sx     = rs1_reg[31] & (md_f3[1:0] != 2'b11);  // MULH, MULHSU (MUL: any)
       assign b_sx     = rs2_reg[31] & (md_f3[1:0] == 2'b01);  // MULH
       assign mul_a    = (md_cnt >= 6'd3) ? {{10{a_sx}}, rs1_reg[31:17]} : {8'd0, rs1_reg[16:0]};
-      assign mul_b    = md_cnt[0] ? {1'b0, rs2_reg[16:0]} : {{3{b_sx}}, rs2_reg[31:17]};
+      assign mul_b    = md_cnt[0]
+                      ? {1'b0, rs2_reg[16:0]}
+                      : {{3{b_sx}}, rs2_reg[31:17]};
 
       always_comb begin : _mul_z
         unique case (md_cnt)
@@ -723,6 +744,9 @@ module edubos5
         logic NC_carrycascout, NC_multsignout, NC_overflow, NC_underflow;
         logic NC_patterndetect, NC_patternbdetect;
 
+        logic [29:0] mul_a_dsp;  // A: 30 bits, mul_a sign-extended
+        assign       mul_a_dsp = {{5{mul_a[24]}}, mul_a};
+
         DSP48E1 #(
             .A_INPUT       ("DIRECT"),
             .B_INPUT       ("DIRECT"),
@@ -745,13 +769,13 @@ module edubos5
             .ADREG         (0)
         ) u_dsp (
             .CLK            (clk),
-            .A              ({{5{mul_a[24]}}, mul_a}),
+            .A              (mul_a_dsp),
             .B              (mul_b),
             .C              (48'd0),
             .D              (25'd0),
-            .OPMODE         ({mul_z, 4'b0101}),         // X = M, Y = M
-            .ALUMODE        (4'b0000),                  // Z + X + Y + CIN
-            .INMODE         (5'b00000),                 // A2 * B2
+            .OPMODE         ({mul_z, 4'b0101}),  // X = M, Y = M
+            .ALUMODE        (4'b0000),           // Z + X + Y + CIN
+            .INMODE         (5'b00000),          // A2 * B2
             .CARRYIN        (1'b0),
             .CARRYINSEL     (3'b000),
             .CEA1           (1'b0),
@@ -782,17 +806,17 @@ module edubos5
             .PCIN           (48'd0),
             .CARRYCASCIN    (1'b0),
             .MULTSIGNIN     (1'b0),
-            .P              (mul_p),                    //o
-            .ACOUT          (NC_acout),                 //o
-            .BCOUT          (NC_bcout),                 //o
-            .PCOUT          (NC_pcout),                 //o
-            .CARRYOUT       (NC_carryout),              //o
-            .CARRYCASCOUT   (NC_carrycascout),          //o
-            .MULTSIGNOUT    (NC_multsignout),           //o
-            .OVERFLOW       (NC_overflow),              //o
-            .UNDERFLOW      (NC_underflow),             //o
-            .PATTERNDETECT  (NC_patterndetect),         //o
-            .PATTERNBDETECT (NC_patternbdetect)         //o
+            .P              (mul_p),             //o
+            .ACOUT          (NC_acout),          //o
+            .BCOUT          (NC_bcout),          //o
+            .PCOUT          (NC_pcout),          //o
+            .CARRYOUT       (NC_carryout),       //o
+            .CARRYCASCOUT   (NC_carrycascout),   //o
+            .MULTSIGNOUT    (NC_multsignout),    //o
+            .OVERFLOW       (NC_overflow),       //o
+            .UNDERFLOW      (NC_underflow),      //o
+            .PATTERNDETECT  (NC_patterndetect),  //o
+            .PATTERNBDETECT (NC_patternbdetect)  //o
         );
       end : g_dsp48e1
       else begin : g_mul_rtl
@@ -802,12 +826,21 @@ module edubos5
         logic signed [42:0] mul_m;
         mul_z_t             mul_z_reg;
 
+        // OPMODE: selects the sum, reset
+        always_ff @(negedge arst_n or posedge clk) begin : _mul_z_reg
+          if (arst_n == LO) begin
+            mul_z_reg <= Z_ZERO;
+          end
+          else if (mul_ce) begin
+            mul_z_reg <= mul_z;
+          end
+        end : _mul_z_reg
+
         always_ff @(posedge clk) begin : _mul
           if (mul_ce) begin
             mul_a_reg <= mul_a;
             mul_b_reg <= mul_b;
             mul_m     <= mul_a_reg * mul_b_reg;
-            mul_z_reg <= mul_z;
             unique case (mul_z_reg)
               Z_P:     mul_p <= mul_p + 48'(mul_m);
               Z_P17:   mul_p <= ($signed(mul_p) >>> 17) + 48'(mul_m);
@@ -849,14 +882,24 @@ module edubos5
       logic  NC_r_dif;  // 0 unless dvs is 0: a remainder is below dvs
       assign NC_r_dif = r_dif[32];
 
+      // the result signs: they select, reset
+      always_ff @(negedge arst_n or posedge clk) begin : _div_signs
+        if (arst_n == LO) begin
+          q_neg <= 1'b0;
+          r_neg <= 1'b0;
+        end
+        else if (div_ce & (md_cnt == 6'd1)) begin  // setup
+          q_neg <= (n_sx ^ d_sx) & (|rs2_reg);
+          r_neg <= n_sx;
+        end
+      end : _div_signs
+
       always_ff @(posedge clk) begin : _div
         if (div_ce) begin
           if (md_cnt == 6'd1) begin  // setup
-            quo   <= n_sx ? -rs1_reg : rs1_reg;
-            dvs   <= d_sx ? -rs2_reg : rs2_reg;
-            rem   <= '0;
-            q_neg <= (n_sx ^ d_sx) & (|rs2_reg);
-            r_neg <= n_sx;
+            quo <= n_sx ? -rs1_reg : rs1_reg;
+            dvs <= d_sx ? -rs2_reg : rs2_reg;
+            rem <= '0;
           end
           else if (md_cnt == 6'(DIV_END)) begin  // the signs
             quo <= md_f3[1] ? (r_neg ? -rem : rem) : (q_neg ? -quo : quo);
@@ -914,6 +957,27 @@ module edubos5
 
   assign store_stall = STORE_WAITS_RDY & dmem_vld & (dmem_we != NOWR) & ~dmem_rdy;
 
+  // the request and its write strobes: reset, as store_stall feeds back on them
+  always_ff @(negedge arst_n or posedge clk) begin : _dmem_vld
+    if (arst_n == LO) begin
+      dmem_vld <= 1'b0;
+      dmem_we  <= NOWR;
+    end
+    else if (!store_stall) begin
+      dmem_vld <= dmem_vld_next;
+      dmem_we  <= we_bs_t'(dmem_we_next & {4{state == FETCH_INSTR}});
+    end
+  end : _dmem_vld
+
+  always_ff @(negedge arst_n or posedge clk) begin : _dmem_rdy
+    if (arst_n == LO) begin
+      dmem_rdy_reg <= 1'b0;
+    end
+    else begin
+      dmem_rdy_reg <= dmem_rdy;
+    end
+  end : _dmem_rdy
+
   always_ff @(posedge clk) begin : _dmem_connection
     // data gating; a waiting STORE keeps its request
     if (!store_stall) begin
@@ -921,8 +985,6 @@ module edubos5
       if (state == FETCH_INSTR) begin
         dmem_wdat <= dmem_wdat_next;
       end
-      dmem_we  <= we_bs_t'(dmem_we_next & {4{state == FETCH_INSTR}});
-      dmem_vld <= dmem_vld_next;
     end
     if (state == WAIT_DATA) begin
       dmem_rdat_reg <= dmem_rdat;
@@ -932,9 +994,6 @@ module edubos5
       // new input on the timing-critical rf_wdat mux
       dmem_rdat_reg <= cnt_rdat;
     end
-
-    dmem_rdy_reg <= dmem_rdy;
-
   end : _dmem_connection
 
   // MCP capture side: the registers the sources feed (pc and the FSM load

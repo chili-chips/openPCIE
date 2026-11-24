@@ -144,7 +144,7 @@ For a partner with real device behaviour, use the RTL endpoint [`2.rtl/1.EP.open
 
 Linux or WSL, once:
 
-- **Vivado 2026.1 for Linux** (`xvlog`, `xelab`, `xsim`; needs a license file, even for `xsim`). Windows `xsim` starts from WSL too, but loads the C/C++ models (`-sv_lib`) only as a Windows DLL, not the Linux `.so` built here.
+- **Vivado 2026.1 or later for Linux** (tested on 2026.2; `xvlog`, `xelab`, `xsim`; needs a license file, even for `xsim`). Windows `xsim` starts from WSL too, but loads the C/C++ models (`-sv_lib`) only as a Windows DLL, not the Linux `.so` built here.
 - **GCC 10+** (C++20) and `make`: `sudo apt install build-essential`
 - **openPCIE_BFM**, a submodule: clone with `git clone --recurse-submodules`, or run `git submodule update --init` in a clone. `make` builds its libraries into `obj/vip`.
 - **RISC-V GCC** (xPack `riscv-none-elf-`) for the firmware: [4.build](../4.build/README.md)
@@ -794,7 +794,7 @@ Command line configurable variables:
      vproc  the 3.sw firmware, compiled for the host (usercode/VUserMain0.cpp)
      iss    the rv32 ISS, executing firmware.elf
   CORE:         edubos5, edubos5_3stg or picorv32: the RTL core, or the ISS timing model (default edubos5, at x4 Gen2 edubos5_3stg)
-  SIM:          xsim, or janushdl (JanusHDL, jhdl 0.17 or later) for make, run and regress with RC=model PHY=none (default xsim)
+  SIM:          xsim, or janushdl (JanusHDL, jhdl 0.22 or later) for make, run and regress with RC=model, PHY=none or core (default xsim)
   RC:           hm (the RC_opensource DUT, tb.sv) or model (the Artix-7 RC model, tb_rc.sv; direct) (default hm)
   IFACE:        with RC=model: pipe, or serial (the serial line, 8b/10b and scrambling on; tb_rc_serial.sv) (default pipe)
   PHY:          with RC=model IFACE=pipe: none; core (the RC model as the MAC of pipe_phy_core, through pipe_mac_adapter); hm (the same in the hard macro's socket, tb_socket.sv) (default none)
@@ -1123,7 +1123,7 @@ make run RC=model A7RC=1                           # literal: only what the lab 
 make run RC=model SIM=janushdl                     # in JanusHDL; also make regress
 ```
 
-`SIM=janushdl` runs the models in [JanusHDL](https://que.no/janushdl/) (`jhdl` 0.17 or later; free, closed source), which loads the same `VProc.so` as a DPI-C library. Not yet: 0.17.0 stops at elaboration, on the four struct constants of `link_pkg.sv`. With those written as concatenations in a scratch copy, x1 at the PIPE gives XSIM's results at the same simulated times, in about 35 s a run (XSIM: 13 s with its build).
+`SIM=janushdl` runs the models in [JanusHDL](https://que.no/janushdl/) (`jhdl` 0.22 or later; free, closed source), which loads the same `VProc.so` as a DPI-C library. On 0.22.0, x1, `PHY=none` (37 s) and `PHY=core` (45 s) pass: 59 rules, 0 violations, firmware result `0x0000face`. `RC=hm` and `PHY=hm` need the encrypted hard macro model, which JanusHDL cannot decrypt.
 
 #### Drive and check
 

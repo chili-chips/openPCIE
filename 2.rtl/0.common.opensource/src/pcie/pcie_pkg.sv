@@ -75,11 +75,11 @@ package pcie_pkg;
     logic       rsvd1;     // [23]
     logic [2:0] tc;        // [22:20] traffic class
     logic [3:0] rsvd2;     // [19:16]
-    logic       td;        // [15]    TLP digest (ECRC) present
-    logic       ep;        // [14]    poisoned
+    logic       td;        // [15]   TLP digest (ECRC) present
+    logic       ep;        // [14]   poisoned
     logic [1:0] attr;      // [13:12]
     logic [1:0] rsvd3;     // [11:10]
-    logic [9:0] length;    // [9:0]   payload length in DW, 0 = 1024
+    logic [9:0] length;    // [9:0]  payload length in DW, 0 = 1024
   } pcie_tlp_dw0_t;
 
   // tlp_type codes the design decodes
@@ -124,10 +124,10 @@ package pcie_pkg;
 
   // s_axis_tx_tuser (UG477 table 2-9)
   typedef struct packed {
-    logic src_dsc;   // [3] source discontinue
-    logic str;       // [2] streamed
-    logic err_fwd;   // [1] error forward (poison)
-    logic ecrc_gen;  // [0] generate ECRC
+    logic src_dsc;   // [3]   source discontinue
+    logic str;       // [2]   streamed
+    logic err_fwd;   // [1]   error forward (poison)
+    logic ecrc_gen;  // [0]   generate ECRC
   } pcie_tx_tuser_t;
 
   // m_axis_rx_tuser on the 64-bit interface (UG477 table 2-10); bits [21:10]

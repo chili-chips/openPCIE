@@ -68,29 +68,29 @@ package link_pkg;
 
 
   typedef struct packed {
-    logic [1:0]  char_is_k;
-    logic [15:0] data;
-    logic        compliance;
-    logic        elec_idle;
-    logic [1:0]  powerdown;
+    logic [1:0]  char_is_k;   // [21:20]
+    logic [15:0] data;        // [19:4]
+    logic        compliance;  // [3]
+    logic        elec_idle;   // [2]
+    logic [1:0]  powerdown;   // [1:0]
   } pipe_tx_lane_t;
 
   typedef struct packed {
-    logic [1:0]  char_is_k;
-    logic [15:0] data;
-    logic        valid;
-    logic        chanisaligned;
-    logic [2:0]  status;
-    logic        phy_status;
-    logic        elec_idle;
+    logic [1:0]  char_is_k;      // [24:23]
+    logic [15:0] data;           // [22:7]
+    logic        valid;          // [6]
+    logic        chanisaligned;  // [5]
+    logic [2:0]  status;         // [4:2]
+    logic        phy_status;     // [1]
+    logic        elec_idle;      // [0]
   } pipe_rx_lane_t;
 
   typedef struct packed {
-    logic       rcvr_det;
-    logic       reset;
-    logic       rate;
-    logic       deemph;
-    logic [2:0] margin;
+    logic       rcvr_det;  // [6]
+    logic       reset;     // [5]
+    logic       rate;      // [4]
+    logic       deemph;    // [3]
+    logic [2:0] margin;    // [2:0]
   } pipe_tx_ctrl_t;
 
   localparam pipe_rx_lane_t PIPE_RX_LANE_RST = '{
@@ -127,65 +127,65 @@ package link_pkg;
       elec_idle: 1'b1
   };
   typedef struct packed {
-    logic [15:0] status;
-    logic [15:0] command;
-    logic [15:0] dstatus;
-    logic [15:0] dcommand;
-    logic [15:0] lstatus;
-    logic [15:0] lcommand;
-    logic [15:0] dcommand2;
+    logic [15:0] status;     // [111:96]
+    logic [15:0] command;    // [95:80]
+    logic [15:0] dstatus;    // [79:64]
+    logic [15:0] dcommand;   // [63:48]
+    logic [15:0] lstatus;    // [47:32]
+    logic [15:0] lcommand;   // [31:16]
+    logic [15:0] dcommand2;  // [15:0]
   } cfg_regs_t;
 
   // GTP reset sequencing from init_ctrl, common to all lanes
   typedef struct packed {
-    logic gtpll0_reset;    // PLL / lane logic reset
-    logic rxusrclk_reset;
-    logic drp_clk_reset;
-    logic gtreset;         // GTTXRESET, GTRXRESET
-    logic drp_start;       // start the DRP rate retune
-    logic drp_x16;         // ... to the 16-bit internal width
-    logic userrdy;         // TXUSERRDY, RXUSERRDY
-    logic txsync_start;    // start TX phase alignment
-    logic idle;            // sequence done
+    logic gtpll0_reset;    // [8]   PLL / lane logic reset
+    logic rxusrclk_reset;  // [7]
+    logic drp_clk_reset;   // [6]
+    logic gtreset;         // [5]   GTTXRESET, GTRXRESET
+    logic drp_start;       // [4]   start the DRP rate retune
+    logic drp_x16;         // [3]   ... to the 16-bit internal width
+    logic userrdy;         // [2]   TXUSERRDY, RXUSERRDY
+    logic txsync_start;    // [1]   start TX phase alignment
+    logic idle;            // [0]   sequence done
   } gtp_rst_t;
 
   // GTPE2_CHANNEL dynamic reconfiguration port (DRP), from chan_retune
   typedef struct packed {
-    logic [8:0]  addr;  // DRPADDR
-    logic        en;    // DRPEN
-    logic [15:0] di;    // DRPDI
-    logic        we;    // DRPWE
+    logic [8:0]  addr;  // [26:18] DRPADDR
+    logic        en;    // [17]   DRPEN
+    logic [15:0] di;    // [16:1] DRPDI
+    logic        we;    // [0]    DRPWE
   } gtp_drp_req_t;
 
   typedef struct packed {
-    logic [15:0] dout;  // DRPDO
-    logic        rdy;   // DRPRDY
+    logic [15:0] dout;  // [16:1] DRPDO
+    logic        rdy;   // [0]    DRPRDY
   } gtp_drp_rsp_t;
 
   // Gen1 / Gen2 rate change of one lane, from speed_ctrl
   typedef struct packed {
-    logic       pipe_clk_sel;  // PIPE clock: 0 = 125 MHz (Gen1), 1 = 250 MHz (Gen2)
-    logic       drp_start;     // start the DRP retune
-    logic       drp_x16;       // ... to the 16-bit internal width
-    logic [2:0] rate;          // TXRATE / RXRATE
-    logic       txsync_start;  // start TX phase alignment
-    logic       done;
-    logic       idle;
+    logic       pipe_clk_sel;  // [8]   PIPE clock: 0 = 125 MHz (Gen1), 1 = 250 MHz (Gen2)
+    logic       drp_start;     // [7]   start the DRP retune
+    logic       drp_x16;       // [6]   ... to the 16-bit internal width
+    logic [2:0] rate;          // [5:3] TXRATE / RXRATE
+    logic       txsync_start;  // [2]   start TX phase alignment
+    logic       done;          // [1]
+    logic       idle;          // [0]
   } gtp_rate_t;
 
   // GTP TX buffer-bypass phase alignment (UG482): control from phase_align
   // to the GTPE2_CHANNEL, status from the channels (all active lanes)
   typedef struct packed {
-    logic dlysreset;  // TXDLYSRESET
-    logic phinit;     // TXPHINIT
-    logic phalign;    // TXPHALIGN
-    logic dlyen;      // TXDLYEN
+    logic dlysreset;  // [3]   TXDLYSRESET
+    logic phinit;     // [2]   TXPHINIT
+    logic phalign;    // [1]   TXPHALIGN
+    logic dlyen;      // [0]   TXDLYEN
   } gtp_txsync_ctrl_t;
 
   typedef struct packed {
-    logic phinitdone;     // TXPHINITDONE
-    logic dlysresetdone;  // TXDLYSRESETDONE
-    logic phaligndone;    // TXPHALIGNDONE
+    logic phinitdone;     // [2]   TXPHINITDONE
+    logic dlysresetdone;  // [1]   TXDLYSRESETDONE
+    logic phaligndone;    // [0]   TXPHALIGNDONE
   } gtp_txsync_stat_t;
 
 endpackage

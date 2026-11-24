@@ -192,7 +192,7 @@ _se_tool HOST_CXX g++ 10 '$T -dumpfullversion' "$_se_hint_cc"
 _se_tool HOST_AR  ar  "" ''                    "$_se_hint_cc"
 _se_tool VCD2FST  vcd2fst "" ''                "vcd2fst (tb.vcd -> tb.<link>.<variant>.fst): sudo apt install gtkwave"
 
-_se_hint_viv="AMD Vivado 2026.1+ for Linux, e.g. /tools/Xilinx/2026.1/Vivado (or set XILINX_VIVADO). Windows xsim cannot load the Linux-built co-sim models."
+_se_hint_viv="AMD Vivado 2026.1+ for Linux, e.g. /tools/Xilinx/2026.2/Vivado (or set XILINX_VIVADO). Windows xsim cannot load the Linux-built co-sim models."
 _se_vv=${XILINX_VIVADO:-}
 [ -z "$_se_vv" ] && command -v vivado >/dev/null 2>&1 && _se_vv=$(dirname "$(dirname "$(command -v vivado)")")
 [ -z "$_se_vv" ] && _se_vv=$(_se_newest /tools/Xilinx/20*/Vivado /tools/Xilinx/Vivado/20* \

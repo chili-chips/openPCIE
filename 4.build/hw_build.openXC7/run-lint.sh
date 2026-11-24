@@ -12,6 +12,8 @@
 #              implicit nets, multiple drivers, blocking vs non-blocking, case
 #   yosys      Yosys check on the read_slang netlist: combinational loops,
 #              conflicting drivers, used-but-undriven wires, latches
+#   reset      Yosys netlist and run-lint-reset.py: a control flop or flag with
+#              no reset (data and address flops need none: waived by name)
 #   slang      read_slang -Wextra: strict IEEE parse, second opinion (read_slang
 #              has no --lint-only, that needs standalone slang)
 #   verible    Verible style rules (run-lint.verible): our case rule -- signals
@@ -81,7 +83,7 @@ for d in $CPU_DEF; do
 done
 WAIVERS=${LINT_WAIVERS:-$HERE/run-lint-waivers.txt}
 
-PHASES=${*:-tags verilator yosys slang verible cdc}
+PHASES=${*:-tags verilator yosys reset slang verible cdc}
 W=${LINT_WORK:-$(mktemp -d)}
 mkdir -p "$W"
 rm -rf "$W/src" "$W/xdc" "$W/bb.sv"   # a reused LINT_WORK keeps no stale sources or stubs
@@ -175,7 +177,7 @@ for t in text.values():
     for m in re.finditer(r'\bmodule\s+(\w+)(.*?)\bendmodule', t, flags=re.S):
         d = dirs.setdefault(m.group(1), {})
         for p in re.finditer(r'\b(input|output|inout)\b(.*?)(?=\b(?:input|output|inout)\b|[;()]|$)',
-                             m.group(2), flags=re.S):
+                             re.sub(r'\[[^\]]*\]', ' ', m.group(2)), flags=re.S):
             for part in re.sub(r'\[[^\]]*\]', ' ', p.group(2)).split(','):
                 w = [x for x in re.findall(r'[A-Za-z_]\w*', part) if x not in types]
                 if w:
@@ -254,6 +256,34 @@ run_yosys() {
   found yosys < <(awk '/Executing CHECK pass/ { c = 1 } c && /^Warning:/' yosys.log)
 }
 
+# Our rule: every control flop and flag has a reset; data and address flops
+# need none. A flop with no reset that reaches an enable, a select or a reset
+# starts at X in a 4-state simulator and can lock the design up (eduBOS5
+# dmem_vld). One finding per flop, at its source line; the rules are in
+# run-lint-reset.py.
+run_reset() {
+  have "$YOSYS" || { skip reset "$YOSYS not found"; return; }
+  bb || { skip reset "no Xilinx stubs"; return; }
+  "$YOSYS" $YOSYS_ARGS -q -l reset.log -p "read_slang -D SYN_YOSYS_BUG -D PCIE_LANES=$LANES ${GEN:+-D PCIE_GEN=$GEN} $SL_DEFS --top $TOP -I $P -I src \
+      bb.sv $SV $SHIMS; hierarchy -check -top $TOP; proc; flatten; opt_expr; opt_clean; opt_dff; opt_clean; write_json reset.json" \
+      >/dev/null 2>&1
+  local rc=$?
+  [ $rc -eq 0 ] && [ -s reset.json ] || { failed reset "exit $rc, no netlist"; return; }
+  "$PYTHON" "$HERE/run-lint-reset.py" reset.json > reset.out 2>> reset.log
+  local rc2=$?
+  [ $rc2 -eq 0 ] || { failed reset "netlist check exit $rc2"; return; }
+  # eduBOS5 alone with the options no SoC build sets: RV32M (in RTL, the
+  # DSP48E1 is a primitive) and the counters
+  "$YOSYS" $YOSYS_ARGS -q -l reset.cpu.log -p "read_slang --top edubos5 -G USE_HW_MUL=1 -G EN_COUNTERS=1 \
+      -I src $(echo $EDUBOS5_SV); hierarchy -check -top edubos5; proc; flatten; opt_expr; opt_clean; opt_dff; opt_clean; \
+      write_json reset.cpu.json" >/dev/null 2>&1
+  rc=$?
+  [ $rc -eq 0 ] && [ -s reset.cpu.json ] || { failed reset "eduBOS5 RV32M: exit $rc, no netlist"; return; }
+  "$PYTHON" "$HERE/run-lint-reset.py" reset.cpu.json >> reset.out 2>> reset.log ||
+    { failed reset "eduBOS5 RV32M: netlist check failed"; return; }
+  found reset < <(sort -u reset.out)
+}
+
 run_slang() {
   have "$YOSYS" || { skip slang "$YOSYS not found"; return; }
   bb || { skip slang "no Xilinx stubs"; return; }
@@ -298,8 +328,8 @@ EOF
 
 for ph in $PHASES; do
   case $ph in
-    tags|verilator|yosys|slang|verible|cdc) echo "== $ph"; run_$ph ;;
-    *) echo "unknown phase: $ph (tags verilator yosys slang verible cdc)"; exit 2 ;;
+    tags|verilator|yosys|reset|slang|verible|cdc) echo "== $ph"; run_$ph ;;
+    *) echo "unknown phase: $ph (tags verilator yosys reset slang verible cdc)"; exit 2 ;;
   esac
 done
 

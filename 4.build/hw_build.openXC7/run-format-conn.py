@@ -62,3 +62,10 @@ for f in sys.argv[1 + check:]:
             print(f)
         else:
             open(f, 'w').write(n)
+
+# -----------------------------------------------------------------------------
+# Project:     openPCIE
+# Description: NLnet-sponsored open-source implementation
+# Version:     1.0
+# Date:        May 24, 2024
+# -----------------------------------------------------------------------------

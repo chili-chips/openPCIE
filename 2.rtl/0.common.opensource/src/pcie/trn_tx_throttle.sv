@@ -138,8 +138,10 @@ module trn_tx_throttle
     end
   end
 
-  assign gap_trig_tlast = (trn.tbuf_av <= TBUF_AV_GAP) &
-                            s_axis_tx.tvalid & tready_thrtl & s_axis_tx.tlast;
+  assign gap_trig_tlast = (trn.tbuf_av <= TBUF_AV_GAP)
+                        & s_axis_tx.tvalid
+                        & tready_thrtl
+                        & s_axis_tx.tlast;
 
   assign gap_trig_decr = (trn.tbuf_av == (TBUF_AV_GAP)) & (tbuf_av_d == (TBUF_AV_GAP + 1));
 
@@ -173,8 +175,8 @@ module trn_tx_throttle
     end
   end
 
-  assign ppm_l1_trig = (cfg_pcie_link_state_d == LINKSTATE_L0) &
-                       (cfg_pcie_link_state == LINKSTATE_PPM_L1_TRANS);
+  assign ppm_l1_trig = (cfg_pcie_link_state_d == LINKSTATE_L0)
+                     & (cfg_pcie_link_state   == LINKSTATE_PPM_L1_TRANS);
   assign ppm_l1_exit = cfg_pcie_link_state == LINKSTATE_L0;
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
@@ -226,14 +228,14 @@ module trn_tx_throttle
           next_state       = THROTTLE;
         end
         else begin
-          tready_thrtl_mux = !(axi_thrtl_ok && pre_throttle);
+          tready_thrtl_mux = ~(axi_thrtl_ok & pre_throttle);
           next_state       = IDLE;
         end
       end
 
       THROTTLE: begin
         if (exit_crit) begin
-          tready_thrtl_mux = !pre_throttle;
+          tready_thrtl_mux = ~pre_throttle;
           next_state       = IDLE;
         end
         else begin
@@ -258,7 +260,7 @@ module trn_tx_throttle
     else begin
       cur_state    <= next_state;
 
-      tready_thrtl <= tready_thrtl_mux && !tx_ecrc_pause;
+      tready_thrtl <= tready_thrtl_mux & ~tx_ecrc_pause;
     end
   end
 
@@ -272,8 +274,11 @@ module trn_tx_throttle
   assign packet_len_odd = ~tx_dw0.fmt[0] ^ (tx_dw0.fmt[1] & tx_dw0.length[0]);
   assign pause_needed = ~packet_len_odd & ~tx_dw0.td;
 
-  assign tx_ecrc_pkt = tx_tuser.ecrc_gen & pause_needed &
-                        tready_thrtl & s_axis_tx.tvalid & ~reg_axi_in_pkt;
+  assign tx_ecrc_pkt = tx_tuser.ecrc_gen
+                     & pause_needed
+                     & tready_thrtl
+                     & s_axis_tx.tvalid
+                     & ~reg_axi_in_pkt;
 
   always_ff @(posedge user_clk or negedge core_rst_n) begin
     if (!core_rst_n) begin
@@ -289,8 +294,10 @@ module trn_tx_throttle
     end
   end
 
-  assign tx_ecrc_pause = ((tx_ecrc_pkt | reg_tx_ecrc_pkt) &
-                       s_axis_tx.tlast & s_axis_tx.tvalid & tready_thrtl);
+  assign tx_ecrc_pause = (tx_ecrc_pkt | reg_tx_ecrc_pkt)
+                       & s_axis_tx.tlast
+                       & s_axis_tx.tvalid
+                       & tready_thrtl;
 
 
 endmodule

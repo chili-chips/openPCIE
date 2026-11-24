@@ -18,7 +18,7 @@ cd "$W"
 
 sv2v -DRISCV_FORMAL "${SRC[@]}" > all.v
 # no `timescale in the sources: the simulator command line gives it
-echo "+timescale+1ns/1ps" > timescale.cf
+echo "+timescale+1ns/10ps" > timescale.cf
 for en in 0 1; do
   echo "== Icarus, EN_WAIT4REGS=$en"
   iverilog -g2012 -c timescale.cf -P tb_power_up.EN_WAIT4REGS=$en -o ivl_$en.vvp all.v
@@ -27,7 +27,7 @@ done
 
 for en in 0 1; do
   echo "== Verilator, EN_WAIT4REGS=$en"
-  verilator --binary --timing --timescale 1ns/1ps -Wno-fatal -Wno-lint -Wno-style -DRISCV_FORMAL \
+  verilator --binary --timing --timescale 1ns/10ps -Wno-fatal -Wno-lint -Wno-style -DRISCV_FORMAL \
     -GEN_WAIT4REGS=$en --top-module tb_power_up -Mdir vl_$en "${SRC[@]}" > vl_$en.log 2>&1
   ./vl_$en/Vtb_power_up | grep '^t='
 done

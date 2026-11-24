@@ -210,18 +210,21 @@ endif
 # --------------------------------------------
 # Simulator
 # --------------------------------------------
-# SIM: xsim (default), or janushdl: JanusHDL (jhdl 0.17 or later; free, closed
-# source), for make, make run and make regress with RC=model PHY=none. It
-# compiles the sources at each run and loads VProc.so as a DPI-C library.
-# RC=hm needs the hard macro's secureip model; PHY=core and PHY=hm need
-# openPCIE_BFM pipe_mac_adapter.sv, whose assertions jhdl 0.17 does not read.
+# SIM: xsim (default), or janushdl: JanusHDL (jhdl 0.22 or later; free, closed
+# source), for make, make run and make regress with RC=model, PHY=none or core.
+# It compiles the sources at each run and loads VProc.so as a DPI-C library.
+# RC=hm and PHY=hm need the hard macro's secureip model, which JanusHDL cannot
+# decrypt.
+# No `timescale in the HDL: the simulator command line gives it (xelab and jhdl
+# --timescale), 1ns/10ps as in openPCIE_BFM, openSERDES_BFM and openCologne-PCIE
+TIMESCALE         = 1ns/10ps
 SIM               ?= xsim
 ifeq ($(filter xsim janushdl,$(SIM)),)
   $(error SIM must be xsim or janushdl (got "$(SIM)"))
 endif
 ifeq ($(SIM),janushdl)
-  ifneq ($(RC)$(PHY),modelnone)
-    $(error SIM=janushdl needs RC=model PHY=none)
+  ifeq ($(filter modelnone modelcore,$(RC)$(PHY)),)
+    $(error SIM=janushdl needs RC=model, PHY=none or core)
   endif
   ifneq ($(filter sim rungui gui wavecrux mutants,$(MAKECMDGOALS)),)
     $(error SIM=janushdl has make, make run and make regress only)
@@ -431,7 +434,7 @@ HOST_AR         ?= ar
 #   make run RUN_US=40000
 RUN_US          ?= 2000
 
-XILINX_VIVADO   ?= /tools/Xilinx/2026.1/Vivado
+XILINX_VIVADO   ?= /tools/Xilinx/2026.2/Vivado
 GLBL             = $(XILINX_VIVADO)/data/verilog/src/glbl.v
 XILLIBS          = -L unisims_ver -L unimacro_ver -L secureip
 
@@ -471,7 +474,7 @@ ANALYSEFLAGS       = -i $(VIP_DIR)/hdl/headers -i $(VIP_DIR)/hdl --define VPROC_
 # VIP build); obj/<name>.prj has them filled in, and every path absolute (xsim
 # reads a .prj's paths from the .prj's own directory)
 PRJ_SED            = -e 's\#$$BFM\#$(BFM)\#g' -e 's\#$$VIP\#$(VIP_DIR)\#g' -e 's\#^sv work \([^/]\)\#sv work $(CURDIR)/\1\#'
-ELABFLAGS          = -sv_lib $(VPROC_PLI) --timescale 1ns/10ps --debug typical $(XILLIBS) $(TB_NAME) glbl
+ELABFLAGS          = -sv_lib $(VPROC_PLI) --timescale $(TIMESCALE) --debug typical $(XILLIBS) $(TB_NAME) glbl
 # The snapshot xelab produces when two tops are elaborated is named
 # "<top>#glbl". The hash has to be escaped or make treats the rest as a comment.
 SIMFLAGS           = work.$(TB_NAME)\#work.glbl $(addprefix -testplusarg ,$(PLUSARGS))
@@ -487,7 +490,7 @@ JHDL            ?= jhdl
 JHDL_F           = $(VOBJDIR)/jhdl.f
 JHDL_DEFS        = $(filter-out --define -i $(VIP_DIR)/hdl/headers $(VIP_DIR)/hdl -f xvlog.defines --prj $(VOBJDIR)/$(TB_PRJ),$(ANALYSEFLAGS)) \
                    PCIE_LANES=$(SIM_LANES) PCIE_GEN=$(SIM_GEN) $(if $(filter 4,$(SIM_LANES)),PIPE_X4)
-JHDLFLAGS        = --top $(TB_NAME) $(addprefix +define+,$(JHDL_DEFS)) +incdir+$(VIP_DIR)/hdl/headers +incdir+$(VIP_DIR)/hdl -f $(JHDL_F) \
+JHDLFLAGS        = --top $(TB_NAME) --timescale $(TIMESCALE) $(addprefix +define+,$(JHDL_DEFS)) +incdir+$(VIP_DIR)/hdl/headers +incdir+$(VIP_DIR)/hdl -f $(JHDL_F) \
                    --sv-lib $(CURDIR)/$(VPROC_PLI) $(addprefix +,$(PLUSARGS))
 
 # What make run and make regress start
@@ -582,11 +585,9 @@ $(VPROC_PLI): $(USERLIB) $(RV32LIB)
 #
 # RC=model runs no firmware
 ifeq ($(SIM),janushdl)
-# No compile step. Left out of the list: mem_model.sv and pipe_mac_adapter.sv,
-# which nothing instantiates here (DPI-C functions that are not in VProc.so;
-# assertions)
+# No compile step
 sysverilog: $(VPROC_PLI) | $(VOBJDIR)
-	@sed -n $(PRJ_SED) -e '/mem_model\.sv/d' -e '/pipe_mac_adapter\.sv/d' -e 's#^sv work ##p' $(TB_PRJ) > $(JHDL_F)
+	@sed -n $(PRJ_SED) -e 's#^sv work ##p' $(TB_PRJ) > $(JHDL_F)
 else
 sysverilog: $(VPROC_PLI) $(if $(filter hm,$(RC)),firmware.hex)
 	@sed $(PRJ_SED) $(TB_PRJ) > $(VOBJDIR)/$(TB_PRJ)
@@ -687,7 +688,7 @@ help:
 	@$(info $(SPC) $(SPC) $(SPC)   vproc  the 3.sw firmware, compiled for the host (usercode/VUserMain0.cpp))
 	@$(info $(SPC) $(SPC) $(SPC)   iss    the rv32 ISS, executing firmware.elf)
 	@$(info $(SPC) $(SPC) CORE:         edubos5, edubos5_3stg or picorv32: the RTL core, or the ISS timing model (default edubos5, at x4 Gen2 edubos5_3stg))
-	@$(info $(SPC) $(SPC) SIM:          xsim, or janushdl (JanusHDL, jhdl 0.17 or later) for make, run and regress with RC=model PHY=none (default xsim))
+	@$(info $(SPC) $(SPC) SIM:          xsim, or janushdl (JanusHDL, jhdl 0.22 or later) for make, run and regress with RC=model, PHY=none or core (default xsim))
 	@$(info $(SPC) $(SPC) RC:           hm (the RC_opensource DUT, tb.sv) or model (the Artix-7 RC model, tb_rc.sv; direct) (default hm))
 	@$(info $(SPC) $(SPC) IFACE:        with RC=model: pipe, or serial (the serial line, 8b/10b and scrambling on; tb_rc_serial.sv) (default pipe))
 	@$(info $(SPC) $(SPC) PHY:          with RC=model IFACE=pipe: none; core (the RC model as the MAC of pipe_phy_core, through pipe_mac_adapter); hm (the same in the hard macro's socket, tb_socket.sv) (default none))

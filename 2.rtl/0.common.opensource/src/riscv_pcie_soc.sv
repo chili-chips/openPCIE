@@ -177,8 +177,13 @@ module riscv_pcie_soc
 
   assign NC_imem_addr_hi = imem_addr[31:13];
 
-  always_ff @(posedge clk) begin
-    load_wait <= mem.valid && mem.wstrb == '0 && !mem.ready;
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      load_wait <= 1'b0;
+    end
+    else begin
+      load_wait <= mem.valid & (mem.wstrb == '0) & ~mem.ready;
+    end
   end
 
   generate
@@ -235,11 +240,9 @@ module riscv_pcie_soc
   // always_ff writes may have no other writer (IEEE 1800-2017 9.2.2.4; VCS
   // refuses it). Found by openpcie-uvm (RTL-SIM-001)
   always @(posedge clk) begin
-    ram_ready <= 1'b0;
     if (mem.valid && is_ram) begin
       if (mem.wstrb == '0) begin
         ram_rdata <= ram[addr_word];
-        ram_ready <= 1'b1;
       end
       else begin
         if (mem.wstrb[0]) begin
@@ -254,8 +257,17 @@ module riscv_pcie_soc
         if (mem.wstrb[3]) begin
           ram[addr_word][31:24] <= mem.wdata[31:24];
         end
-        ram_ready <= 1'b1;
       end
+    end
+  end
+
+  // the RAM answers every access, load or store, one clock later
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      ram_ready <= 1'b0;
+    end
+    else begin
+      ram_ready <= mem.valid & is_ram;
     end
   end
 
@@ -476,8 +488,13 @@ module riscv_pcie_soc
   // a stray access must not stall the CPU forever
   logic other_rdy;
 
-  always_ff @(posedge clk) begin
-    other_rdy <= mem.valid && !is_ram && !is_bridge;
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      other_rdy <= 1'b0;
+    end
+    else begin
+      other_rdy <= mem.valid & ~is_ram & ~is_bridge;
+    end
   end
 
   assign mem.ready = ram_ready | bridge_rdy | other_rdy;

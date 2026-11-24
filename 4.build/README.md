@@ -36,12 +36,12 @@ Validated versions. "Board": bitstream tested on hardware; "builds": completes, 
 | openXC7 v1.0.0 (1) | Yosys 0.69, nextpnr 3e5c2cdd | bitstream, default (`read_slang`) | builds, x4 and x1 |
 | openXC7 pre-v1.0.0 (2) | Yosys 0.38, nextpnr-xilinx 45a986b | `build_artifacts/pre-v1.0.0/`, flow removed after `54c5409` | board, x1 |
 | sv2v | v0.0.13 | `FRONTEND=sv2v` | builds |
-| AMD Vivado | 2026.1 | co-sim (`xsim`), `run-lint.sh` CDC phase, implementation | runs, checks |
+| AMD Vivado | 2026.2 (2026.1 or later) | co-sim (`xsim`), `run-lint.sh` CDC phase, implementation | runs, checks |
 | PeakRDL | 1.5.0 (3) | CSR RTL, headers, docs | generates |
 | xPack RISC-V GCC | 15.2.0-1 | firmware | board |
 | GCC, host | 10+ (4) | co-sim (VProc, pcievhost) | runs |
 | Verilator | 5.055 (devel, `v5.054-260-gb9f22851`) | `run-lint.sh` | checks |
-| JanusHDL | 0.17.0 (preview) | co-sim of the RC model (`make SIM=janushdl RC=model run`); free, closed source | stops at elaboration: it does not read the struct constants of `link_pkg.sv` yet |
+| JanusHDL | 0.22.0 | co-sim of the RC model (`make SIM=janushdl RC=model run`); free, closed source | runs: `PHY=none` x1 and x4, `PHY=core` x1 pass |
 | Verible | v0.0-4296-g0f262651 | `run-format.sh`, `run-lint.sh` | formats, checks |
 | ABC (`yosys-abc`) | 1.01, in openXC7's Yosys 0.69 | formal: eduBOS5 multicycle proof (`pdr`), bounded runs (`bmc3`) | proves |
 | SymbiYosys (`sby`) | v0.69 | formal: riscv-formal on eduBOS5, with ABC `bmc3` | checks |

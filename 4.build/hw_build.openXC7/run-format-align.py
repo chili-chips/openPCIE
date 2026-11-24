@@ -35,6 +35,20 @@
 #     trn_tx_if.dst trn_tx,  // TLPs from trn_bridge
 # A list with a default value, or one that would pass the column limit, stays
 # as Verible made it.
+#
+# run-format.sh step 2f.
+# Conditional assigns. In a block of adjacent one-line `assign x = c ? a : b;`
+# (one indentation, the '=' already aligned by Verible) the '?' share a column,
+# and so do the ':'. Verible does not align them:
+#     assign grant_addr = cpu_ack ? cpu.addr : uart.addr;
+#     assign grant_we   = cpu_ack ? cpu.we   : uart.we;
+# An assign that would pass the column limit takes three lines, '?' and ':'
+# under the '=':
+#     assign rdy = dmem_sel & uart_busy
+#                ? dmem.rdy
+#                : csr.rdy;
+# Only a ternary at the top of the right-hand side, not nested in another
+# (a part-select [7:0] is not its ':'); anything else stays as it is.
 #   usage: run-format-align.py [--check] file...   (--check: print the files it would change)
 import re, sys
 
@@ -121,7 +135,74 @@ def process(text):
                     src[k] = l
                     carry(src, k, old, l.find('//'))
         i = idx[-1] + 1
-    return '\n'.join(ports(src))
+    return '\n'.join(ternaries(ports(src)))
+
+
+def top_ternary(rhs):
+    """'c ? a : b;' -> (c, a, b) when its only ternary is at the top, else None"""
+    depth, q, c = 0, -1, -1
+    for k, ch in enumerate(rhs):
+        if ch in '([{':
+            depth += 1
+        elif ch in ')]}':
+            depth -= 1
+        elif depth == 0 and ch == '?':
+            if q >= 0:
+                return None  # nested or chained: leave it
+            q = k
+        elif depth == 0 and ch == ':' and q >= 0 and rhs[k - 1:k + 1] != '::' and rhs[k:k + 2] != '::':
+            if c >= 0:
+                return None
+            c = k
+    if q < 0 or c < 0 or not rhs.endswith(';'):
+        return None
+    return rhs[:q].strip(), rhs[q + 1:c].strip(), rhs[c + 1:-1].strip()
+
+
+ONE = re.compile(r'^(\s*assign\s+\S.*?\s+=\s+)(.*;)$')
+
+
+def ternaries(src):
+    """step 2f: '?' and ':' aligned in a block, a long one stacked"""
+    i = 0
+    while i < len(src):
+        code, cmt = split(src[i])
+        m = ONE.match(code)
+        t = top_ternary(m.group(2)) if m else None
+        if not t:
+            i += 1
+            continue
+        block = [(i, m.group(1), t, cmt)]
+        j = i + 1
+        while j < len(src):
+            code, cmt = split(src[j])
+            m = ONE.match(code)
+            t = top_ternary(m.group(2)) if m else None
+            if not t or len(m.group(1)) != len(block[0][1]):
+                break
+            block.append((j, m.group(1), t, cmt))
+            j += 1
+        # A line that does not fit even unpadded is stacked; the '?' and ':'
+        # columns come from the others only, so the result is stable
+        def fits(pre, c, a, b, cmt):
+            return len(pre + c + ' ? ' + a + ' : ' + b + ';' + cmt.rstrip()) <= LIMIT
+        flat = [x for x in block if fits(x[1], *x[2], x[3])]
+        wc = max((len(x[2][0]) for x in flat), default=0)
+        wa = max((len(x[2][1]) for x in flat), default=0)
+        added = 0
+        for k, pre, (c, a, b), cmt in reversed(block):  # bottom up: inserts shift what follows
+            one = pre + c.ljust(wc) + ' ? ' + a.ljust(wa) + ' : ' + b + ';'
+            if len(flat) == 1:
+                one = pre + c + ' ? ' + a + ' : ' + b + ';'
+            if fits(pre, c, a, b, cmt) and len(one + cmt.rstrip()) <= LIMIT:
+                src[k] = one + cmt
+            else:  # stacked: '?' and ':' under the '='
+                ind = ' ' * (len(pre) - 2)
+                src[k] = pre + c + cmt
+                src[k + 1:k + 1] = [ind + '? ' + a, ind + ': ' + b + ';']
+                added += 2
+        i = j + added
+    return src
 
 
 def ports(src):
@@ -186,3 +267,10 @@ for f in sys.argv[1 + check:]:
             print(f)
         else:
             open(f, 'w').write(n)
+
+# -----------------------------------------------------------------------------
+# Project:     openPCIE
+# Description: NLnet-sponsored open-source implementation
+# Version:     1.0
+# Date:        May 24, 2024
+# -----------------------------------------------------------------------------
