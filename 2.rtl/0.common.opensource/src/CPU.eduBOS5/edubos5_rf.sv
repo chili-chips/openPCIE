@@ -37,7 +37,15 @@ module edubos5_rf
   assign rs1 = (TARGET_IS_ASIC & rs1_addr == '0) ? '0 : rf[rs1_addr];
   assign rs2 = (TARGET_IS_ASIC & rs2_addr == '0) ? '0 : rf[rs2_addr];
 
-  always_ff @(posedge clk) begin : rf_writeback
+  // A plain always, not always_ff, by design (the SOC's RAM rule, as for its
+  // ram in riscv_pcie_soc.sv): IEEE 1800-2017 9.2.2.4 forbids any other
+  // process to write a variable that an always_ff writes, and the initial
+  // block above that sets rf to 0 (the LUT RAM's INIT) is such a process.
+  // Plain always is the legal form, and the one in the Vivado and Yosys RAM
+  // templates, so both still infer a LUT RAM. Standalone slang and VCS reject
+  // the always_ff form; read_slang and most simulators let it pass, so do not
+  // "fix" this back.
+  always @(posedge clk) begin : rf_writeback
     if (rf_we == HI) begin
       rf[rd_addr] <= rf_wdat;  // one write port
     end
