@@ -42,6 +42,7 @@ Cycles per instruction (`EN_WAIT4REGS` selects the pipeline):
 | load, eduBOS5 own: memory `ready` with `valid` | 4 | 5 |
 | load in the openPCIE SOC: RAM/CSR `ready` 1 cycle after `valid` | 5 | 6 |
 | `mul`, `mulh`, `mulhsu`, `mulhu` (`USE_HW_MUL=1`) | 8 | 9 |
+| the same, reusing the last product ([below](#rv32m-multiply-and-divide-use_hw_mul)) | 3 | 4 |
 | `div`, `divu`, `rem`, `remu` (`USE_HW_MUL=1`) | 36 | 37 |
 
 The 3-stage is built for Fmax: `FETCH_INSTR` fetches `pc + 1`, so the RAM address never waits for the ALU, and a jump refetches from its target (`FETCH_TARGET`, 1 cycle); the ALU registers the shift result, like add and sub. The 2-stage has neither.
@@ -124,7 +125,10 @@ Does the CSR's output register favour one CPU? By default the CSR registers its 
 | Clocks per instruction | 2-stage | 3-stage |
 |---|---|---|
 | `mul`, `mulh`, `mulhsu`, `mulhu` | 8 | 9 |
+| the same, reusing the last product | 3 | 4 |
 | `div`, `divu`, `rem`, `remu` | 36 | 37 |
+
+**Product reuse (mul/mulh fusion).** gcc builds a 32x32->64 multiply as `mul lo, a, b` and `mulh hi, a, b`. Both need the same 64-bit product, so the multiplier keeps it: a multiply with the same `rs1` and `rs2` register numbers as the last full one, neither register written since, takes 3 clocks (3-stage 4), not 8. `mul` and `mulh` both form the signed x signed product (the low word is the same for any signedness), `mulhsu` and `mulhu` their own; a high word reuses only a product of its own kind, a `mul` any. The match is on register numbers and on writes to them, never on values: the clocks depend on the code, not on the data, so constant-time code stays constant time. The cost: 24 flip-flops (the kept product's 2 register numbers, kind and valid bit, the instruction's own 2 register numbers and match bit) and four 5-bit compares. X25519 (wireguard-fpga `x25519.c`, gcc `-Os`): 6.1% fewer clocks.
 
 **Multiply: one DSP48E1, 4 partial products.** One signed 33x33 multiply covers all four: each operand is sign- or zero-extended by `funct3`. Split into 17-bit halves (low unsigned, high signed), the 4 partial products go through one DSP48E1 (25x18), one per clock, and its post-adder sums them: `p1 = al*bl`, `p2 = (p1 >>> 17) + al*bh`, `p3 = p2 + ah*bl`, `p4 = (p3 >>> 17) + ah*bh`. The adder's Z input is 0, P or P >>> 17 (OPMODE Z = `000`, `010`, `110`; ALUMODE `0000`), so the sum needs no fabric adder. The low 17 bits of `p1` and `p3` are kept as they shift out; the product is `{p4[29:0], p3[16:0], p1[16:0]}`. All DSP registers are used: A, B, M, OPMODE and P. Clocks: 1 to load `rs1_reg`/`rs2_reg`, 4 to issue, 2 more for the M and P registers, 1 to retire.
 
@@ -132,7 +136,7 @@ Does the CSR's output register favour one CPU? By default the CSR registers its 
 
 `USE_DSP48E1=1` instantiates the primitive. `USE_DSP48E1=0` (default) is the same registers in plain RTL, for simulation, lint, formal and other FPGAs; neither tool infers the shifted-P accumulation from it. Yosys packs only the M register into the DSP48E1, Vivado the A, B and product registers (the product as P), and both build the accumulator in fabric (Vivado: +48 LUT, +50 FF). On Xilinx, set 1.
 
-Cost and Fmax, the CPU alone (out of context, xc7a200t-2; LUT/FF after synthesis, Fmax after routing at a 4 ns target, 2026-11-23):
+Cost and Fmax, the CPU alone (out of context, xc7a200t-2; LUT/FF after synthesis, Fmax after routing at a 4 ns target, 2026-11-23, before product reuse):
 
 | | 2-stage | 3-stage |
 |---|---|---|
@@ -152,7 +156,9 @@ Checks:
 |---|---|
 | [`sim/run-muldiv.sh`](sim/run-muldiv.sh): 8 instructions on 16x16 corner pairs (0, ±1, ±2, `INT_MIN`, `INT_MAX`, ...) and 20,000 random pairs, against a reference; both pipelines, `STORE_WAITS_RDY` 0 and 1, Verilator | 0 errors; with `STORE_WAITS_RDY=0`, every M instruction takes exactly 8 or 36 (3-stage 9 or 37) clocks |
 | the same, Icarus, 500 random pairs, the RTL multiplier and the DSP48E1 primitive (AMD's `unisims/DSP48E1.v`) | 0 errors, same clocks |
-| riscv-formal, `MUL=1 LEGAL=1`, all checks, bound 16 | 52 pass, both pipelines |
+| product reuse, in the same runs: per vector, 10 more multiplies that must reuse (`mul` after `mulh`, after another kind, `rd = x0`) or must not (other kind, `rd = rs1`, `addi` or `lw` to `rs2`), against the reference | 0 errors; each takes exactly the hit (3) or the miss (8) clocks (3-stage 4 or 9) |
+| riscv-formal, `MUL=1 LEGAL=1`, all checks, bound 16, with product reuse (2026-11-24) | 52 pass, both pipelines |
+| `run-mcp-formal.sh`, 3-stage, with product reuse (2026-11-24) | proved (785 s) |
 | riscv-formal, `MUL=1 LEGAL=1 DEPTH=44`, the 8 M `insn` checks | 8 pass, both pipelines (2 to 17 s each) |
 | riscv-formal, `LEGAL=1`, `USE_HW_MUL=0` | 44 pass, both pipelines, as before |
 | `run-leq.sh`, `USE_HW_MUL=0` against the RTL before it | PASS, both pipelines: 79,377 (3-stage 79,341) `$equiv` cells proven, the whole design |

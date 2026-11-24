@@ -658,10 +658,71 @@ module edubos5
       logic [5:0] md_cnt;
       cpu_data_t mul_res, div_res;
 
-      assign md_op   = instr_decode.ALUREG & (instr.grp.reg2reg.func7 == SEL_MULDIV);
-      assign md_f3   = funct3_imm;
+      //--- product reuse (mul/mulh fusion) --------------------------------
+      // A multiply leaves its 64-bit product in the multiplier registers. The
+      // next one with the same rs1 and rs2 register numbers, while neither
+      // register was written since, reuses it: it retires after 2 EXECUTE
+      // clocks (MUL_HIT_END), not 7. So "mul lo, a, b; mulh hi, a, b", as gcc
+      // emits a 32x32->64 multiply, costs 7 + 2 clocks, not 7 + 7. The match is
+      // on register numbers and the instruction stream, never on values: the
+      // clock count depends on the code, not on the data, and constant-time
+      // code stays constant time. MUL and MULH both form the signed x signed
+      // product (the low word is the same for any signedness), MULHSU and
+      // MULHU their own; a high word reuses only a product of its own kind, a
+      // MUL (the low word) any.
+      localparam int MUL_HIT_END = 1;
+
+      logic [4:0] md_rs1, md_rs2;  // the instruction's rs1, rs2 numbers, registered
+      logic md_same;  // registered at md_cnt 0: rs1, rs2 match the kept product
+      logic md_hit;  // a multiply that reuses the kept product
+      logic pr_vld;  // the multiplier holds the product of pr_rs1 x pr_rs2
+      logic [4:0] pr_rs1, pr_rs2;
+      logic [1:0] pr_kind, md_kind;  // 0: signed x signed, 2: signed x unsigned, 3: unsigned
+      logic pr_wr;  // a register write to pr_rs1 or pr_rs2
+
+      assign md_kind = (md_f3[1:0] == 2'b01) ? 2'd0 : md_f3[1:0];
+      assign md_hit = md_same & ~md_f3[2] & ((md_f3[1:0] == 2'b00) | (md_kind == pr_kind));
+      assign pr_wr = rf_we & ((instr.grp.reg2reg.rd == pr_rs1) | (instr.grp.reg2reg.rd == pr_rs2));
+
+      // loaded with the operands (rs1_reg, rs2_reg): md_cnt 0
+      always_ff @(negedge arst_n or posedge clk) begin : _md_same
+        if (arst_n == LO) begin
+          md_same <= 1'b0;
+          md_rs1  <= '0;
+          md_rs2  <= '0;
+        end
+        else if (go2exec) begin
+          md_same <= pr_vld & (instr.grp.reg2reg.rs1 == pr_rs1) & (instr.grp.reg2reg.rs2 == pr_rs2);
+          md_rs1 <= instr.grp.reg2reg.rs1;
+          md_rs2 <= instr.grp.reg2reg.rs2;
+        end
+      end : _md_same
+
+      // the kept product: set by a full multiply, cleared by a write to its
+      // rs1 or rs2 (rf_we, in FETCH_INSTR: never with md_end, in EXECUTE)
+      always_ff @(negedge arst_n or posedge clk) begin : _pr
+        if (arst_n == LO) begin
+          pr_vld  <= 1'b0;
+          pr_rs1  <= '0;
+          pr_rs2  <= '0;
+          pr_kind <= '0;
+        end
+        else if (md_step & md_end & ~md_f3[2] & ~md_hit) begin
+          pr_vld  <= 1'b1;
+          pr_rs1  <= md_rs1;
+          pr_rs2  <= md_rs2;
+          pr_kind <= md_kind;
+        end
+        else if (pr_wr) begin
+          pr_vld <= 1'b0;
+        end
+      end : _pr
+
+      assign md_op = instr_decode.ALUREG & (instr.grp.reg2reg.func7 == SEL_MULDIV);
+      assign md_f3 = funct3_imm;
       assign md_step = (state == EXECUTE) & md_op & ~store_stall;
-      assign md_end  = (md_cnt == (md_f3[2] ? 6'(DIV_END) : 6'(MUL_END)));
+      assign md_end  = (md_cnt           == (md_f3[2] ? 6'(DIV_END) : 6'(MUL_END)))
+                     | (md_hit & (md_cnt == 6'(MUL_HIT_END)));
       assign md_hold = (state == EXECUTE) & md_op & ~md_end;
 
       always_ff @(negedge arst_n or posedge clk) begin : _md_cnt
@@ -693,7 +754,9 @@ module edubos5
       // low bits are kept as they shift out: product {p4[29:0], p3[16:0],
       // p1[16:0]}. The DSP registers its operands (AREG, BREG), product (MREG),
       // OPMODE and sum (PREG). md_cnt: 1-4 operands in, 2-5 products, 3-6 sums.
-      // p1 clears the old sum, so nothing from before counts.
+      // p1 clears the old sum, so nothing from before counts. The registers
+      // load from md_cnt 1 on (mul_ce), so a product stays for reuse; a reuse
+      // (md_hit) loads nothing.
       typedef enum logic [2:0] {
         Z_ZERO = 3'b000,
         Z_P    = 3'b010,
@@ -710,9 +773,9 @@ module edubos5
       logic [17:0] NC_mul_p;  // above bit 63 of the product
       assign       NC_mul_p = mul_p[47:30];
 
-      assign mul_ce   = md_step & ~md_f3[2];
-      assign a_sx     = rs1_reg[31] & (md_f3[1:0] != 2'b11);  // MULH, MULHSU (MUL: any)
-      assign b_sx     = rs2_reg[31] & (md_f3[1:0] == 2'b01);  // MULH
+      assign mul_ce   = md_step & ~md_f3[2] & (md_cnt != '0) & ~md_hit;
+      assign a_sx     = rs1_reg[31] & (md_f3[1:0] != 2'b11);  // MUL, MULH, MULHSU
+      assign b_sx     = rs2_reg[31] & ~md_f3[1];  // MUL, MULH: the same product
       assign mul_a    = (md_cnt >= 6'd3) ? {{10{a_sx}}, rs1_reg[31:17]} : {8'd0, rs1_reg[16:0]};
       assign mul_b    = md_cnt[0]
                       ? {1'b0, rs2_reg[16:0]}

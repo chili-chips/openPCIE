@@ -29,7 +29,7 @@ for en in 0 1; do
     verilator --binary --timing --timescale 1ns/10ps -Wno-fatal -Wno-lint -Wno-style -DRISCV_FORMAL \
       -GEN_WAIT4REGS=$en -GSTORE_WAIT=$sw -GN_RAND="$N_RAND" --top-module tb_muldiv \
       -Mdir vl_${en}_$sw "${SRC[@]}" > vl_${en}_$sw.log 2>&1
-    ./vl_${en}_$sw/Vtb_muldiv | grep -E '^(funct3|PASS|FAIL)'
+    ./vl_${en}_$sw/Vtb_muldiv | grep -E '^(funct3|reuse|PASS|FAIL)'
   done
 done
 
@@ -46,7 +46,7 @@ if command -v iverilog > /dev/null && command -v sv2v > /dev/null; then
       iverilog -g2012 -c timescale.cf -P tb_muldiv.EN_WAIT4REGS=$en -P tb_muldiv.N_RAND="$IVL_RAND" \
         -P tb_muldiv.USE_DSP48E1=$dsp -s tb_muldiv -o ivl_${en}_$dsp.vvp all.v "${lib[@]}" \
         > ivl_${en}_$dsp.log 2>&1
-      vvp -n ivl_${en}_$dsp.vvp | grep -E '^(funct3|PASS|FAIL)'
+      vvp -n ivl_${en}_$dsp.vvp | grep -E '^(funct3|reuse|PASS|FAIL)'
     done
   done
 fi
