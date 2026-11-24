@@ -10,6 +10,7 @@
   * [Model and viewer versions](#model-and-viewer-versions)
   * [What the simulation does](#what-the-simulation-does)
   * [Building and running](#building-and-running)
+  * [Sanity and regression](#sanity-and-regression)
   * [RC-switched: a switch behind the link](#rc-switched-a-switch-behind-the-link)
   * [WaveCrux decoders](#wavecrux-decoders)
   * [Viewing the TLPs in WaveCrux](#viewing-the-tlps-in-wavecrux)
@@ -330,6 +331,29 @@ make USRSIMOPTS="--define PIPE_RAW_DUMP"     # raw PIPE symbols
 ```
 
 Always printed, with no define: the LTSSM state on every transition, `pl_phy_lnk_up`, `core_rst_n` and `trn_link_up` as they change, and the firmware's result marker.
+
+### Sanity and regression
+
+Two scripts in `5.sim`: [`run-sanity.sh`](run-sanity.sh) and [`run-regression.sh`](run-regression.sh). Run them after `source ../4.build/set-env.sh` (Vivado for XSIM). They print one line per run, keep the logs in `obj/sanity/` and `obj/regression/`, and exit non-zero on a failure. Make variables pass through (`bash run-sanity.sh SEED=2`). A run passes when it exits 0 and ends with its result: `FIRMWARE RESULT 0x0000face (PASS)` with the hard macro (`RC=hm`), `RC MODEL RESULT: PASS` with the RC model (`RC=model`).
+
+**Sanity**, after every change: `bash run-sanity.sh`, six runs, about 4 minutes. XSIM and JanusHDL must also print the same `===>` lines.
+
+```sh
+make run                          # hard macro + eduBOS5 firmware
+make run CPU=vproc                # the same, the firmware compiled for the host
+make run RC=model                 # the Artix-7 RC model, XSIM
+make run RC=model SIM=janushdl    # the same in JanusHDL
+make run RC=model IFACE=serial    # on the serial line
+make run RC=model SIM_LANES=4     # x4
+```
+
+**Regression**, before a push: `bash run-regression.sh`. The sanity runs, and:
+
+- Hard macro: Gen1, the speed-change test, x4 at Gen1 and Gen2, `VARIANT=switched`, `CPU=iss`, `CORE=picorv32`, and the endpoint's faults (`SIM_FAULT=crs`, `late`, `nocpl`).
+- RC model: Gen1, the speed-change test, x4, serial, both PIPE PHYs (`PHY=core`, `PHY=hm`), the literal lab RC (`A7RC=1`), 1000 mixed requests (`MIX=1000`), and the same three faults.
+- `make regress RC=model SEEDS=100`, `make mutants`, and eduBOS5's RV32M bench ([`run-muldiv.sh`](../2.rtl/0.common.opensource/src/CPU.eduBOS5/sim/run-muldiv.sh)).
+
+`SIM_FAULT=nocpl` fails by design (no Completion for one request) and is reported as known (`KNOWN` in the script); the script fails only on an unexpected result.
 
 ### RC-switched: a switch behind the link
 
