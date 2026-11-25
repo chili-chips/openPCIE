@@ -42,18 +42,30 @@ def srcfile(o):
     return o.get('attributes', {}).get('src', '').split(':')[0]
 
 nets, aliases = defaultdict(list), defaultdict(list)  # bit -> its (name, file)s, its short names
+netbits = {}                                          # name -> its bits
 for nm, net in mod['netnames'].items():
     if not net.get('hide_name'):
+        netbits[nm] = set(b for b in net['bits'] if isinstance(b, int))
         for b in net['bits']:
             nets[b].append((nm, srcfile(net)))
             aliases[b].append(nm.split('.')[-1])
 
-def name_of(b, c):
-    """the bit's name declared in the flop's own file, else its deepest one"""
-    cand = nets.get(b, [])
+all_q = set(b for c in mod['cells'].values() if re.search(r'dff', c['type'])
+            for b in bits(c, 'Q'))                   # every flop output bit
+
+def name_of(c):
+    """the name of the flop's Q, declared in the flop's own file. A net can
+    share only some of Q's bits (eduBOS5: dmem_wdat_next[7:0] is rs2_reg[7:0]
+    for every store size), so of the nets on Q's bits, the one that holds most
+    of Q wins, then the one that is most a flop output, then the deepest"""
+    q = set(bits(c, 'Q'))
+    cand = {nf for b in q for nf in nets.get(b, [])}
     own = [n for n, f in cand if f and f == srcfile(c)]
     pool = own or [n for n, _ in cand]
-    return max(pool, key=lambda n: (n.count('.'), len(n))) if pool else None
+    def rank(n):
+        nb = netbits.get(n, set())
+        return (len(q & nb), len(nb & all_q) / max(len(nb), 1), n.count('.'), len(n))
+    return max(pool, key=rank) if pool else None
 
 driver = {}                     # bit -> input bits of the logic cell that drives it
 for c in mod['cells'].values():
@@ -118,7 +130,7 @@ def loc(c):
 out = {}                        # one line per signal (a struct is split into cells)
 for name, sink in hit.items():
     c = mod['cells'][name]
-    sig = name_of(bits(c, 'Q')[0], c) or name
+    sig = name_of(c) or name
     out.setdefault((loc(c), sig), f"{loc(c)}: '{sig}' has no reset and drives a control input "
                                   f"({sink['type']} at {loc(sink)})")
 for k in sorted(out):

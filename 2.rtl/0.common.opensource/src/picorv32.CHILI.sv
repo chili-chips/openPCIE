@@ -434,8 +434,8 @@ module picorv32 #(
 
   assign mem_la_addr[1:0] = 2'd0;
   assign mem_la_addr[31:2] = (mem_do_prefetch | mem_do_rinst)
-                            ? (next_pc[31:2] + {29'd0, mem_la_firstword_xfer})
-                            :  reg_op1[31:2];
+                           ? (next_pc[31:2] + {29'd0, mem_la_firstword_xfer})
+                           : reg_op1[31:2];
 
   assign mem_rdata_latched_noshuffle = (mem_xfer | LATCHED_MEM_RDATA) ? mem_rdata : mem_rdata_q;
 

@@ -35,7 +35,10 @@
 # after reset shows up as unproven and needs a look by hand.
 #
 # Needs yosys from openXC7 v1.0.0: source ../set-env.sh first. The tool
-# commands can be overridden: YOSYS, YOSYS_CONFIG, OPENXC7_PYTHON.
+# commands can be overridden: YOSYS (+ YOSYS_ARGS), YOSYS_CONFIG,
+# OPENXC7_PYTHON. read_slang is built into the openXC7 Yosys, a plugin in the
+# OSS CAD Suite: when YOSYS_ARGS is not set, it is "" if the Yosys has
+# read_slang, else "-m slang".
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 GOLD=$(cd "$1" && pwd); GATE=$(cd "$2" && pwd); MAP=${3:-}
@@ -52,6 +55,13 @@ case $CPU in
 esac
 YOSYS=${YOSYS:-yosys}
 YOSYS_CONFIG=${YOSYS_CONFIG:-yosys-config}
+if [ -z "${YOSYS_ARGS+set}" ]; then  # as run-lint.sh
+  if "$YOSYS" -p 'help read_slang' 2>/dev/null | grep -q 'read_slang \['; then
+    YOSYS_ARGS=""
+  else
+    YOSYS_ARGS="-m slang"
+  fi
+fi
 OPENXC7_PYTHON=${OPENXC7_PYTHON:-python3}
 W=$(mktemp -d); cd "$W"
 cp "$HERE/../sw_build/firmware.hex" .
@@ -112,7 +122,7 @@ read_slang -D SYN_YOSYS_BUG -D PCIE_LANES=$LANES ${GEN:+-D PCIE_GEN=$GEN} $CPU_D
 $PREP
 tee -q -o names.txt select -list $TOP/w:* $TOP/c:*
 EOF
-  "$YOSYS" -q names.ys >/dev/null
+  "$YOSYS" $YOSYS_ARGS -q names.ys >/dev/null
   sed "s|^$TOP/||" names.txt | sed -n "h; $MAP; G; s/\n/ /; p" |
     awk 'NR==FNR {have[$1]=1; next} $1!=$2 && substr($2,1,1)!="$" && !($1 in have) {print "rename \\" $2 " \\" $1}' \
         <(sed "s|^$TOP/||" names.txt) - > ren.ys
@@ -141,8 +151,8 @@ equiv_induct -seq 3
 equiv_status
 EOF
 rc=0
-"$YOSYS" -q -l eq.log eq.ys >/dev/null || rc=$?
-grep -E "Found [0-9]+ .equiv|Of those cells|^ERROR" eq.log | tail -3
+"$YOSYS" $YOSYS_ARGS -q -l eq.log eq.ys >/dev/null || rc=$?
+grep -E "Found [0-9]+ .equiv|Of those cells|successfully proven|^ERROR" eq.log | tail -3
 grep "Unproven" eq.log | sed -E 's/.*: .([^ ]*)_gold.*/\1/; s/\[[0-9]+\]//g' | sort | uniq -c
 echo "log: $W/eq.log"
 

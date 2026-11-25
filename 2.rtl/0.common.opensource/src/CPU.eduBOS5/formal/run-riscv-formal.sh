@@ -7,7 +7,8 @@
 # openXC7 v1.0.0 (source 4.build/set-env.sh first).
 #
 # usage: RISCV_FORMAL=<riscv-formal clone> [LEGAL=1] [ALIGNED=1] [LEGAL_STORES=1]
-#        [NO_SYSTEM=1] [STORE_WAIT=1] [COUNTERS=1] [MUL=1] [EXTRA=1] [DEPTH=<n>] [MODE=cover]
+#        [NO_SYSTEM=1] [STORE_WAIT=1] [COUNTERS=1] [MUL=1] [RF_SYNC=1] [EXTRA=1] [DEPTH=<n>]
+#        [MODE=cover]
 #        bash run-riscv-formal.sh [EN_WAIT4REGS] [jobs] [checks]
 #   LEGAL=1         assume legal, aligned code (rvfi_wrapper.sv): eduBOS5 has no traps
 #   ALIGNED=1       only the alignment half of LEGAL (natural alignment, word-aligned targets)
@@ -19,6 +20,7 @@
 #                   stand-in results for M: decode, timing, write-back, not the
 #                   arithmetic). A divide retires 36 (3-stage 37) clocks after it
 #                   starts: its insn checks need DEPTH=44 or more
+#   RF_SYNC=1       RF_SYNC_READ=1: the register file reads on a clock (3-stage only)
 #   EXTRA=1         also run liveness, hang, causal_mem and causal_io
 #   DEPTH=<n>       bound of the standard checks (default 16 clocks, checks.cfg)
 #   MODE=cover      check that each check's cover statement is reachable, instead
@@ -42,7 +44,8 @@ cp "$C"/edubos5_pkg.sv "$C"/edubos5_rf.sv "$C"/edubos5_alu.sv "$C"/edubos5.sv \
 SW=0; [ "${STORE_WAIT:-0}" = 1 ] && SW=1
 CN=0; [ "${COUNTERS:-0}" = 1 ] && CN=1
 MU=0; MUD=""; [ "${MUL:-0}" = 1 ] && MU=1 && MUD="-D RISCV_FORMAL_ALTOPS"
-sed "s/@slang_defs@/-G EN_WAIT4REGS=$EN -G STORE_WAITS_RDY=$SW -G EN_COUNTERS=$CN -G USE_HW_MUL=$MU $MUD/" \
+RS=0; [ "${RF_SYNC:-0}" = 1 ] && RS=1
+sed "s/@slang_defs@/-G EN_WAIT4REGS=$EN -G STORE_WAITS_RDY=$SW -G EN_COUNTERS=$CN -G USE_HW_MUL=$MU -G RF_SYNC_READ=$RS $MUD/" \
   "$HERE/checks.cfg" > "$W/cores/edubos5/checks.cfg"
 if [ "$MU" = 1 ]; then
   sed -i -e "s/^isa rv32i$/isa rv32im/" -e "/^\[defines\]$/a \`define RISCV_FORMAL_ALTOPS" "$W/cores/edubos5/checks.cfg"

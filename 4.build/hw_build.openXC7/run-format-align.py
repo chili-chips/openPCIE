@@ -49,6 +49,22 @@
 #                : csr.rdy;
 # Only a ternary at the top of the right-hand side, not nested in another
 # (a part-select [7:0] is not its ':'); anything else stays as it is.
+#
+# run-format.sh step 2g.
+# A function or task header that does not fit on one line: one argument per
+# line, 4 spaces in, with the direction, type, dimension and name columns
+# aligned, and the ');' on its own line under the keyword. Verible packs the
+# arguments under the '(':
+#     function automatic lcrc_t lcrc_flat(input lcrc_t crc, input lcrc_data_t data,
+#                                         input lcrc_crows_t crows, input lcrc_drows_t drows);
+#   ->
+#     function automatic lcrc_t lcrc_flat(
+#         input lcrc_t       crc,
+#         input lcrc_data_t  data,
+#         input lcrc_crows_t crows,
+#         input lcrc_drows_t drows
+#     );
+# A header with a comment or a default value stays as Verible made it.
 #   usage: run-format-align.py [--check] file...   (--check: print the files it would change)
 import re, sys
 
@@ -135,7 +151,7 @@ def process(text):
                     src[k] = l
                     carry(src, k, old, l.find('//'))
         i = idx[-1] + 1
-    return '\n'.join(ternaries(ports(src)))
+    return '\n'.join(args(ternaries(ports(src))))
 
 
 def top_ternary(rhs):
@@ -162,12 +178,42 @@ def top_ternary(rhs):
 ONE = re.compile(r'^(\s*assign\s+\S.*?\s+=\s+)(.*;)$')
 
 
+def joined(src, i):
+    """an assign that Verible split over lines (no comment in it): the lines
+    from i through its ';', as one line, and the index of the last; else None"""
+    if not re.match(r'^\s*assign\b', src[i]) or split(src[i])[0].endswith(';'):
+        return None
+    j = i + 1
+    while j < len(src) and j < i + 8 and not split(src[j])[0].endswith(';'):
+        j += 1
+    if j >= len(src) or j == i + 8 or any('//' in l or '/*' in l for l in src[i:j + 1]):
+        return None
+    one = src[i].rstrip() + ' ' + ' '.join(l.strip() for l in src[i + 1:j + 1])
+    one = re.sub(r'([(\[{])\s+', r'\1', one)
+    one = re.sub(r'\s+([)\]}])', r'\1', one)
+    return one, j
+
+
 def ternaries(src):
     """step 2f: '?' and ':' aligned in a block, a long one stacked"""
     i = 0
     while i < len(src):
         code, cmt = split(src[i])
         m = ONE.match(code)
+        if not m:
+            # a split ternary assign: one line again, to fit or to stack below
+            jn = joined(src, i)
+            mj = ONE.match(jn[0]) if jn else None
+            tj = top_ternary(mj.group(2)) if mj else None
+            ind = ' ' * (len(mj.group(1)) - 2) if mj else ''
+            if tj and (len(jn[0]) > LIMIT and  # neither on one line nor stacked: leave it
+                       max(len(mj.group(1) + tj[0]), len(ind + '? ' + tj[1]),
+                           len(ind + ': ' + tj[2] + ';')) > LIMIT):
+                tj = None
+            if tj:
+                src[i:jn[1] + 1] = [jn[0]]
+                code, cmt = jn[0], ''
+                m = mj
         t = top_ternary(m.group(2)) if m else None
         if not t:
             i += 1
@@ -254,6 +300,92 @@ def ports(src):
                     old = src[r[0]].find('//')
                     src[r[0]] = l
                     carry(src, r[0], old, l.find('//'))
+        i = j + 1
+    return src
+
+
+SUB = re.compile(r'^(\s*)((?:function|task)\b.*)$')
+ARG = re.compile(r'^(?:(input|output|inout|ref)\s+)?(.*?)\s*((?:\[[^\]]*\]\s*)*)'
+                 r'([A-Za-z_]\w*(?:\s*\[[^\]]*\])*)$')
+
+
+def arg_open(code):
+    """index of the '(' that opens the argument list (not in a [dimension])"""
+    d = 0
+    for k, ch in enumerate(code):
+        if ch == '[':
+            d += 1
+        elif ch == ']':
+            d -= 1
+        elif ch == '(' and d == 0:
+            return k
+    return -1
+
+
+def top_commas(s):
+    """s split at its depth-0 commas"""
+    out, d, last = [], 0, 0
+    for k, ch in enumerate(s):
+        if ch in '([{':
+            d += 1
+        elif ch in ')]}':
+            d -= 1
+        elif ch == ',' and d == 0:
+            out.append(s[last:k].strip())
+            last = k + 1
+    out.append(s[last:].strip())
+    return out
+
+
+def args(src):
+    """step 2g: a header over one line, one argument per line"""
+    i = 0
+    while i < len(src):
+        m = SUB.match(src[i])
+        o = arg_open(m.group(2)) if m else -1
+        if o < 0:
+            i += 1
+            continue
+        j = i
+        while j < len(src) and not split(src[j])[0].endswith(');'):
+            j += 1
+        lines = src[i:j + 1]
+        if j == len(src) or any('//' in l or '/*' in l for l in lines) or \
+           (j == i and len(src[i]) <= LIMIT):
+            i = j + 1
+            continue
+        ind, head = m.group(1), m.group(2)[:o + 1]
+        body = ' '.join(l.strip() for l in lines)
+        body = body[body.index('(', len(head.strip()) - 1) + 1:body.rindex(')')].strip()
+        rows = []
+        for a in top_commas(body):
+            r = ARG.match(' '.join(a.split()))
+            if not a or '=' in a or not r:
+                rows = []
+                break
+            rows.append((r.group(1) or '', r.group(2), r.group(3).strip(), r.group(4)))
+        if not rows:
+            i = j + 1
+            continue
+        wd = max(len(r[0]) for r in rows)
+        wt = max(len(r[1]) for r in rows)
+        wm = max(len(r[2]) for r in rows)
+        pre = []
+        for r in rows:
+            l = ''
+            for w, f in ((wd, r[0]), (wt, r[1]), (wm, r[2])):
+                if w:
+                    l += f.ljust(w) + ' '
+            pre.append(l.rstrip())
+        wp = max(len(l) for l in pre)
+        new = [ind + head]
+        for k, (l, r) in enumerate(zip(pre, rows)):
+            new.append(ind + '    ' + (l.ljust(wp) + ' ' if wp else '') + r[3] +
+                       (',' if k < len(rows) - 1 else ''))
+        new.append(ind + ');')
+        if all(len(l) <= LIMIT for l in new):
+            src[i:j + 1] = new
+            j = i + len(new) - 1
         i = j + 1
     return src
 

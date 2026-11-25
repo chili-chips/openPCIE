@@ -162,10 +162,22 @@ _se_tool VERILATOR verilator 5.052 '$T --version' \
 # Verible numbers its releases v0.0-<build>; read as 0.0.<build> to compare
 _se_tool VERIBLE   verible-verilog-lint 0.0.4296 '$T --version | grep -oE "0\.0-[0-9]+" | sed "s/0\.0-/0.0./"' \
     "Verible v0.0-4296+: linux-static-x86_64 tarball from github.com/chipsalliance/verible/releases, into ~/.local/bin"
+# format and syntax: next to the lint binary (one release), else from PATH. A
+# folder can hold the lint binary alone (a LintCrux tool folder does)
+_se_vsib() {
+    local p="$_se_vb/$2"
+    [ -x "$p" ] || p=$(command -v "$2" 2>/dev/null)
+    if [ -n "$p" ]; then
+        _se_set "$1" "$p"
+    else
+        printf '  %-18s %-12s %s\n' "$1" "MISSING" "$2" >&2
+        _se_need "$2: from the same Verible release tarball, into ~/.local/bin"
+    fi
+}
 [ -n "${VERIBLE:-}" ] && _se_vb=$(dirname "$VERIBLE") && {
-    _se_set VERIBLE_FORMAT "$_se_vb/verible-verilog-format"
-    _se_set VERIBLE_SYNTAX "$_se_vb/verible-verilog-syntax"
-    _se_set VERIBLE_LINT   "$VERIBLE"; }
+    _se_vsib VERIBLE_FORMAT verible-verilog-format
+    _se_vsib VERIBLE_SYNTAX verible-verilog-syntax
+    _se_set  VERIBLE_LINT   "$VERIBLE"; }
 
 # ---- programming: openFPGALoader, and on WSL usbipd-win for the cable ------
 _se_msg "programming:"
@@ -231,7 +243,7 @@ fi
 [ "$_se_zng" = 0 ] && unsetopt null_glob
 unset _se_csh _se_src _se_zng _se_path0 _se_bad _se_todo _se_x7 _se_hint_x7 _se_rv _se_hint_rv \
       _se_hint_rdl _se_vb _se_hint_cc _se_hint_viv _se_vv _se_vver _se_ui
-unset -f _se_msg _se_set _se_need _se_num _se_ge _se_newest _se_tool
+unset -f _se_msg _se_set _se_need _se_num _se_ge _se_newest _se_tool _se_vsib
 
 # -----------------------------------------------------------------------------
 # Project:     openPCIE

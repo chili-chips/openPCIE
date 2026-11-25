@@ -84,6 +84,8 @@ module riscv_pcie_soc
   //   default             : the eduBOS5 RTL core (CPU.eduBOS5/), 2-stage
   //                         pipeline, executing firmware.hex out of the RAM
   //                         below; `define SOC_EDUBOS5_3STG for 3-stage.
+  //                         With it, `define SOC_EDUBOS5_RF_SYNC reads the
+  //                         register file on a clock (block RAM, GateMate).
   //   `define SOC_CPU_PICORV32 : the picorv32 RTL core, same RAM and
   //                         firmware.hex.
   //   `define SOC_CPU_VPROC : the VProc virtual processor, so that a native
@@ -213,6 +215,12 @@ module riscv_pcie_soc
   localparam int EDUBOS5_WAIT4REGS = 0;  // 2-stage pipeline
 `endif
 
+`ifdef SOC_EDUBOS5_RF_SYNC
+  localparam bit EDUBOS5_RF_SYNC = 1'b1;  // register file in block RAM (3-stage)
+`else
+  localparam bit EDUBOS5_RF_SYNC = 1'b0;  // register file in LUT RAM
+`endif
+
   // RV32M in one DSP48E1. SOC_MUL_RTL: the multiply in plain RTL, same timing
   // (a simulator without the Xilinx models)
 `ifdef SOC_MUL_RTL
@@ -223,6 +231,7 @@ module riscv_pcie_soc
 
   edubos5 #(
       .EN_WAIT4REGS (EDUBOS5_WAIT4REGS),
+      .RF_SYNC_READ (EDUBOS5_RF_SYNC),
       .EN_COUNTERS  (CPU_COUNTERS),
       .USE_HW_MUL   (CPU_MUL),
       .USE_DSP48E1  (CPU_MUL_DSP)

@@ -28,7 +28,11 @@
 #      an interface port, which has no direction, starts in the direction column;
 #   2f. adjacent one-line conditional assigns (assign x = c ? a : b;) share
 #      the '?' and ':' columns; one too long takes three lines, '?' and ':'
-#      under the '=' (run-format-align.py);
+#      under the '=', also when Verible split it another way
+#      (run-format-align.py);
+#   2g. a function or task header that does not fit on one line: one
+#      argument per line, 4 spaces in, direction, type, dimension and name
+#      columns aligned, ');' on its own line (run-format-align.py);
 #   3. no expression in a port connection (reported, not fixed);
 #   4. && and || only in an if/while/for condition, & and | for bits elsewhere
 #      (reported, not fixed: run-format-ops.py --fix, then prove it with LEQ);

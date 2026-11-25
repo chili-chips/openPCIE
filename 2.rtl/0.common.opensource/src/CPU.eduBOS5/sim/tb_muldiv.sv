@@ -21,6 +21,7 @@ module tb_muldiv;
   parameter bit STORE_WAIT = 1'b0;
   parameter int N_RAND = 2000;
   parameter bit USE_DSP48E1 = 1'b0;  // 1: needs a DSP48E1 model (run-muldiv.sh)
+  parameter bit RF_SYNC_READ = 1'b0;  // 1: needs EN_WAIT4REGS = 1
 
   localparam int N_CORNER = 16;
   localparam int N_VEC = N_CORNER * N_CORNER + N_RAND;
@@ -75,7 +76,8 @@ module tb_muldiv;
       .EN_WAIT4REGS    (EN_WAIT4REGS),
       .STORE_WAITS_RDY (STORE_WAIT),
       .USE_HW_MUL      (1'b1),
-      .USE_DSP48E1     (USE_DSP48E1)
+      .USE_DSP48E1     (USE_DSP48E1),
+      .RF_SYNC_READ    (RF_SYNC_READ)
   ) uut (
       .clk,
       .arst_n,

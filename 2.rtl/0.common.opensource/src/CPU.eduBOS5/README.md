@@ -18,6 +18,7 @@
 | store on a bus that can make it wait | `STORE_WAITS_RDY=1`: the store holds its request until `dmem_rdy`, stalling the core; 0 cycles more when `dmem_rdy` comes in the request cycle | waits on `mem_ready` always |
 | counters (Zicntr) | `EN_COUNTERS=1`: `rdcycle`, `rdtime` (= cycle), `rdinstret` and the `h` halves, 64-bit (`csrrs`/`csrrc` with `x0`, or `csrrsi`/`csrrci` with 0); any other CSR access halts; no extra cycle. 0 (default): none, no logic. The SOC sets 1 (`make COUNTERS=0` for none) | `ENABLE_COUNTERS`: the same, set by the SOC alike |
 | multiply, divide (RV32M) | `USE_HW_MUL=1`: all 8 M instructions, each in a fixed count of clocks, whatever its operands; `USE_DSP48E1=1` multiplies in one DSP48E1 primitive (Xilinx 7-series). 0 (default): RV32I, no logic. The SOC sets both to 1 (`make MUL=0`: 0; [RV32M](#rv32m-multiply-and-divide-use_hw_mul)) | `ENABLE_MUL`, `ENABLE_DIV`: the SOC sets both to 1 (`make MUL=0`: 0) |
+| register file in block RAM | `RF_SYNC_READ=1`, 3-stage only: for an FPGA with no LUT RAM, e.g. GateMate ([below](#register-file-in-block-ram-rf_sync_read)). SOC: `` `define SOC_EDUBOS5_RF_SYNC `` | LUT RAM or flip-flops |
 
 x0 is never written, so it must read 0 from the start: an FPGA RAM has a power-up value (its INIT), an ASIC does not, hence the mux.
 
@@ -27,7 +28,7 @@ x0 is never written, so it must read 0 from the start: an FPGA RAM has a power-u
 |---|---|
 | `edubos5.sv` | the core: control FSM, decode, load/store; multiply and divide (`USE_HW_MUL`) |
 | `edubos5_alu.sv` | ALU, registered output |
-| `edubos5_rf.sv` | register file: 2 asynchronous read ports, 1 synchronous write port |
+| `edubos5_rf.sv` | register file: 2 read ports, asynchronous (LUT RAM) or registered (block RAM, `RF_SYNC_READ`), 1 synchronous write port |
 | `edubos5_pkg.sv` | common types and opcodes |
 | [`formal/`](formal) | the multicycle proof ([formal proving](#getting-started-with-formal-proving-a-worked-example)) and [riscv-formal](#riscv-formal-every-instruction-against-the-isa): harnesses and scripts |
 | [`wavecrux/`](wavecrux) | the CPU's RVFI view and its pictures ([WaveCrux](#watching-the-cpu-in-wavecrux)) |
@@ -296,6 +297,37 @@ The failures are expected:
 ## 3-stage multicycle paths
 
 [`edubos5.3STG-ONLY.mcp.tcl`](edubos5.3STG-ONLY.mcp.tcl) gives Vivado 2 cycles from the instruction port and the register file. It finds the instruction port by connectivity (the RAM port on `imem_addr`) and stops the run if that is not exactly one port, so a different RAM mapping cannot relax the data port instead. This is safe only if the RTL really gives those paths 2 cycles: the next section proves it.
+
+### Register file in block RAM (`RF_SYNC_READ`)
+
+An FPGA with no LUT RAM (GateMate) builds the asynchronous register file from 1,024 flip-flops and two 32-bit 32:1 read muxes. Block RAM reads only on a clock, one cycle late for the 2-stage core. The 3-stage core already has that cycle:
+
+1. In `WAIT4REGS` the instruction word is valid. The register file reads there (`rf_re`), and `rs1`, `rs2` are ready for `EXECUTE`. They hold until the next `WAIT4REGS`.
+2. Writes come in `FETCH_INSTR`, one clock before the next read: no bypass, and the RAM's read-during-write mode does not matter.
+3. Reset enters `WAIT4REGS`, not `EXECUTE`, so the first instruction reads its registers too: 1 clock more, once.
+
+The timing changes with it. The register file is no longer a 2-cycle source: it reads at the 1st edge after launch, a 1-cycle path from the instruction port. The Tcl file sees the read registers or block RAM in `u_rf` and keeps those paths 1 cycle. The checks (`EDUBOS5_MCP_CHECK`, `EDUBOS5_MCP_FORMAL`) leave `rs1`, `rs2` out of the sources and assert instead that they change only at the edge that ends `WAIT4REGS`.
+
+GateMate (`synth_gatemate`, the core alone, 3-stage):
+
+| | LUT RAM read (default) | `RF_SYNC_READ=1` |
+|---|---|---|
+| `CC_DFF` | 1,490 | 466 |
+| `CC_MX4` + `CC_MX2` | 1,101 | 405 |
+| `CC_L2T4` + `CC_L2T5` + `CC_LUT1/2` | 555 | 506 |
+| `CC_BRAM_20K` | 0 | 2 (one per read port) |
+
+Checks (2026-11-24):
+
+| Check | Result |
+|---|---|
+| riscv-formal, `RF_SYNC=1 LEGAL=1`, 3-stage | 44 pass |
+| `RF_SYNC=1 run-mcp-formal.sh` | proved (14 s) |
+| the same, `rf_re` always 1 (correct, but reads outside `WAIT4REGS`) | fails at clock 7; riscv-formal passes |
+| the same, `rf_re` in `EXECUTE` (wrong) | fails at clock 8; riscv-formal `reg`, `insn_add` fail |
+| `sim/run-muldiv.sh`, `sim/run-power-up.sh` | 0 errors; 1 clock more per run (the reset) |
+| 5.sim, `make run CORE=edubos5_3stg USRSIMOPTS="--define EDUBOS5_MCP_CHECK --define SOC_EDUBOS5_RF_SYNC"` | firmware PASS, 0 assertion errors; result 16 ns (1 clock) later |
+| `run-lint.sh` with `SOC_EDUBOS5_RF_SYNC`, `run-format.sh --check` | 0 findings |
 
 ## Getting started with formal proving: a worked example
 

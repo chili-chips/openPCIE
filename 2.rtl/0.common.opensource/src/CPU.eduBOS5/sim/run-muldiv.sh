@@ -5,7 +5,8 @@
 #
 # RV32M test of eduBOS5 (USE_HW_MUL=1, tb_muldiv.sv): all 8 M instructions on
 # corner and random operands against a reference, and a fixed count of clocks
-# per instruction. Both pipelines, each with STORE_WAITS_RDY 0 and 1, in
+# per instruction. Both pipelines, and the 3-stage with RF_SYNC_READ, each
+# with STORE_WAITS_RDY 0 and 1, in
 # Verilator, the multiplier in RTL (USE_DSP48E1=0). Icarus (after sv2v) runs
 # fewer random vectors, with the RTL multiplier and, given AMD's simulation
 # model, with the DSP48E1 primitive (USE_DSP48E1=1).
@@ -23,13 +24,15 @@ UNISIMS=${UNISIMS:-${XILINX_VIVADO:+$XILINX_VIVADO/data/verilog/src}}
 W=$(mktemp -d /tmp/muldiv_edubos5.XXXX)
 cd "$W"
 
-for en in 0 1; do
+for cfg in 0:0 1:0 1:1; do  # EN_WAIT4REGS:RF_SYNC_READ
+  en=${cfg%:*}
+  rs=${cfg#*:}
   for sw in 0 1; do
-    echo "== Verilator, EN_WAIT4REGS=$en STORE_WAIT=$sw"
+    echo "== Verilator, EN_WAIT4REGS=$en RF_SYNC_READ=$rs STORE_WAIT=$sw"
     verilator --binary --timing --timescale 1ns/10ps -Wno-fatal -Wno-lint -Wno-style -DRISCV_FORMAL \
-      -GEN_WAIT4REGS=$en -GSTORE_WAIT=$sw -GN_RAND="$N_RAND" --top-module tb_muldiv \
-      -Mdir vl_${en}_$sw "${SRC[@]}" > vl_${en}_$sw.log 2>&1
-    ./vl_${en}_$sw/Vtb_muldiv | grep -E '^(funct3|reuse|PASS|FAIL)'
+      -GEN_WAIT4REGS=$en -GRF_SYNC_READ=$rs -GSTORE_WAIT=$sw -GN_RAND="$N_RAND" \
+      --top-module tb_muldiv -Mdir vl_$en${rs}_$sw "${SRC[@]}" > vl_$en${rs}_$sw.log 2>&1
+    ./vl_$en${rs}_$sw/Vtb_muldiv | grep -E '^(funct3|reuse|PASS|FAIL)'
   done
 done
 
@@ -39,14 +42,16 @@ if command -v iverilog > /dev/null && command -v sv2v > /dev/null; then
   DSPS=0
   [ -n "$UNISIMS" ] && [ -f "$UNISIMS/unisims/DSP48E1.v" ] && DSPS="0 1"
   for dsp in $DSPS; do
-    for en in 0 1; do
-      echo "== Icarus, EN_WAIT4REGS=$en USE_DSP48E1=$dsp"
+    for cfg in 0:0 1:0 1:1; do  # EN_WAIT4REGS:RF_SYNC_READ
+      en=${cfg%:*}
+      rs=${cfg#*:}
+      echo "== Icarus, EN_WAIT4REGS=$en RF_SYNC_READ=$rs USE_DSP48E1=$dsp"
       lib=()
       [ "$dsp" = 1 ] && lib=(-s glbl "$UNISIMS/unisims/DSP48E1.v" "$UNISIMS/glbl.v")
-      iverilog -g2012 -c timescale.cf -P tb_muldiv.EN_WAIT4REGS=$en -P tb_muldiv.N_RAND="$IVL_RAND" \
-        -P tb_muldiv.USE_DSP48E1=$dsp -s tb_muldiv -o ivl_${en}_$dsp.vvp all.v "${lib[@]}" \
-        > ivl_${en}_$dsp.log 2>&1
-      vvp -n ivl_${en}_$dsp.vvp | grep -E '^(funct3|reuse|PASS|FAIL)'
+      iverilog -g2012 -c timescale.cf -P tb_muldiv.EN_WAIT4REGS=$en -P tb_muldiv.RF_SYNC_READ=$rs \
+        -P tb_muldiv.N_RAND="$IVL_RAND" -P tb_muldiv.USE_DSP48E1=$dsp -s tb_muldiv \
+        -o ivl_$en${rs}_$dsp.vvp all.v "${lib[@]}" > ivl_$en${rs}_$dsp.log 2>&1
+      vvp -n ivl_$en${rs}_$dsp.vvp | grep -E '^(funct3|reuse|PASS|FAIL)'
     done
   done
 fi

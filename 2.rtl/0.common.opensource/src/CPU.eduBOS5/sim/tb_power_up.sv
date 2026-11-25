@@ -12,6 +12,7 @@ module tb_power_up;
   import edubos5_pkg::*;
   parameter int EN_WAIT4REGS = 0;
   parameter bit USE_HW_MUL = 1'b0;
+  parameter bit RF_SYNC_READ = 1'b0;  // 1: needs EN_WAIT4REGS = 1
 
   logic clk = 1'b0;
   logic arst_n = 1'b0;
@@ -38,7 +39,8 @@ module tb_power_up;
 
   edubos5 #(
       .EN_WAIT4REGS (EN_WAIT4REGS),
-      .USE_HW_MUL   (USE_HW_MUL)
+      .USE_HW_MUL   (USE_HW_MUL),
+      .RF_SYNC_READ (RF_SYNC_READ)
   ) uut (
       .clk,
       .arst_n,

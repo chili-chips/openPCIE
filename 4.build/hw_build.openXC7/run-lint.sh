@@ -33,7 +33,9 @@
 # (+ YOSYS_ARGS), YOSYS_CONFIG, PYTHON, VERIBLE, VIVADO. The tags and Verilator phases
 # need the Xilinx primitive stubs that gen_xilinx_bb.py builds from the Yosys
 # library: from yosys-config, or pass XILINX_BB=<stubs.sv> from a run that had
-# Yosys.
+# Yosys. read_slang is built into the openXC7 Yosys, a plugin in the OSS CAD
+# Suite: when YOSYS_ARGS is not set, it is "" if the Yosys has read_slang,
+# else "-m slang".
 #
 # Sources are copied into a work directory (LINT_WORK, default mktemp -d) and
 # every tool gets relative paths, since Windows tools cannot read UNC or WSL
@@ -63,7 +65,13 @@ VERILATOR=${VERILATOR:-verilator}
 YOSYS=${YOSYS:-yosys}
 YOSYS_CONFIG=${YOSYS_CONFIG:-yosys-config}
 PYTHON=${PYTHON:-python3}
-YOSYS_ARGS=${YOSYS_ARGS:-}   # e.g. "-m slang" where read_slang is a plugin (OSS CAD Suite)
+if [ -z "${YOSYS_ARGS+set}" ]; then   # "-m slang" where read_slang is a plugin
+  if "$YOSYS" -p 'help read_slang' 2>/dev/null | grep -q 'read_slang \['; then
+    YOSYS_ARGS=""
+  else
+    YOSYS_ARGS="-m slang"
+  fi
+fi
 VERIBLE=${VERIBLE:-verible-verilog-lint}
 VIVADO=${VIVADO:-vivado}
 LANES=${LANES:-4}
@@ -108,8 +116,11 @@ have() { command -v "$1" >/dev/null 2>&1; }
 declare -A RESULT
 skip() { RESULT[$1]="skipped ($2)"; echo "-- $1: skipped, $2"; }
 
-# waiver regexes of one phase: the lines "<phase> <regex>" of the waivers file
+# waiver regexes of one phase: the lines "<phase> <regex>" of the waivers file;
+# a regex that never matches keeps grep -v -f from dropping every line when
+# the phase has no waiver
 waivers() {
+  echo '^$'
   [ -f "$WAIVERS" ] || return 0
   awk -v ph="$1" '{ sub(/\r$/, "") } $1 == ph { sub(/^[ \t]*[^ \t]+[ \t]+/, ""); print }' "$WAIVERS"
 }
@@ -122,7 +133,7 @@ waivers() {
 } > lint_ok.txt
 
 found() {  # $1 phase; one finding per line on stdin (not a pipe: RESULT must stay in this shell)
-  cat > $1.all
+  awk '!seen[$0]++' > $1.all  # a finding that several tops or runs share, once
   # drop findings about a pin waived inline: file:line plus the 'PIN' the tools
   # quote (Windows tools print \ in paths)
   awk 'NR == FNR { ok[$0] = 1; next }

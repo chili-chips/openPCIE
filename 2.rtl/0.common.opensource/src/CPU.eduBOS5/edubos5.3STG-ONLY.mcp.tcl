@@ -11,8 +11,13 @@
 # so paths from these two sources get 2 cycles:
 #   - the SOC RAM's instruction port (the data port carries the loads, a
 #     1-cycle path, so it stays single-cycle)
-#   - the register file LUT-RAMs, written in FETCH_INSTR
+#   - the register file LUT-RAMs, written in FETCH_INSTR (asynchronous reads)
 # Do not use with the 2-stage pipeline: there these paths are 1 cycle.
+#
+# RF_SYNC_READ (edubos5.sv): the register file reads on the edge that ends
+# WAIT4REGS, the 1st after the launch, into registers or a block RAM. Then it
+# is not a source, and the paths from the instruction port into it stay 1
+# cycle (a -from -to, which overrides the -from).
 #
 # Proof: assertions in edubos5.sv, for simulation (`define EDUBOS5_MCP_CHECK)
 # and formal (`define EDUBOS5_MCP_FORMAL, formal/run-mcp-formal.sh): both
@@ -45,9 +50,17 @@ set clk_pin  [expr { $imem_port eq "A" ? "CLKARDCLK" : "CLKBWRCLK" }]
 set imem_clk [get_pins -of_objects $ram_cells -filter "REF_PIN_NAME == $clk_pin"]
 puts "edubos5.3STG-ONLY.mcp.tcl: instruction port $imem_port, [llength $imem_clk] x $clk_pin"
 
-set rf_ram   [get_cells -hier -filter {NAME =~ u_soc/cpu/u_rf/* && IS_PRIMITIVE && REF_NAME =~ RAMD32*}]
+set rf_cells [get_cells -hier -filter {NAME =~ u_soc/cpu/u_rf/* && IS_PRIMITIVE}]
+set rf_ram   [filter $rf_cells {REF_NAME =~ RAMD32*}]
+set rf_sync  [filter $rf_cells {PRIMITIVE_GROUP == FLOP_LATCH || PRIMITIVE_GROUP == BLOCKRAM}]
 
 set_multicycle_path -setup 2 -from $imem_clk
 set_multicycle_path -hold  1 -from $imem_clk
-set_multicycle_path -setup 2 -from $rf_ram
-set_multicycle_path -hold  1 -from $rf_ram
+if { [llength $rf_sync] > 0 } {
+  puts "edubos5.3STG-ONLY.mcp.tcl: register file reads on a clock (RF_SYNC_READ)"
+  set_multicycle_path -setup 1 -from $imem_clk -to $rf_cells
+  set_multicycle_path -hold  0 -from $imem_clk -to $rf_cells
+} else {
+  set_multicycle_path -setup 2 -from $rf_ram
+  set_multicycle_path -hold  1 -from $rf_ram
+}

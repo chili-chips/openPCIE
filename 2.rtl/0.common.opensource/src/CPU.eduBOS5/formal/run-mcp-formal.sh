@@ -6,7 +6,9 @@
 # Static proof of edubos5.3STG-ONLY.mcp.tcl with Yosys (read_slang) and ABC,
 # both in openXC7 v1.0.0 (source 4.build/set-env.sh first).
 #
-# usage: bash run-mcp-formal.sh [source|miter] [EN_WAIT4REGS] [ABC engine]
+# usage: [RF_SYNC=1] bash run-mcp-formal.sh [source|miter] [EN_WAIT4REGS] [ABC engine]
+#   RF_SYNC=1  RF_SYNC_READ=1 (source only): the register file reads on a clock,
+#              at the edge that ends WAIT4REGS, and is not a source
 #   source  edubos5_mcp_formal.sv: the sources change only at launch, hold 2 clocks,
 #           and nothing loads at the 1st edge after it (go2exec)
 #   miter   edubos5_mcp_miter.sv:  what is captured at the 1st edge is never used
@@ -19,6 +21,7 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 C=$HERE/..
 CHECK=${1:-source}
+RS=""; [ "${RF_SYNC:-0}" = 1 ] && RS="-G RF_SYNC_READ=1"  # source only
 EN=${2:-1}
 ENGINE=${3:-pdr}
 case $CHECK in
@@ -30,7 +33,7 @@ W=$(mktemp -d)
 cd "$W"
 # Every flip-flop starts at 0, also the hidden $past ones; the harness then
 # resets the core for 2 clocks.
-yosys -q -p "read_slang $DEFS -G EN_WAIT4REGS=$EN --top $TOP \
+yosys -q -p "read_slang $DEFS -G EN_WAIT4REGS=$EN $RS --top $TOP \
                $C/edubos5_pkg.sv $C/edubos5_rf.sv $C/edubos5_alu.sv $C/edubos5.sv $HERE/$TOP.sv; \
              prep -flatten -top $TOP; memory_map; opt -fast; \
              async2sync; chformal -lower; chformal -assume -early; \

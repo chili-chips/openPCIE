@@ -11,7 +11,8 @@
 module edubos5_mcp_formal
   import edubos5_pkg::*;
 #(
-    parameter bit EN_WAIT4REGS = 1  // 0: the 2-stage core (passes too: source side only)
+    parameter bit EN_WAIT4REGS = 1,  // 0: the 2-stage core (passes too: source side only)
+    parameter bit RF_SYNC_READ = 0   // 1: the register file reads on a clock (3-stage)
 ) (
     input logic      clk,
     input cpu_data_t imem_word,  // the RAM contents at the address, free
@@ -40,7 +41,8 @@ module edubos5_mcp_formal
 
   edubos5 #(
       .EN_WAIT4REGS(EN_WAIT4REGS),
-      .EN_COUNTERS (1'b1)           // as the SOC builds it
+      .EN_COUNTERS (1'b1),          // as the SOC builds it
+      .RF_SYNC_READ(RF_SYNC_READ)
   ) u_cpu (
       .clk        (clk),
       .arst_n     (arst_n),
