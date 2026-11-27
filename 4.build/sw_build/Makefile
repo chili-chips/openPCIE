@@ -119,9 +119,10 @@ RM_OUT  = rm -f $(OUT)/firmware.elf $(OUT)/firmware.bin $(OUT)/firmware.hex
 # rv32im (MUL=1) or rv32i, plus the counters (COUNTERS=1); no C extension.
 # -ffreestanding -nostdlib: no libc, no crt0; start.S provides the entry point.
 ARCH    = -march=rv32i$(MUL_ARCH)$(CNT_ARCH) -mabi=ilp32
-# FW_OPT: an optimisation level, for QA (5.sim: make run FW_OPT=-O2); default none,
-# as the tracked board build. The result must not depend on it
-FW_OPT ?=
+# FW_OPT: the optimisation flags; default -Os -flto (since 2026-11-26: 53% less
+# code than none), as the tracked board build. For QA, e.g. 5.sim: make run
+# FW_OPT=-O0 or FW_OPT=-O2. The result must not depend on it
+FW_OPT ?= -Os -flto
 CFLAGS  = $(ARCH) -ffreestanding -nostdlib -I$(COMMON_DIR) $(CSR_CFLAGS) $(SIM_CFLAGS) $(CNT_CFLAGS) $(FW_OPT)
 LDFLAGS = -Wl,-Bstatic,-T,$(COMMON_DIR)/sections.lds,--strip-debug
 

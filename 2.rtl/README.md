@@ -221,7 +221,9 @@ With Vivado's ILA (ChipScope):
 1. Synthesize, then **Set Up Debug**: `fw_result` is already listed. Add more, e.g. the LTSSM state or the `s_axis_tx` / `m_axis_rx` streams, on `user_clk`.
 2. Trigger on `fw_result` not equal to 0, program the board, and run.
 
-ChipScope is proprietary; openXC7 has no such core. Candidate: [fpgacapZero](https://github.com/lcapossio/fpgacapZero) (fcapz, Apache-2.0), vendor-agnostic logic-analyzer and I/O cores in Verilog and VHDL, with a 7-series JTAG wrapper, OpenOCD or Vivado's hw_server, and VCD export that opens in WaveCrux.
+#### fpgacapZero instead of ChipScope
+
+ChipScope is closed-source and Vivado-only; openXC7 has no such core. We use [fpgacapZero](https://github.com/lcapossio/fpgacapZero) (fcapz, Apache-2.0) instead: vendor-agnostic logic-analyzer and I/O cores in Verilog and VHDL, with a 7-series JTAG (BSCANE2) wrapper, OpenOCD or Vivado's hw_server, and VCD export that opens in WaveCrux. An 8-bit, 1024-sample ELA (`fcapz_ela_xilinx7`) builds with openXC7 main to a bitstream (one BSCANE2, one RAMB18E1; checked 2026-11-26 in wireguard-fpga), not yet tried on this board.
 
 ### References
 

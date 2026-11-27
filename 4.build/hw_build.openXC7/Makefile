@@ -471,7 +471,7 @@ $(WORK)/top.json: $(SV_ORDERED) $(PURE_V_FILES) $(FIRMWARE) gen_xilinx_bb.py FOR
 	          proc; opt; clean; \
 	          synth_xilinx -flatten -abc9 -arch xc7 -top $(TOP); \
 	          write_json $@"
-	@# no large memory in LUTs: it belongs in block RAM (check-lutram.py)
+	@# a deep, big memory in LUTs belongs in block RAM; shallow ones stay (check-lutram.py)
 	python3 check-lutram.py $@
 	@echo "OK -> $@"
 else
@@ -489,7 +489,7 @@ $(WORK)/top.json: $(EXTRACT_TIMESTAMP) $(PURE_V_FILES) $(FIRMWARE)
 	          proc; opt; clean; \
 	          synth_xilinx -flatten -abc9 -arch xc7 -top $(TOP); \
 	          write_json $@"
-	@# no large memory in LUTs: it belongs in block RAM (check-lutram.py)
+	@# a deep, big memory in LUTs belongs in block RAM; shallow ones stay (check-lutram.py)
 	python3 check-lutram.py $@
 	@echo "OK -> $@"
 endif

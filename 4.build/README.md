@@ -93,7 +93,7 @@ On a RISC-V core, `CSR_REG32()` takes the register's address from the generated 
     lbu a4,12(a5)   /   sb a4,12(a5)   /   lbu a4,13(a5)   ...
 ```
 
-Wrong for a CSR: the write strobe of `tx.data` starts a TLP transfer, so the packet leaves after the first byte. The compiler merges the bytes only at `-O2` and above, and the firmware is built without optimisation. On x86 you never see it; it took a run on the real ISA.
+Wrong for a CSR: the write strobe of `tx.data` starts a TLP transfer, so the packet leaves after the first byte. Whether the compiler merges the bytes depends on the optimisation level, so `CSR_REG32()` is the only safe access at any `-O`, the board build's `-Os -flto` included. On x86 you never see it; it took a run on the real ISA.
 
 ### The register map
 

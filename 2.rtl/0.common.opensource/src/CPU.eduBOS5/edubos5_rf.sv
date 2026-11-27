@@ -49,14 +49,15 @@ module edubos5_rf
         end
       end
 
-      // The core never writes and reads in the same clock (rf_we in
-      // FETCH_INSTR, rf_re in WAIT4REGS), so the RAM's read-during-write
-      // mode does not matter
+      // Write, else read: never both in one clock. The core never asks for
+      // both anyway (rf_we in FETCH_INSTR, rf_re in WAIT4REGS). Without the
+      // else, the read would be read-first, which GateMate block RAM lacks:
+      // Yosys would build it in fabric (72 DFF, 76 LUT)
       always @(posedge clk) begin : rf_ports
         if (rf_we == HI) begin
           rf[rd_addr] <= rf_wdat;  // one write port
         end
-        if (rf_re == HI) begin
+        else if (rf_re == HI) begin
           rs1 <= (TARGET_IS_ASIC & rs1_addr == '0) ? '0 : rf[rs1_addr];
           rs2 <= (TARGET_IS_ASIC & rs2_addr == '0) ? '0 : rf[rs2_addr];
         end

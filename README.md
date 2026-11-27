@@ -8,6 +8,7 @@
 [![Verible](https://badgen.net/github/checks/chili-chips/openPCIE/main/verible?label=Verible)](https://github.com/chili-chips/openPCIE/actions/workflows/verible.yml)
 [![Sim:Pass](https://badgen.net/badge/Sim/Pass/green)](5.sim)
 [![WaveCrux:YES](https://badgen.net/badge/WaveCrux/YES/green)](https://wavecrux.app)
+[![fCAPZ:Yes](https://badgen.net/badge/fCAPZ/Yes/green)](2.rtl/README.md#fpgacapzero-instead-of-chipscope)
 [![Verilator:YES](https://badgen.net/badge/Verilator/YES/grey)](4.build/hw_build.openXC7/run-lint.sh)
 [![Icarus:YES](https://badgen.net/badge/Icarus/YES/grey)](2.rtl/0.common.opensource/src/CPU.eduBOS5/sim)
 [![XSIM:YES](https://badgen.net/badge/XSIM/YES/green)](5.sim)
@@ -348,6 +349,7 @@ Slot power is not enough to program or run the board. Feed 12 V through a 6-pin 
 - [PCIE Utils](https://mj.ucw.cz/sw/pciutils)
 - [Debug PCIE issues using 'lspci' and 'setpci'](https://adaptivesupport.amd.com/s/article/1148199?language=en_US)
 - Using [busybox (devmem)](0.doc/using-busybox-devmem-for-reg-access.txt) for register access
+- [fpgacapZero](https://github.com/lcapossio/fpgacapZero), open-source on-chip logic analyzer, our replacement for the closed-source ChipScope ILA ([2.rtl](2.rtl/README.md#fpgacapzero-instead-of-chipscope))
 
 #### Secondary References
 PCIE Protocol Analyzers
@@ -458,7 +460,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
   <a href="https://github.com/chili-chips/openCologne-PCIE"><img alt="openCologne-PCIE logo" width="15%" src="0.doc/artwork/openCologne-PCIE.hex.png"></a>
 </div>
 
-**KiCad** turns electrical idea into a manufacturable board. **openXC7**, with **Yosys** at its core, turns RTL into a loadable FPGA bitfile. **PeakRDL** turns our SystemRDL file into CSR RTL+headers+RegMap docs. **WaveCrux** greatly facilitates waveform decoding and viewing. But, that's not everything that made this project possible -- Thank you all for these wonderful opensource tools :sparkles:.
+**KiCad** turns electrical idea into a manufacturable board. **openXC7**, with **Yosys** at its core, turns RTL into a loadable FPGA bitfile. **PeakRDL** turns our SystemRDL file into CSR RTL+headers+RegMap docs. **WaveCrux** greatly facilitates waveform decoding and viewing. **fpgacapZero** is our open on-chip logic analyzer, in place of the closed-source ChipScope ILA. But, that's not everything that made this project possible -- Thank you all for these wonderful opensource tools :sparkles:.
 
 <div align="center">
   <a href="https://www.kicad.org"><img alt="KiCad logo" width="25%" src="0.doc/artwork/kicad_logo.png"></a>
@@ -480,6 +482,7 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
   <a href="https://verilator.org"><img alt="Verilator logo" width="25%" src="0.doc/artwork/Verilator.logo.png"></a>
   <a href="https://github.com/steveicarus/iverilog"><img alt="Icarus Verilog logo" width="15%" src="0.doc/artwork/Icarus-Verilog.logo.png"></a>
   <a href="https://que.no/janushdl/"><img alt="JanusHDL logo" width="25%" src="0.doc/artwork/JanusHDL.logo.png"></a>
+  <a href="https://github.com/lcapossio/fpgacapZero"><img alt="fpgacapZero logo" width="12%" src="0.doc/artwork/fcapz.logo.png"></a>
 </div>
 
 <div align="center">

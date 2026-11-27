@@ -25,14 +25,14 @@ The API and register map are common to both; the enumeration below is `RC-direct
 
 ### Code and data size
 
-RV32I without C (no compressed instructions), `-O0`, riscv-none-elf-gcc 15.2; `riscv-none-elf-size -A` on the board build. Code, data and stack share the 8 KB SOC RAM; the stack starts at its top (`li sp, 0x2000` in `start.S`).
+RV32I without C (no compressed instructions), `-Os -flto` (since 2026-11-26; `-O0` before: 2,548 B and 3,532 B of code), riscv-none-elf-gcc 15.2; `riscv-none-elf-size -A` on the board build. Code, data and stack share the 8 KB SOC RAM; the stack starts at its top (`li sp, 0x2000` in `start.S`).
 
 | Firmware | Code (`.text`) | Read-only data | Data (`.data` + `.bss`) | Stack, worst case | Of the 8 KB RAM |
 | :--- | ---: | ---: | ---: | ---: | ---: |
-| `RC-direct` | 2,548 B | 0 B | 1 B | 368 B | 36% |
-| `RC-switched` | 3,532 B | 8 B | 1 B | 416 B | 48% |
+| `RC-direct` | 1,224 B | 0 B | 1 B | 160 B | 17% |
+| `RC-switched` | 1,740 B | 8 B | 1 B | 192 B | 24% |
 
-Data lives on the stack. The only global is `tx_tag` (`common/pcie.c`), the next request's tag; `RC-switched` adds two 4-byte constant tables of switch ports. Worst-case stack is the deepest call chain, from `gcc -fcallgraph-info=su`: `main` → `assign_bars` → `cfg_read32_checked` → `cfg_read32` → `pcie_cfg_read` → `pcie_request` → `wait_for_completion`. No recursion, no variable-size frames.
+Data lives on the stack. The only global is `tx_tag` (`common/pcie.c`), the next request's tag; `RC-switched` adds two 4-byte constant tables of switch ports. Worst-case stack is the deepest call chain, from the disassembly (each function's `addi sp,sp,-N`, followed along its calls; `-fcallgraph-info` writes nothing with `-flto`): LTO inlines most of the chain into `main`, which leaves `main` → `cfg_read32_checked` → `pcie_request` (`RC-direct`) and `main` → `cfg_write32` → `pcie_request` (`RC-switched`). No recursion, no variable-size frames.
 
 ---
 
