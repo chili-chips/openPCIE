@@ -13,13 +13,35 @@
 #   yosys      Yosys check on the read_slang netlist: combinational loops,
 #              conflicting drivers, used-but-undriven wires, latches
 #   reset      Yosys netlist and run-lint-reset.py: a control flop or flag with
-#              no reset (data and address flops need none: waived by name)
+#              no reset (data and address flops need none: waived by name);
+#              the top, then eduBOS5 alone with RV32M and the counters
+#   ram        Yosys memory_libmap (synth_xilinx's) and run-lint-ram.py: a
+#              memory mapped to block or LUT RAM with read-first or
+#              transparency logic built in fabric
+#   iob        the reset phase's netlist and run-lint-iob.py: every data pin of
+#              the top reaches its flop directly (input: pin to D; output: Q to
+#              pin and nothing else), so the flop can sit in the I/O tile; the
+#              GTP and clock pins are skipped, the slow pins (LEDs, PERST#)
+#              waived by name
 #   slang      read_slang -Wextra: strict IEEE parse, second opinion (read_slang
 #              has no --lint-only, that needs standalone slang)
 #   verible    Verible style rules (run-lint.verible): our case rule -- signals
 #              and ports lower case, constants UPPER case -- and Verible's defaults
 #   cdc        Vivado report_cdc: clock-domain crossings and their
 #              synchronizers (there is no mature opensource CDC checker)
+#   check-timing
+#              Vivado check_timing on the same synthesis: clocks and
+#              constraints (a register with no clock, unconstrained
+#              endpoints, ports with no I/O delay, loops); HIGH and MEDIUM
+#   methodology
+#              Vivado report_methodology on the same synthesis: the XDC and
+#              timing rules (TIMING-*, XDC*, ...); Critical Warning and Warning;
+#              plus every Vivado CRITICAL WARNING on an XDC line (a constraint
+#              that matches nothing)
+#
+#              cdc, check-timing and methodology share one Vivado run
+#              (about 3 min); skipped without Vivado, so not in CI. The ghdl
+#              phases of wireguard-fpga lint VHDL: there is none here.
 #
 # usage:  bash run-lint.sh [phase ...]      default: all phases
 #         LANES=1 bash run-lint.sh            lint the x1 link (default x4)
@@ -29,7 +51,7 @@
 #                                             edubos5_3stg: 3-stage pipeline)
 #
 # A phase whose tool is not found is skipped. Source ../set-env.sh first; the
-# cdc phase needs Vivado. The tool commands can be overridden: VERILATOR, YOSYS
+# cdc, check-timing and methodology phases need Vivado. The tool commands can be overridden: VERILATOR, YOSYS
 # (+ YOSYS_ARGS), YOSYS_CONFIG, PYTHON, VERIBLE, VIVADO. The tags and Verilator phases
 # need the Xilinx primitive stubs that gen_xilinx_bb.py builds from the Yosys
 # library: from yosys-config, or pass XILINX_BB=<stubs.sv> from a run that had
@@ -77,7 +99,7 @@ VIVADO=${VIVADO:-vivado}
 LANES=${LANES:-4}
 GEN=${GEN:-}
 CPU=${CPU:-edubos5}
-PICORV32_SV="src/CPU.eduBOS5/edubos5_pkg.sv src/picorv32.CHILI.sv src/picorv32_pcpi_mul.sv src/picorv32_pcpi_div.sv"  # riscv_pcie_soc imports edubos5_pkg
+PICORV32_SV="src/CPU.eduBOS5/edubos5_pkg.sv src/picorv32.CHILI.sv src/picorv32_pcpi_mul.sv src/picorv32_pcpi_div.sv"  # soc_top imports edubos5_pkg
 EDUBOS5_SV=$(for f in pkg rf alu; do echo src/CPU.eduBOS5/edubos5_$f.sv; done; echo src/CPU.eduBOS5/edubos5.sv)
 case $CPU in
   picorv32) CPU_SV=$PICORV32_SV; OTHER_CPU_SV=$EDUBOS5_SV; CPU_DEF=SOC_CPU_PICORV32 ;;
@@ -91,10 +113,16 @@ for d in $CPU_DEF; do
 done
 WAIVERS=${LINT_WAIVERS:-$HERE/run-lint-waivers.txt}
 
-PHASES=${*:-tags verilator yosys reset slang verible cdc}
+PHASES=${*:-tags verilator yosys reset ram iob slang verible cdc check-timing methodology}
 W=${LINT_WORK:-$(mktemp -d)}
 mkdir -p "$W"
-rm -rf "$W/src" "$W/xdc" "$W/bb.sv"   # a reused LINT_WORK keeps no stale sources or stubs
+# a reused LINT_WORK keeps no stale sources, stubs or netlists (iob reads
+# reset's netlist when both run)
+rm -rf "$W/src" "$W/xdc" "$W/bb.sv" "$W"/reset*.json "$W"/ram*.json
+PHASE_NAMES="tags verilator yosys reset ram iob slang verible cdc check-timing methodology"
+for ph in $PHASES; do  # every name first, before minutes of Vivado
+  case " $PHASE_NAMES " in *" $ph "*) ;; *) echo "unknown phase: $ph ($PHASE_NAMES)"; exit 2 ;; esac
+done
 
 # ---- work copy, in the same order as SV_ORDERED in the Makefile ---------------
 cp -r "$SRC/src" "$SRC/xdc" "$W/"
@@ -108,7 +136,7 @@ P=src/pcie
 SV_IF=$(for i in axis_if trn_if cfg_if mem_if mim_if gtp_if pipe_if; do echo $P/$i.sv; done)
 SV_REST=$(ls $P/*.sv | grep -v -e '_if\.sv$' -e '_pkg\.sv$')
 SV=$(echo $P/link_pkg.sv $P/pcie_pkg.sv csr_pkg.sv $SV_IF $SV_REST csr.sv src/soc_csr.sv \
-          $CPU_SV src/riscv_pcie_soc.sv src/$TOP.sv)
+          $CPU_SV src/soc_top.sv src/$TOP.sv)
 SHIMS="unimacro_shim.v"
 PRIMS="PCIE_2_1 GTPE2_CHANNEL GTPE2_COMMON MMCME2_ADV IBUFDS_GTE2 BUFG BUFGCTRL FDCE RAMB36E1 DSP48E1"
 
@@ -151,8 +179,8 @@ found() {  # $1 phase; one finding per line on stdin (not a pipe: RESULT must st
 
 # A tool that fails, or stops before the step its findings come from, fails its
 # phase: "0 finding(s)" must not stand for "not checked"
-failed() {  # $1 phase, $2 reason
-  RESULT[$1]="FAILED ($2), see $W/$1.log"
+failed() {  # $1 phase, $2 reason, $3 its log (default $W/<phase>.log)
+  RESULT[$1]="FAILED ($2), see ${3:-$W/$1.log}"
   echo "-- $1: FAILED, $2"
 }
 
@@ -173,7 +201,7 @@ bb() {
 
 # /*LINT:OK*/ on anything but an output port; the port directions come from the
 # module headers of the design, the shims and the primitive stubs, plus the
-# other CPU core: riscv_pcie_soc.sv instantiates both, behind `ifdef
+# other CPU core: soc_top.sv instantiates both, behind `ifdef
 run_tags() {
   bb || { skip tags "no Xilinx stubs (yosys-config or XILINX_BB)"; return; }
   "$PYTHON" - $OTHER_CPU_SV -- bb.sv $SHIMS $SV > tags.log <<'EOF'
@@ -295,6 +323,48 @@ run_reset() {
   found reset < <(sort -u reset.out)
 }
 
+# A memory mapped to block or LUT RAM must need no read-first or transparency
+# logic in fabric: Yosys builds it there, saying so only in its debug log.
+# synth_xilinx up to its memory mapping, then that step under debug, so the
+# libraries and options are synth_xilinx's own. The memories' source lines
+# come from a netlist written before it (after it, the simulation models it
+# reads stop write_json). One finding per memory, at its source line; the
+# rules are in run-lint-ram.py.
+run_ram() {
+  have "$YOSYS" || { skip ram "$YOSYS not found"; return; }
+  bb || { skip ram "no Xilinx stubs"; return; }
+  local syn="synth_xilinx -family xc7 -top $TOP"
+  "$YOSYS" $YOSYS_ARGS -q -l ram.log -p "read_slang -D SYN_YOSYS_BUG -D PCIE_LANES=$LANES ${GEN:+-D PCIE_GEN=$GEN} $SL_DEFS --top $TOP -I $P -I src \
+      bb.sv $SV $SHIMS; hierarchy -check -top $TOP; proc; write_json ram.json; \
+      $syn -run begin:map_memory; debug $syn -run map_memory:map_ffram" \
+      >/dev/null 2>&1
+  local rc=$?
+  [ $rc -eq 0 ] && [ -s ram.json ] && grep -q 'Executing MEMORY_LIBMAP' ram.log ||
+    { failed ram "exit $rc, memory_libmap not reached"; return; }
+  "$PYTHON" "$HERE/run-lint-ram.py" ram.log ram.json > ram.out 2>> ram.log ||
+    { failed ram "log check failed"; return; }
+  found ram < <(sort -u ram.out)
+}
+
+# IOB flops: every data pin of the top reaches its flop directly, so Vivado
+# and nextpnr can put the flop in the I/O tile (run-lint-iob.py). Uses the
+# reset phase's netlist when this run made one
+run_iob() {
+  have "$YOSYS" || { skip iob "$YOSYS not found"; return; }
+  bb || { skip iob "no Xilinx stubs"; return; }
+  local rc
+  if [[ " $PHASES " != *" reset "* ]] || [ ! -s reset.json ]; then
+    "$YOSYS" $YOSYS_ARGS -q -l iob.log -p "read_slang -D SYN_YOSYS_BUG -D PCIE_LANES=$LANES ${GEN:+-D PCIE_GEN=$GEN} $SL_DEFS --top $TOP -I $P -I src \
+        bb.sv $SV $SHIMS; hierarchy -check -top $TOP; proc; flatten; opt_expr; opt_clean; opt_dff; opt_clean; write_json reset.json" \
+        >/dev/null 2>&1
+    rc=$?
+    [ $rc -eq 0 ] && [ -s reset.json ] || { failed iob "exit $rc, no netlist"; return; }
+  fi
+  "$PYTHON" "$HERE/run-lint-iob.py" reset.json > iob.out 2>> iob.log ||
+    { failed iob "netlist check failed"; return; }
+  found iob < <(sort -u iob.out)
+}
+
 run_slang() {
   have "$YOSYS" || { skip slang "$YOSYS not found"; return; }
   bb || { skip slang "no Xilinx stubs"; return; }
@@ -319,35 +389,70 @@ run_verible() {
   exit_check verible $rc
 }
 
-run_cdc() {
-  have "$VIVADO" || { skip cdc "$VIVADO not found"; return; }
-  # Vivado has its own XPM and UNIMACRO libraries, so no shims here
-  cat > cdc.tcl <<EOF
+# Vivado has its own XPM and UNIMACRO libraries, so no shims here. One
+# synthesis serves the cdc, check-timing and methodology phases (about 3 min);
+# VIVADO_RC keeps its outcome
+VIVADO_RC=
+vivado_run() {
+  [ -n "$VIVADO_RC" ] && return $VIVADO_RC
+  cat > vivado.tcl <<EOF
 read_verilog -sv {$SV}
 read_xdc [glob xdc/*.xdc]
 synth_design -top $TOP -part $PART -flatten_hierarchy rebuilt -verilog_define PCIE_LANES=$LANES${GEN:+ -verilog_define PCIE_GEN=$GEN}$VIV_DEFS
 report_cdc -details -file cdc.rpt
 report_clock_interaction -file clock_interaction.rpt
+check_timing -verbose -file check_timing.rpt
+report_methodology -file methodology.rpt
 EOF
-  rm -f cdc.rpt
-  "$VIVADO" -mode batch -nojournal -log cdc.log -source cdc.tcl >/dev/null 2>&1
-  local rc=$?
-  if [ $rc -ne 0 ] || [ ! -s cdc.rpt ]; then failed cdc "exit $rc, no cdc.rpt"; return; fi
+  rm -f cdc.rpt check_timing.rpt methodology.rpt
+  "$VIVADO" -mode batch -nojournal -log vivado.log -source vivado.tcl >/dev/null 2>&1
+  VIVADO_RC=$?
+  echo "exit $VIVADO_RC" > vivado.err
+  [ $VIVADO_RC -eq 0 ] && [ -s cdc.rpt ] && [ -s check_timing.rpt ] && [ -s methodology.rpt ] ||
+    { [ $VIVADO_RC -eq 0 ] && VIVADO_RC=3; echo "exit $VIVADO_RC, a report is missing" > vivado.err; }
+  return $VIVADO_RC
+}
+
+vivado_phase() {  # $1 phase: skip without Vivado, else run it once
+  have "$VIVADO" || { skip $1 "$VIVADO not found"; return 1; }
+  vivado_run || { failed $1 "Vivado: $(cat vivado.err)" "$W/vivado.log"; return 1; }
+}
+
+run_cdc() {
+  vivado_phase cdc || return
   # detail rows: <row> CDC-<n> <severity> <description> ... <from> <to>
   found cdc < <(grep -E '^ +[0-9]+ +CDC-[0-9]+ +(Critical|Warning) ' cdc.rpt)
 }
 
+# check_timing: every HIGH or MEDIUM line, as "<check>: <line>" (no_clock,
+# unconstrained_internal_endpoints, no_input_delay, multiple_clock, loops, ...)
+run_check_timing() {
+  vivado_phase check-timing || return
+  found check-timing < <(awk '/^[0-9]+\. checking / { chk = $3 }
+      /\((HIGH|MEDIUM)\) *$/ { l = $0; sub(/^ +/, "", l); print chk ": " l }' check_timing.rpt)
+}
+
+# report_methodology: every Critical Warning and Warning, as
+# "<rule> <severity>: <message>" (TIMING-17 Critical Warning: The clock pin ...);
+# and every CRITICAL WARNING of the Vivado run that points at an XDC line
+# (a constraint on nothing: "'set_property' expects at least one object"), as
+# "XDC <file>:<line>: <message>"
+run_methodology() {
+  vivado_phase methodology || return
+  found methodology < <(awk '/^[A-Z]+-[0-9]+#[0-9]+ (Critical Warning|Warning) *$/ {
+      r = $1; sub(/#.*/, "", r); s = $0; sub(/^[^ ]+ /, "", s); sub(/ +$/, "", s)
+      getline; getline m; sub(/ +$/, "", m); print r " " s ": " m }' methodology.rpt
+    sed -n -E 's#^CRITICAL WARNING: (.*) \[([^]]*/)?([^]/]+\.xdc):([0-9]+)\]$#XDC \3:\4: \1#p' vivado.log)
+}
+
 for ph in $PHASES; do
-  case $ph in
-    tags|verilator|yosys|reset|slang|verible|cdc) echo "== $ph"; run_$ph ;;
-    *) echo "unknown phase: $ph (tags verilator yosys reset slang verible cdc)"; exit 2 ;;
-  esac
+  echo "== $ph"; run_${ph//-/_}  # names checked at start-up
 done
 
 echo; echo "== summary  (x$LANES${GEN:+ Gen$GEN}, $W)"
 FAIL=0
 for ph in $PHASES; do
-  printf '  %-10s %s\n' "$ph" "${RESULT[$ph]}"
+  printf '  %-14s %s\n' "$ph" "${RESULT[$ph]}"
   case ${RESULT[$ph]} in skipped*|"0 finding"*) ;; *) FAIL=1 ;; esac
 done
 exit $FAIL

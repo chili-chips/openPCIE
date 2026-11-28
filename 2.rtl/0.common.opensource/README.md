@@ -8,7 +8,7 @@ and the [co-simulation](../../5.sim).
 ```
 src/
   RC_opensource.sv              top level: PCIE stack, SOC, LEDs
-  riscv_pcie_soc.sv             RISC-V SOC (eduBOS5 or picorv32), drives the AXI-Stream TLP interface
+  soc_top.sv                    RISC-V SOC (eduBOS5 or picorv32), drives the AXI-Stream TLP interface
   soc_csr.sv                    wrapper for the PeakRDL-generated CSR block
   picorv32.CHILI.sv             the alternative RISC-V core (Chili.CHIPS-improved picorv32)
   CPU.eduBOS5/                  the default RISC-V core
@@ -26,9 +26,9 @@ Each variant's folder keeps only what differs:
 | Vivado project | `RC-direct.opensource.tcl` -> `xbuild.Vivado-v2024.2/` | `RC-switched.opensource.tcl` -> `xbuild.Vivado-v2024.2/` |
 | Firmware | [`3.sw/RC-direct`](../../3.sw/RC-direct) | [`3.sw/RC-switched`](../../3.sw/RC-switched) |
 
-`riscv_pcie_soc.sv` makes each Configuration TLP Type 1 when its target bus is
-beyond 1, as a switch needs, and Type 0 otherwise. RC-direct addresses its
-endpoint on bus 1, so it only ever sends Type 0.
+The firmware (`3.sw/common/pcie.c`) makes each Configuration TLP Type 1
+when its target bus is beyond 1, as a switch needs, and Type 0 otherwise.
+RC-direct addresses its endpoint on bus 1, so it only ever sends Type 0.
 
 More: the PCIE stack file by file in the
 [RC-direct README](../2.RC-direct.opensource/README.md#the-pcie-stack-by-layer),

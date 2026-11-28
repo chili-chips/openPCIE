@@ -30,9 +30,9 @@ Set them with openXC7 `make LANES=1|4 GEN=1|2`, or in Vivado with `set ::pcie_la
 
 | Define | Values | Default | Read in |
 |---|---|---|---|
-| `SOC_EDUBOS5_3STG` | defined: 3-stage eduBOS5 | 2-stage; 3-stage at x4 Gen2 | [`riscv_pcie_soc.sv`](0.common.opensource/src/riscv_pcie_soc.sv) |
-| `SOC_CPU_PICORV32` | defined: PicoRV32 | eduBOS5 | [`riscv_pcie_soc.sv`](0.common.opensource/src/riscv_pcie_soc.sv) |
-| `SOC_CSR_RD_COMB` | defined: CSR read without output register (experimental) | registered | [`riscv_pcie_soc.sv`](0.common.opensource/src/riscv_pcie_soc.sv) |
+| `SOC_EDUBOS5_3STG` | defined: 3-stage eduBOS5 | 2-stage; 3-stage at x4 Gen2 | [`soc_top.sv`](0.common.opensource/src/soc_top.sv) |
+| `SOC_CPU_PICORV32` | defined: PicoRV32 | eduBOS5 | [`soc_top.sv`](0.common.opensource/src/soc_top.sv) |
+| `SOC_CSR_RD_COMB` | defined: CSR read without output register (experimental) | registered | [`soc_top.sv`](0.common.opensource/src/soc_top.sv) |
 
 The CPU is set with openXC7 `make CPU=edubos5|edubos5_3stg|picorv32` or Vivado `set ::cpu`. `SOC_CSR_RD_COMB` has no build option: define it by hand.
 
@@ -53,7 +53,7 @@ Buses are SystemVerilog interfaces, all in [`0.common.opensource/src/pcie/`](0.c
 | Interface | Between | Carries |
 |---|---|---|
 | `axis_if` | SOC ⇄ `pcie_top` ⇄ `trn_bridge` | TLPs as AXI-Stream (`tdata`, `tkeep`, `tuser`, `tlast`, `tvalid`, `tready`), one instance per direction |
-| `mem_if` | CPU ⇄ RAM, CSR (in `riscv_pcie_soc`) | picorv32-style memory bus (`valid`, `addr`, `wdata`, `wstrb`, `ready`, `rdata`) |
+| `mem_if` | CPU ⇄ RAM, CSR (in `soc_top`) | picorv32-style memory bus (`valid`, `addr`, `wdata`, `wstrb`, `ready`, `rdata`) |
 | `cfg_if` | `pcie_top` → SOC | status sideband: ERR_FATAL received, free TX buffers |
 | `trn_if` | `trn_bridge` ⇄ `PCIE_2_1` (in `pcie_core`) | TLPs on the TRN bus (below) |
 | `mim_if` | `PCIE_2_1` ⇄ `tx_buf_bank` / `rx_buf_bank` | packet buffer RAM port (`MIMTX*`/`MIMRX*` pins): separate write and read ports, fixed latency, one instance per direction |
@@ -93,15 +93,15 @@ Co-simulation is Gen1 only, so only a board test can check this path (pending).
 
 | Link | Bandwidth, each way | TRN bus | `user_clk` | `USER_CLK_FREQ` | Status |
 |---|---|---|---|---|---|
-| x1 Gen1 | 250 MB/s | 64-bit | 62.5 MHz | 1 | co-simulation (pcieVHost is Gen1) |
-| x1 Gen2 (x1 default) | 500 MB/s | 64-bit | 62.5 MHz | 1 | **works on hardware** |
+| x1 Gen1 | 250 MB/s | 64-bit | 62.5 MHz | 1 | co-simulation passes |
+| x1 Gen2 (x1 default) | 500 MB/s | 64-bit | 62.5 MHz | 1 | **works on hardware**; co-simulation passes |
 | x4 Gen1 (default) | 1 GB/s | 64-bit | 125 MHz | 2 | co-simulation passes; Vivado meets timing; not tested on hardware |
 | x4 Gen2 | 2 GB/s | 64-bit | 250 MHz | 3 | Vivado meets timing with the 3-stage eduBOS5 (below); the link trained on hardware before the user-clock fix, TLPs not re-tested |
 | x4 Gen2 | 2 GB/s | 128-bit | 125 MHz | 3, with `USER_CLK2_DIV2` | not implemented, [open for contribution](../CONTRIBUTING.md) |
 
-Vivado and openXC7 both derive `user_clk` through the MMCM: one constraint set fits all four builds. Build commands: [RC-direct](2.RC-direct.opensource/README.md). Co-simulation is always Gen1.
+Vivado and openXC7 both derive `user_clk` through the MMCM: one constraint set fits all four builds. Build commands: [RC-direct](2.RC-direct.opensource/README.md).
 
-**x4 Gen2 runs the SOC at 250 MHz.** The PCIE core and `trn_bridge` meet it; the SOC needs the 3-stage eduBOS5, the default CPU at x4 Gen2. Vivado 2026.1, `user_clk` at 250 MHz:
+**x4 Gen2 runs the SOC at 250 MHz.** The PCIE core and `trn_bridge` meet it; the SOC needs the 3-stage eduBOS5, the default CPU at x4 Gen2. Vivado 2026.1, `user_clk` at 250 MHz, before the payload windows (with them, 2026.2 and post-route `phys_opt`: WNS +0.036 ns, [4.build](../4.build/README.md#openxc7-timing-closure-gap)):
 
 | CPU | WNS | Failing paths | Critical path |
 |---|---|---|---|
@@ -171,7 +171,7 @@ openXC7 v1.0.0 (Yosys `read_slang` + nextpnr-himbaechel), part `xc7a200tfbg484-3
 | `clk125`, needs 125 MHz | 337.0 MHz | 348.6 MHz | 409.8 MHz |
 | `user_clk` | 157.2 MHz, needs 125 | **181.1 MHz, needs 250** | 148.2 MHz, needs 62.5 |
 
-Fmax is nextpnr's estimate and varies with placement. All clocks meet their target except x4 Gen2's `user_clk`: nextpnr cannot apply the 3-stage's multicycle paths (nextpnr#182). Vivado closes x4 Gen2 ([above](#link-width-speed-and-user-clock)).
+Fmax is nextpnr's estimate and varies with placement. These figures predate the payload windows (2 more RAMB36) and nextpnr#190, which times block RAM reads: openXC7 main (2026-11-27) meets `user_clk` at x4 Gen1 (139 MHz) and x1 (121 MHz), and misses it at x4 Gen2 (116-152 MHz) ([timing gap](../4.build/README.md#openxc7-timing-closure-gap)). Vivado closes x4 Gen2 ([above](#link-width-speed-and-user-clock)).
 
 ### RTL coding rules
 
@@ -216,7 +216,7 @@ IEEE 1800-2009 SystemVerilog. For the opensource RTL and the models that stand i
 
 An Integrated Logic Analyzer (ILA) is the board's waveform: it captures signals inside the FPGA at speed, read out over JTAG.
 
-The firmware ends by writing its result marker to `status.result` (`0x3000_0024`, values in [3.sw](../3.sw/README.md#3-self-test--debug-codes)); this sends no TLP. In [`riscv_pcie_soc.sv`](0.common.opensource/src/riscv_pcie_soc.sv) it drives `fw_result`, marked `mark_debug` so Vivado keeps it for an ILA. PASS (`0x0000FACE`) also lights `led_link_up[3]`, no debug core needed.
+The firmware ends by writing its result marker to `status.result` (`0x3000_002C`, values in [3.sw](../3.sw/README.md#3-self-test--debug-codes)); this sends no TLP. In [`soc_top.sv`](0.common.opensource/src/soc_top.sv) it drives `fw_result`, marked `mark_debug` so Vivado keeps it for an ILA. PASS (`0x0000FACE`) also lights `led_link_up[3]`, no debug core needed.
 
 With Vivado's ILA (ChipScope):
 1. Synthesize, then **Set Up Debug**: `fw_result` is already listed. Add more, e.g. the LTSSM state or the `s_axis_tx` / `m_axis_rx` streams, on `user_clk`.

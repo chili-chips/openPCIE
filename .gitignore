@@ -71,10 +71,14 @@ kibot_*.kicad_pro
 4.build/hw_build.openXC7/.build-config.switched
 
 # Intermediates -- rebuilt on every run. Kept on purpose (not ignored):
-#   4.build/csr_build/generated-files/  so a build never needs peakrdl
+#   4.build/csr_build/generated-files/  so a build never needs peakrdl;
+#                                       its html/ viewer is ignored (below)
 #   4.build/sw_build/firmware.hex       hard dependency of the Vivado tcl
 #   4.build/hw_build.openXC7/build_artifacts/*.bit             prebuilt bitstreams (v1.0.0, not yet board-tested)
 #   4.build/hw_build.openXC7/build_artifacts/pre-v1.0.0/*.bit  prebuilt bitstreams (pre-v1.0.0, board-tested)
+# PeakRDL html viewer (make -f MakefileCSR): browse it locally; csr.h and
+# openpcie.md carry the same register map in git
+4.build/csr_build/generated-files/html/
 4.build/sw_build/firmware.elf
 4.build/sw_build/firmware.bin
 4.build/hw_build.openXC7/firmware.hex
@@ -91,6 +95,7 @@ kibot_*.kicad_pro
 5.sim/libuser.a
 5.sim/firmware.hex
 5.sim/run_us.cfg
+5.sim/perf_max.cfg
 5.sim/iss.cfg
 5.sim/*.wdb
 5.sim/*.pb

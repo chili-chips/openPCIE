@@ -160,8 +160,8 @@ _se_msg "lint:"
 _se_tool VERILATOR verilator 5.052 '$T --version' \
     "Verilator 5.052+: build from source (verilator.org/guide/latest/install.html); Ubuntu's apt package is older"
 # Verible numbers its releases v0.0-<build>; read as 0.0.<build> to compare
-_se_tool VERIBLE   verible-verilog-lint 0.0.4296 '$T --version | grep -oE "0\.0-[0-9]+" | sed "s/0\.0-/0.0./"' \
-    "Verible v0.0-4296+: linux-static-x86_64 tarball from github.com/chipsalliance/verible/releases, into ~/.local/bin"
+_se_tool VERIBLE   verible-verilog-lint 0.0.4302 '$T --version | grep -oE "0\.0-[0-9]+" | sed "s/0\.0-/0.0./"' \
+    "Verible v0.0-4302+: linux-static-x86_64 tarball from github.com/chipsalliance/verible/releases, into ~/.local/bin"
 # format and syntax: next to the lint binary (one release), else from PATH. A
 # folder can hold the lint binary alone (a LintCrux tool folder does)
 _se_vsib() {

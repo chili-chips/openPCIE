@@ -16,7 +16,7 @@ validated with the same test procedure. A bonus deliverable, beyond the original
 
 | | |
 |---|---|
-| Target device | `xc7a200tfbg484-3`, Acorn CLE-215P |
+| Target device | `xc7a200tfbg484-3`, Acorn CLE-215+ |
 | Switch | ASM1184e, 1 upstream + 4 downstream ports |
 | Link | PCIE Gen2 x1 (x1 only: the switch ports are x1; x4 is RC-direct only) |
 | Vivado build | works |
@@ -30,9 +30,9 @@ Hardware setup: [1.pcb](../../1.pcb#usecase-2-switched-fpga_rc-to-fpga_ep-gen2-x
 
 ## What differs from RC-direct
 
-In the RTL: nothing. Both build from the same [`0.common.opensource`](../0.common.opensource) sources. A switch changes nothing at the physical or link layer: the root port trains a plain Gen2 x1 link to the switch's upstream port. What changes is how Configuration TLPs are addressed, which the shared SOC handles and the firmware drives.
+In the RTL: nothing. Both build from the same [`0.common.opensource`](../0.common.opensource) sources. A switch changes nothing at the physical or link layer: the root port trains a plain Gen2 x1 link to the switch's upstream port. What changes is how Configuration TLPs are addressed, which the shared firmware does.
 
-### 1. RTL: Type 0 / Type 1 selection (`riscv_pcie_soc.sv`)
+### 1. Type 0 / Type 1 selection (`3.sw/common/pcie.c`)
 
 Direct, the endpoint sits on bus 1 and every Configuration request is **Type 0**. Behind a switch, requests cross virtual PCI-to-PCI bridges, which forward only **Type 1**.
 
@@ -46,22 +46,15 @@ assign cfg_type_code = (pkt_bus_num > 8'd1) ? 5'b00101 : 5'b00100;
 
 There, `pkt_bus_num` / `pkt_dev_num` had to be added: the packet generator built the header itself with a hardcoded target, so the controller now feeds it each transaction's bus and device from the configuration ROM.
 
-Here the SOC bridge **is** the packet generator, and the device number is already in the address dword the firmware wrote. So the bridge reads only the bus number back out of the header and overrides only the Type bit:
+Here the firmware **is** the packet generator: it writes every header into `tx_payload` itself, and the device number is already in the address dword. So `pcie_cfg_write()` and `pcie_cfg_read()` set only the Type bit, from the bus number:
 
-```systemverilog
-assign tx_dw0     = csr_out.tx.header0.hdr.value;
-assign tx_cfg_dw2 = csr_out.tx.header2.hdr.value;
-assign pkt_is_cfg = (tx_dw0.tlp_type[4:1] == TLP_TYPE_CFG);
-
-always_comb begin
-  tx_dw0_routed = tx_dw0;
-  if (pkt_is_cfg) begin
-    tx_dw0_routed.tlp_type[0] = (tx_cfg_dw2.bus > 8'd1);
-  end
-end
+```c
+static uint32_t cfg_type(uint32_t type0, uint32_t bus) {
+    return (bus > 1) ? (type0 | TLP_CFG_T1) : type0;
+}
 ```
 
-`tlp_type[4:1]` marks a Configuration request, `tlp_type[0]` selects Type 0 / Type 1 (structs `pcie_tlp_dw0_t`, `pcie_cfg_dw2_t` in `pcie_pkg.sv`). Memory and Completion TLPs pass untouched. RC-direct carries this logic too, but never triggers it (bus 1 is Type 0 either way).
+`TLP_CFG_T1` is Type bit 0 of DW0 (`pcie.h`). Memory TLPs are not touched. RC-direct runs the same code, but never sets it (bus 1 is Type 0 either way). Until 2026-11-27 the SOC did this in RTL, on a fixed 3-register header window; the payload windows from openCologne-PCIE moved it into the firmware.
 
 What does differ:
 
@@ -87,7 +80,7 @@ bus 3..6  dev 0 .... the endpoint cards, BAR0 at the window base
 
 Simulate it against a switch model with two endpoints and two empty slots: `make run VARIANT=switched` in [5.sim](../../5.sim/README.md#rc-switched-a-switch-behind-the-link).
 
-1. **Switch upstream port.** Bus numbers (primary 1, secondary 2, subordinate 6), one memory window `0x10000000 - 0x103FFFFF` for everything behind the switch, then Memory Space + Bus Master.
+1. **Switch upstream port.** Bus numbers (primary 1, secondary 2, subordinate 6), one memory window `0x10000000 - 0x103FFFFF` for everything behind the switch, its unused I/O and prefetchable windows closed, then Memory Space (Bus Master stays off).
 2. **The four downstream ports** on internal bus 2. Each is a virtual bridge with its own secondary bus and its own 1 MB slice of the upstream window.
 3. **The endpoints**, device 0 on buses 3..6. Each BAR is sized (write all ones, read back, decode 32/64-bit) and placed, aligned to its size, inside its port's 1 MB window; anywhere else the port drops every memory request to it. So BAR0 lands at the window base. A BAR0 larger than the window is reported, not squeezed in; other BARs that do not fit are parked (64-bit above 4 GB, 32-bit at 0).
 4. **Self test.** Memory write and read-back through the switch for each populated slot, then the result marker to `PCIE_RESULT`, as in the direct build.
@@ -97,7 +90,7 @@ Comparing the C with the AMD ROM dump:
 * Configuration payloads travel **big-endian**: register byte 0 is in bits `[31:24]` of the data dword. Both firmwares swap in `bswap32()`, so values read as the spec prints them (BAR `0x10000000`, not `0x00000010`).
 * The ROM writes `0x103F` to a memory-limit field where the firmware writes `0x1030`. Bits `[3:0]` of Memory Limit are read-only, so the switch gets the same value.
 
-Unlike the ROM, the firmware **probes each slot** and skips empty ones, so a partly populated backplane works. Every Completion Status is checked; config reads **and** writes answered with CRS are re-issued up to 100 times. The result goes to `PCIE_RESULT` (`status.result`, `0x3000_0024`), which sends no TLP; PASS lights `led_link_up[3]`, and an ILA can watch every marker ([RTL Debug with ILA](../README.md#rtl-debug-with-ila)):
+Unlike the ROM, the firmware **probes each slot** and skips empty ones, so a partly populated backplane works. Every Completion Status is checked; config reads **and** writes answered with CRS are re-issued up to 100 times. The result goes to `PCIE_RESULT` (`status.result`, `0x3000_002C`), which sends no TLP; PASS lights `led_link_up[3]`, and an ILA can watch every marker ([RTL Debug with ILA](../README.md#rtl-debug-with-ila)):
 
 | Marker | Meaning |
 |---|---|

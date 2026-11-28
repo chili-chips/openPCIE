@@ -4,7 +4,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # Sanity, after every change: the hard macro + firmware (RC=hm) and the
-# Artix-7 RC model (RC=model) once each way. Each run must end with its PASS
+# Artix-7 RC model (RC=model) once each way, and the SOC alone (soc/run-soc.sh:
+# Tx batches, the Rx ring, the request layer). Each run must end with its PASS
 # (FIRMWARE RESULT for RC=hm, RC MODEL RESULT for RC=model) and exit 0; XSIM
 # and JanusHDL must print the same ===> lines.
 # Prints one line per run, logs in obj/sanity/; exits 1 if any run fails.
@@ -34,6 +35,10 @@ run model         RC=model "$@"
 run model-janus   RC=model SIM=janushdl "$@"
 run model-serial  RC=model IFACE=serial "$@"
 run model-x4      RC=model SIM_LANES=4 "$@"
+
+t0=$SECONDS
+if bash soc/run-soc.sh all > $LOG/soc.log 2>&1; then ok=PASS; else ok=FAIL; fails=$((fails + 1)); fi
+printf '%-14s %4d s  %-4s %-34s %s\n' soc $((SECONDS - t0)) $ok "soc/run-soc.sh all" "$(grep -a -c 'TEST PASSED' $LOG/soc.log) of 3 PASSED"
 
 if diff -q <(grep -a '===>' $LOG/model.log) <(grep -a '===>' $LOG/model-janus.log) > /dev/null; then
     echo "XSIM = JanusHDL: the same ===> lines"

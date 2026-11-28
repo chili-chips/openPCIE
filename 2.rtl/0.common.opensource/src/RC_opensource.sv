@@ -97,7 +97,7 @@ module RC_opensource
       .cfg (cfg)
   );
 
-  riscv_pcie_soc u_soc (
+  soc_top u_soc (
       .clk    (user_clk),
       .resetn (core_rst_n),
 

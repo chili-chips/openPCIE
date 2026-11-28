@@ -16,13 +16,13 @@
         <mxCell id="c6" parent="1" style="rounded=0;whiteSpace=wrap;html=1;arcSize=8;fillColor=none;strokeColor=none;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;" value="&lt;span style=&quot;font-size:20px&quot;&gt;top&lt;/span&gt;&lt;br&gt;PCIe 2.0&lt;br&gt;x1/x4 RC&lt;br&gt;(RC=hm)" vertex="1">
           <mxGeometry height="100" width="160" x="352" y="30" as="geometry" />
         </mxCell>
-        <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#d9d9d9;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;dashed=1;dashPattern=1 2;" value="riscv_pcie_soc (PICORV32)" vertex="1">
+        <mxCell id="c7" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#d9d9d9;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;dashed=1;dashPattern=1 2;" value="soc_top (PICORV32)" vertex="1">
           <mxGeometry height="160" width="340" x="450" y="58" as="geometry" />
         </mxCell>
-        <mxCell id="c8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#dedede;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;dashed=1;dashPattern=1 2;" value="riscv_pcie_soc (eduBOS5)" vertex="1">
+        <mxCell id="c8" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#dedede;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;dashed=1;dashPattern=1 2;" value="soc_top (eduBOS5)" vertex="1">
           <mxGeometry height="160" width="340" x="430" y="86" as="geometry" />
         </mxCell>
-        <mxCell id="c9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#e8e8e8;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;" value="riscv_pcie_soc (VPROC or ISS)" vertex="1">
+        <mxCell id="c9" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#e8e8e8;strokeColor=default;fontColor=#000000;fontSize=14;fontStyle=0;align=left;verticalAlign=top;spacingLeft=6;spacingRight=6;shadow=1;" value="soc_top (VPROC or ISS)" vertex="1">
           <mxGeometry height="160" width="340" x="410" y="115" as="geometry" />
         </mxCell>
         <mxCell id="c10" parent="1" style="rounded=1;whiteSpace=wrap;html=1;arcSize=8;fillColor=#ffc000;strokeColor=none;fontColor=#ffffff;fontSize=18;fontStyle=0;align=center;verticalAlign=middle;spacingLeft=6;spacingRight=6;" value="test/app code" vertex="1">

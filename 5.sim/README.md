@@ -86,7 +86,7 @@ tb.sv
       |                                                `- PIPExN__pcieVHost (endpoint,
       |                                                   VProc node 1, VUserMain1.cpp;
       |                                                   pcieVHostPipex1 / PipexN at x4)
-      `- riscv_pcie_soc                             real RTL
+      `- soc_top                             real RTL
            +- eduBOS5 (or picorv32)                 real RTL, runs firmware.hex
            `- soc_csr -> csr                        PeakRDL-generated CSR
 ```
@@ -96,9 +96,9 @@ One RTL file is swapped, and one file copied in:
 | Item | Why |
 |---|---|
 | `phy_top.sv` becomes `models/phy_top.EP-PIPE-BFM.sv` | the 7-series GTP transceiver turns PIPE symbols into a 5 GT/s serial stream. _pcievhost_ models the link at PIPE symbol level, so the transceiver has to go |
-| `firmware.hex` copied into `5.sim/` | `riscv_pcie_soc.sv` reads it with `$readmemh` and a bare file name |
+| `firmware.hex` copied into `5.sim/` | `soc_top.sv` reads it with `$readmemh` and a bare file name |
 
-Everything else is what goes into the FPGA: hard macro, transaction layer, CPU, CSR and firmware. The swap needs no `ifdef`: module name and ports match, so the file list (`tb.prj`) just picks the other file. The CPU swap for `CPU=vproc` / `CPU=iss` is an `` `ifdef SOC_CPU_VPROC `` in `riscv_pcie_soc.sv` ([The three CPU options](#the-three-cpu-options)).
+Everything else is what goes into the FPGA: hard macro, transaction layer, CPU, CSR and firmware. The swap needs no `ifdef`: module name and ports match, so the file list (`tb.prj`) just picks the other file. The CPU swap for `CPU=vproc` / `CPU=iss` is an `` `ifdef SOC_CPU_VPROC `` in `soc_top.sv` ([The three CPU options](#the-three-cpu-options)).
 
 Three simulation-only defines, set only by `5.sim/Makefile`, never by a synthesis flow:
 
@@ -214,29 +214,37 @@ A full run takes the design from power-up to a verified memory transaction, and 
              3607000  LTSSM  0x00 -> 0x02 POLLING_ACTIVE
              3847000  LTSSM  0x02 -> 0x04 POLLING_CONFIGURATION
              5079000  LTSSM  0x04 -> 0x05 CONFIG_LINKWIDTH_START
-            70711000  LTSSM  0x05 -> 0x26      <- link number assigned
-            71655000  LTSSM  0x2a -> 0x2b      <- lane number assigned
-            72559000  LTSSM  0x2c -> 0x11      <- Configuration complete
-            74103001  TB     pl_phy_lnk_up = 1  <- physical layer up
-            74479000  LTSSM  0x15 -> 0x16 L0  (linkup)
-            75287001  TB     trn_link_up   = 1  <- data link layer up, flow control done
-            75287001  TB     ===> PCIe LINK UP -- SOC released from reset
-            75303000  TB     core_rst_n   = 1  <- core reset released (TRN, SOC)
-           390695000  TB     ===> FIRMWARE RESULT 0x0000face  (PASS)
-           400695000  TB     *** run ends 10 us after the firmware result ***
+            70903000  LTSSM  0x05 -> 0x26      <- link number assigned
+            71847000  LTSSM  0x2a -> 0x2b      <- lane number assigned
+            72751000  LTSSM  0x2c -> 0x11      <- Configuration complete
+            74295001  TB     pl_phy_lnk_up = 1  <- physical layer up
+            74503000  LTSSM  0x15 -> 0x16 L0  (linkup)
+            75255001  TB     trn_link_up   = 1  <- data link layer up, flow control done
+            75255001  TB     ===> PCIe LINK UP -- SOC released from reset
+            75271000  TB     core_rst_n   = 1  <- core reset released (TRN, SOC)
+           596087000  TB     ===> FIRMWARE RESULT 0x0000face  (PASS)
+           606087000  TB     *** run ends 10 us after the firmware result ***
 --------------------------------------------------------
  openpcie2-rc co-simulation summary
 --------------------------------------------------------
   PCIe link up ............ YES
   LTSSM final state ....... 0x16
-  TLPs sent by firmware ... 21
-  Payload written to EP ... 0x00000006  (Memory Write TLP)
-  Payload read back ....... 0x00000006  (match)
+  TLPs sent by firmware ... 123
+  Payload written to EP ... 0xa100001f  (Memory Write TLP)
+  Payload read back ....... 0xa100001f  (match)
+  Burst DWORDs ............ 71 written, 64 completed
+  PIO throughput, 32 DWORDs (128 bytes), firmware cycles at 62.5 MHz:
+    write  32 x 1-DW    2082 cycles     3.8 MB/s
+    write  32 x 1-DW    2070 cycles     3.9 MB/s  1.0x  (one batch)
+    write   1 x 32-DW    592 cycles    13.5 MB/s  3.5x
+    read   32 x 1-DW    9960 cycles     0.8 MB/s
+    read    1 x 32-DW   1312 cycles     6.1 MB/s  7.6x
+  PERF CHECK .............. PASS
   FIRMWARE RESULT ......... PASS (0x0000face)
 --------------------------------------------------------
 ```
 
-The last three lines are the real result. `0x0000FACE` is only the firmware's verdict; the two lines above it are the dword that crossed the link: written to the endpoint at `0x8000_0000` by a Memory Write TLP, then fetched back by a Memory Read and its completion. Any result other than PASS, including a run that hits `RUN_US`, ends with `$fatal`, so `make run` fails and a script can tell pass from fail.
+`make run` of 2026-11-27 (x1 Gen2, `PIO_BURST=1`). `0x0000FACE` is only the firmware's verdict; the lines above it are what crossed the link, taken from the SOC's TLP streams: the last 1-DW Memory Write and the 1-DW Completion that brought it back, the DWORDs that went in bursts, and the throughput test ([3.sw](../3.sw/README.md#4-pio-throughput-bursts-against-1-dw-requests)). `PIO_BURST=0`, the board's firmware, leaves out the bursts and the throughput test: 22 TLPs. Any result other than PASS, including a run that hits `RUN_US`, ends with `$fatal`, so `make run` fails and a script can tell pass from fail.
 
 The real firmware enumerates the endpoint model as on the board. The endpoint's decode:
 
@@ -250,23 +258,28 @@ EP -> RC   Completion with data              0xFFFFF008            4 KB, 32-bit,
 RC -> EP   Config write type 0  Reg=04   BAR0 = 0x80000000     ... and place it
            ... the same for BAR1 (1 KB -> 0x80001000), BAR2/3 (64-bit, 8 GB:
            parked above 4 GB), BAR4/5 (read back 0: not implemented) ...
-RC -> EP   Config write type 0  Reg=01   Command = 6           memory space + bus master
+RC -> EP   Config write type 0  Reg=01   Command = 2           memory space
 RC -> EP   Mem write req  Addr=80000000  data 0x00000006
 RC -> EP   Mem read  req  Addr=80000000  TAG=14
 EP -> RC   Completion with data              0x00000006            TAG=14
 ```
 
-The firmware checks the Completion Status of every request and re-issues one answered with CRS. All 21 TLPs are enumeration and test; the result marker goes to `status.result`, which sends no TLP. The same traffic at TLP level: [Viewing the TLPs in WaveCrux](#viewing-the-tlps-in-wavecrux). The CSR side, as the firmware sees it:
+The firmware checks the Completion Status of every request and re-issues one answered with CRS. With `PIO_BURST=0`, all 22 TLPs are enumeration and test; `PIO_BURST=1` (the default here) adds the burst check (2 TLPs) and the throughput test (99). The result marker goes to `status.result`, which sends no TLP. The same traffic at TLP level: [Viewing the TLPs in WaveCrux](#viewing-the-tlps-in-wavecrux). The CSR side, as the firmware sees it:
 
 ```
-CSR RD [0x20] = 0000001e     status.phy -- Tx FSM idle, 30 buffers free
-CSR WR [0x00] = 04000001     tx.header0 -- CfgRd0, length 1
-CSR WR [0x04] = 10ee000f     tx.header1 -- requester 0x10EE, tag 0, BE 0xF
-CSR WR [0x08] = 01000000     tx.header2 -- bus 1, device 0, function 0, register 0
-CSR WR [0x0c] = 00000000     tx.data    -- the write strobe starts the transfer
-CSR RD [0x18] = ...          rx.header_info -- polled until the completion lands
+CSR RD [0x0028] = 00001e00   status.phy -- Tx side idle, 30 buffers free
+CSR WR [0x2000] = 04000001   tx_payload[0] -- DW0: CfgRd0, length 1
+CSR WR [0x2004] = 10ee000f   tx_payload[1] -- DW1: requester 0x10EE, tag 0, BE 0xF
+CSR WR [0x2008] = 01000000   tx_payload[2] -- DW2: bus 1, device 0, function 0, register 0
+CSR WR [0x000c] = 00000001   tx.send       -- one TLP: the write starts the transfer
+CSR RD [0x0020] = ...        rx.valid      -- polled until a TLP is in the RX ring
+CSR RD [0x1000] = 4a000001   rx_payload[0] -- DW0: CplD, length 1
+CSR RD [0x1008] = 10ee00..   rx_payload[2] -- DW2: requester and tag, ours
+CSR RD [0x1004] = ...        rx_payload[1] -- DW1: Completion Status
+CSR RD [0x100c] = ...        rx_payload[3] -- the payload
+CSR WR [0x0020] = 00000001   rx.valid      -- frees it
 ...
-CSR WR [0x24] = 0000face     status.result -- the pass marker, sends no TLP
+CSR WR [0x002c] = 0000face   status.result -- the pass marker, sends no TLP
 ```
 
 ### Building and running
@@ -280,9 +293,9 @@ make run                            # -> the summary above
 make gui                            # same, with waveforms
 ```
 
-`make` always rebuilds the firmware, into `obj/fw`, with `SIM=1`. That cuts the firmware's 100 ms start-up wait (PCIe asks it of a Root Port) to 75 µs, the Completion wait to 2.18 ms and the CRS retry wait to 374 µs ([`4.build/sw_build`](../4.build/sw_build/README.md#timing-the-waits)); a run then fits in about 0.4 ms (0.66 ms with `CORE=picorv32`). The tracked `4.build/sw_build/firmware.hex` stays the board build; no simulation touches it.
+`make` always rebuilds the firmware, into `obj/fw`, with `SIM=1`. That cuts the firmware's 100 ms start-up wait (PCIe asks it of a Root Port) to 75 µs, the Completion wait to 2.18 ms and the CRS retry wait to 374 µs ([`4.build/sw_build`](../4.build/sw_build/README.md#timing-the-waits)); a run then ends in about 0.6 ms, the firmware result at 0.60 ms (0.27 ms with `PIO_BURST=0`, the board's firmware). The tracked `4.build/sw_build/firmware.hex` stays the board build; no simulation touches it.
 
-`COUNTERS=1` (default) gives the CPU its cycle counter, and the firmware times its waits with `rdcycle` (with `CPU=iss`, the ISS's cycle count, from its timing model). `COUNTERS=0` builds neither, and the waits count loops (HM direct: 369.127 µs). `MUL=1` (default) gives the CPU RV32M and builds the firmware for `rv32im`; `MUL=0` neither. JanusHDL has no Xilinx models, so with `SIM=janushdl` eduBOS5 multiplies in RTL (`SOC_MUL_RTL`), with the DSP48E1's timing.
+`COUNTERS=1` (default) gives the CPU its cycle counter, and the firmware times its waits with `rdcycle` (with `CPU=iss`, the ISS's cycle count, from its timing model). `COUNTERS=0` builds neither, and the waits count loops. `MUL=1` (default) gives the CPU RV32M and builds the firmware for `rv32im`; `MUL=0` neither. JanusHDL has no Xilinx models, so with `SIM=janushdl` eduBOS5 multiplies in RTL (`SOC_MUL_RTL`), with the DSP48E1's timing.
 
 Make options (`make help` lists them too):
 
@@ -313,6 +326,7 @@ Make options (`make help` lists them too):
 | `PLUSARGS` | none (default) | run-time options, no rebuild: `BUS_TRACE_N=<n>` (the SOC's first bus accesses, default 60; with `USRSIMOPTS="--define CPU_TRACE"`), `PIPE_DUMP_FROM=<ps>` (with `USRSIMOPTS="--define PIPE_RAW_DUMP"`) |
 | `CPU` | `rtl` (default), `vproc`, `iss` | the SOC CPU on node 0: RTL, the firmware compiled for the host, or the rv32 ISS ([the three CPU options](#the-three-cpu-options)) |
 | `COUNTERS` | `1` (default), `0` | the CPU's cycle counter, and the firmware's waits time themselves with it (`rdcycle`); `0`: neither, the waits count loops ([firmware](../4.build/sw_build/README.md#timing-the-waits)) |
+| `PIO_BURST` | `1` (default here), `0` | the self-test adds a 32-DW burst check and, RC-direct, the throughput test ([3.sw](../3.sw/README.md#4-pio-throughput-bursts-against-1-dw-requests)); `0`: 1-DW requests only, the board's firmware (its AMD PIO endpoint answers no other) |
 | `HM_PROBE` | `0` (default), `1` | the endpoint puts Data Link faults to the RC, then retrains the link and changes its speed, and measures it: the hard macro (`RC=hm`) or the RC model (`RC=model`); direct, x1; [results](#the-hard-macro-under-data-link-faults-and-in-recovery) |
 | `FW_OPT` | `-Os -flto` (default), e.g. `-O0`, `-O2` | the firmware's optimisation flags, for `CPU=rtl` and `iss` (`CPU=vproc` takes `OPTFLAG`); the result must not depend on them |
 | `CORE` | `edubos5` (default; x4 Gen2: `edubos5_3stg`), `edubos5_3stg`, `picorv32` | the RTL core, or the ISS timing model |
@@ -336,7 +350,7 @@ Always printed, with no define: the LTSSM state on every transition, `pl_phy_lnk
 
 Two scripts in `5.sim`: [`run-sanity.sh`](run-sanity.sh) and [`run-regression.sh`](run-regression.sh). Run them after `source ../4.build/set-env.sh` (Vivado for XSIM). They print one line per run, keep the logs in `obj/sanity/` and `obj/regression/`, and exit non-zero on a failure. Make variables pass through (`bash run-sanity.sh SEED=2`). A run passes when it exits 0 and ends with its result: `FIRMWARE RESULT 0x0000face (PASS)` with the hard macro (`RC=hm`), `RC MODEL RESULT: PASS` with the RC model (`RC=model`).
 
-**Sanity**, after every change: `bash run-sanity.sh`, six runs, about 4 minutes. XSIM and JanusHDL must also print the same `===>` lines.
+**Sanity**, after every change: `bash run-sanity.sh`, six runs and the SOC bench, about 5 minutes. XSIM and JanusHDL must also print the same `===>` lines.
 
 ```sh
 make run                          # hard macro + eduBOS5 firmware
@@ -345,13 +359,22 @@ make run RC=model                 # the Artix-7 RC model, XSIM
 make run RC=model SIM=janushdl    # the same in JanusHDL
 make run RC=model IFACE=serial    # on the serial line
 make run RC=model SIM_LANES=4     # x4
+bash soc/run-soc.sh all           # the SOC alone, below
 ```
 
-**Regression**, before a push: `bash run-regression.sh`, 29 checks, about 30 minutes. The sanity runs, and:
+**Regression**, before a push: `bash run-regression.sh`, 31 checks, about 35 minutes. The sanity runs, and:
 
-- Hard macro: Gen1, the speed-change test, x4 at Gen1 and Gen2, `VARIANT=switched`, `CPU=iss`, `CORE=picorv32`, and the endpoint's faults (`SIM_FAULT=crs`, `late`, `nocpl`).
+- Hard macro: Gen1, the speed-change test, x4 at Gen1 and Gen2, `VARIANT=switched`, `PIO_BURST=0` (the board's firmware), `CPU=iss`, `CORE=picorv32`, and the endpoint's faults (`SIM_FAULT=crs`, `late`, `nocpl`).
 - RC model: Gen1, the speed-change test, x4, serial, both PIPE PHYs (`PHY=core`, `PHY=hm`), the literal lab RC (`A7RC=1`), 1000 mixed requests (`MIX=1000`), and the same three faults.
 - `make regress RC=model SEEDS=100`, `make mutants`, and eduBOS5's RV32M bench ([`run-muldiv.sh`](../2.rtl/0.common.opensource/src/CPU.eduBOS5/sim/run-muldiv.sh)).
+
+**The SOC alone**, [`soc/run-soc.sh`](soc/run-soc.sh) (Verilator, seconds; from openCologne-PCIE): `soc_top` with a stand-in for the PCIE stack, each test with its own firmware from [`3.sw/tests`](../3.sw/tests):
+
+| Test | Firmware | Checks |
+|---|---|---|
+| `tx` | `soc_tx` | every `s_axis_tx` beat of 3-DW and 4-DW requests, single and in one batch, from even and odd `tx_payload` entries |
+| `rx` | `soc_rx` | 96 TLPs back to back, more than the RX ring holds (it holds the link off), each sent back as it came |
+| `cpl` | `soc_cpl` | the request layer: a 32-DW burst read answered by two 16-DW CplDs, behind a Message and a stale Completion it must free; a 1-DW read answered with UR; nothing left in the ring |
 
 `SIM_FAULT=nocpl` fails by design (no Completion for one request) and is reported as known (`KNOWN` in the script); the script fails only on an unexpected result.
 
@@ -427,13 +450,13 @@ Then open [`tb.x1g1.direct.TLP-DLL-PIPE.wavecrux`](tb.x1g1.direct.TLP-DLL-PIPE.w
 <img alt="WaveCrux TLP view: a 64-bit BAR that does not fit" src="images/wavecrux-tlp-bar-64bit.png" width=1000>
 </div>
 
-**The self-test.** Memory Space and Bus Master on, then a posted Memory Write of `6` to `0x80000000`, and a Memory Read whose completion brings the `6` back: the `PASS (0x0000face)` of the summary. The write has no completion: it is *posted*, fire and forget, which makes writes cheap. Reads and Configuration requests are *non-posted*, and each waits for its completion:
+**The self-test.** Memory Space on (Bus Master stays off), then a posted Memory Write of `6` to `0x80000000`, and a Memory Read whose completion brings the `6` back: the `PASS (0x0000face)` of the summary. The write has no completion: it is *posted*, fire and forget, which makes writes cheap. Reads and Configuration requests are *non-posted*, and each waits for its completion:
 
 <div align="center">
 <img alt="WaveCrux TLP view: memory write and read-back self-test" src="images/wavecrux-tlp-mem-rw.png" width=1000>
 </div>
 
-The firmware then writes `PASS` to `status.result`, a register that sends nothing, so this read is the last TLP of the run. (Writing `tx.data` launches a TLP, hence a separate result register.)
+The firmware then writes `PASS` to `status.result`, a register that sends nothing, so this read is the last TLP of the run. (Writing `tx.send` launches TLPs, hence a separate result register.)
 
 **The firmware sets the pace.** A Configuration request and its Completion take about 1 µs ([How long a TLP spends in the hard macro](#how-long-a-tlp-spends-in-the-hard-macro)), but the requests leave about 10 µs apart: the link mostly waits for the SOC's next request.
 
@@ -483,7 +506,7 @@ The switch is a model ([`usercode/pcie_switch.cpp`](usercode/pcie_switch.cpp)); 
 <img alt="WaveCrux TLP view: bus numbers and memory window of the upstream port" src="images/wavecrux-switched-2-upstream-port.png" width=1000>
 </div>
 
-**3. Type 1: past the first bridge.** The downstream ports sit on bus 2, one bus beyond the link. The firmware sends the same Configuration Write as before, but the Root Complex sends it as Type 1 (`CfgWr1 02:01.0`), as the bus number is not 1 ([`riscv_pcie_soc.sv`](../2.rtl/0.common.opensource/src/riscv_pcie_soc.sv) picks the type from the bus number). The upstream port sees its own secondary bus and passes the request on as Type 0. Port 1 (device 1) gets bus 3 and the first 1 MB of the window, `0x1000_0000`. The Completer ID says who answered: `0x0208` = bus 2, device 1. Ports 2 to 4 follow the same way:
+**3. Type 1: past the first bridge.** The downstream ports sit on bus 2, one bus beyond the link. The firmware sends the same Configuration Write as before, but the Root Complex sends it as Type 1 (`CfgWr1 02:01.0`), as the bus number is not 1 (the firmware, `cfg_type()` in [`pcie.c`](../3.sw/common/pcie.c), picks the type from the bus number). The upstream port sees its own secondary bus and passes the request on as Type 0. Port 1 (device 1) gets bus 3 and the first 1 MB of the window, `0x1000_0000`. The Completer ID says who answered: `0x0208` = bus 2, device 1. Ports 2 to 4 follow the same way:
 
 <div align="center">
 <img alt="WaveCrux TLP view: Type 1 Configuration Writes to downstream port 1" src="images/wavecrux-switched-3-type1.png" width=1000>
@@ -633,13 +656,13 @@ make run CPU=iss                       # -V EDUBOS5STG2 (CORE=edubos5, the defau
 make run CPU=iss CORE=picorv32         # -V PICORV32
 ```
 
-The swap happens in [`riscv_pcie_soc.sv`](../2.rtl/0.common.opensource/src/riscv_pcie_soc.sv): eduBOS5 by default, `` `ifdef SOC_CPU_PICORV32 `` for PicoRV32, `` `ifdef SOC_CPU_VPROC `` for the two VProc builds. Those use [`models/soc_cpu.VPROC.native.sv`](models/soc_cpu.VPROC.native.sv): VProc as the CPU, on the SOC's *native* memory bus (picorv32's `mem_valid`/`mem_ready` bus, which eduBOS5 drives too). The file list is [`tb.prj`](tb.prj). The inherited `models/soc_cpu.VPROC.sv` is kept for reference only: it speaks the `soc_if` bus of the sibling Chili.CHIPS SOC infrastructure, which this design does not have.
+The swap happens in [`soc_top.sv`](../2.rtl/0.common.opensource/src/soc_top.sv): eduBOS5 by default, `` `ifdef SOC_CPU_PICORV32 `` for PicoRV32, `` `ifdef SOC_CPU_VPROC `` for the two VProc builds. Those use [`models/soc_cpu.VPROC.native.sv`](models/soc_cpu.VPROC.native.sv): VProc as the CPU, on the SOC's *native* memory bus (picorv32's `mem_valid`/`mem_ready` bus, which eduBOS5 drives too). The file list is [`tb.prj`](tb.prj). The inherited `models/soc_cpu.VPROC.sv` is kept for reference only: it speaks the `soc_if` bus of the sibling Chili.CHIPS SOC infrastructure, which this design does not have.
 
 All three run one firmware source. With `CPU=vproc`, register accesses become _VProc_ bus cycles ([HAL](#hal)); with `CPU=iss`, [`vusermain.cfg`](vusermain.cfg) configures the ISS ([The openPCIE configuration](#the-openpcie-configuration)).
 
 ### What they cost
 
-Vivado XSIM 2026.1, x1 Gen1 runs, simulated time, which is exact. Every run gives the same result: link up, LTSSM `0x16`, 21 TLPs, `PASS (0x0000face)`.
+Vivado XSIM 2026.1, x1 Gen1 runs of the board firmware (`PIO_BURST=0`), October 2026, simulated time, which is exact. Every run gave the same result: link up, LTSSM `0x16`, 21 TLPs, `PASS (0x0000face)`.
 
 | `CPU=` | Core | Result at (simulated) | Run time, wall clock, relative |
 |---|---|---|---|
@@ -994,7 +1017,7 @@ What exists in the open (Oct 2026), dynamic and static:
 | [cocotbext-pcie](https://github.com/alexforencich/cocotbext-pcie) | cocotb model, Python | TLP: Root Complex, switches, Endpoints, config space, BARs, MSI, DMA | not as a checker: a link partner; Xilinx models are UltraScale(+) device only, no 7-series `PCIE_2_1` |
 | WaveCrux plugins: [our TLP decoder](https://github.com/Ferrite-Engineering/wavecrux-decoders/tree/main/decoders/pcie-tlp), [Ferrite's PCIe decoders](https://github.com/Ferrite-Engineering/wavecrux-decoders) | post-simulation, on the waveform | TLP; PIPE, DLL and serial line | partly: CRC, sequence numbers, 8b/10b and disparity |
 | [ngscopeclient](https://www.ngscopeclient.org/) (scopehal, BSD-3) | post-capture, on scope or imported VCD waveforms | serial lane up: 8b/10b, 128b/130b, link training, 1-32 lane logical layer, DLL, TLP | partly: flags bad symbols and malformed packets; starts from the serial line, so it does not read our PIPE dump; no FST import yet: [scopehal#1125](https://github.com/ngscopeclient/scopehal/issues/1125), ours [#11](https://github.com/chili-chips/openPCIE/issues/11) |
-| [openpcie-uvm](https://github.com/Sandeep-bhardwaj/openpcie-uvm) (third party, MIT) | UVM, Vivado xsim | our `riscv_pcie_soc` above the hard block: AXI4-Stream TLP port, bridge registers | not PCIE: the SoC bridge (scoreboard, AXI4-Stream assertions); its [findings](../README.md#community-involvement) |
+| [openpcie-uvm](https://github.com/Sandeep-bhardwaj/openpcie-uvm) (third party, MIT) | UVM, Vivado xsim | our `soc_top` above the hard block: AXI4-Stream TLP port, bridge registers | not PCIE: the SoC bridge (scoreboard, AXI4-Stream assertions); its [findings](../README.md#community-involvement) |
 | [SymbiYosys](https://github.com/YosysHQ/sby) | formal | any, with your own SVA | only what you write: no open PCIE property set found |
 
 > [!IMPORTANT]
@@ -1203,7 +1226,7 @@ Neither result names the cause. Only the PIPE and `pl_ltssm_state` show it: a sp
 
 The first Gen2 run then failed again: the RC never locked on the EP's TS1 at Gen2. At 5 GT/s the EP's symbol clock and PCLK had edges in the same time step, and the PIPE word dropped or doubled symbols (at Gen1 the edges were 1 ns apart). The symbol clock now starts from each PCLK rising edge, a quarter symbol later.
 
-Result, `SIM_FAST_TRAIN`:
+Result, `SIM_FAST_TRAIN`, board firmware (`PIO_BURST=0`), when Gen2 first ran (October 2026):
 
 | Run | Speed changes | Firmware |
 |---|---|---|

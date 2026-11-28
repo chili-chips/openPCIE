@@ -1,10 +1,19 @@
-.section .vectors
+// Reset entry: zero .bss (a link drop resets the SOC, not its RAM, so the
+// globals would keep their last values), set the stack to the top of RAM,
+// run main
+.section .vectors, "ax"
 .global _start
 _start:
-    li sp, 0x2000    
-    call main       
+    la   t0, __bss_start
+    la   t1, __bss_end
+1:  bgeu t0, t1, 2f
+    sw   zero, 0(t0)
+    addi t0, t0, 4
+    j    1b
+2:  la   sp, _stack_top
+    call main
 loop:
-    j loop           
+    j loop
 
 // -----------------------------------------------------------------------------
 // Project:     openPCIE

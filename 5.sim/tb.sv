@@ -15,7 +15,7 @@
 //          |    |    `- PCIE_2_1     Xilinx hard macro
 //          |    `- phy_top     <-- SWAPPED for models/phy_top.EP-PIPE-BFM.sv
 //          |                            (PIPE PHY model + pcievhost endpoint)
-//          `- riscv_pcie_soc
+//          `- soc_top
 //               |- picorv32 / edubos5  real RTL, runs the real firmware.hex
 //               `- soc_csr -> csr   PeakRDL-generated CSR
 //
@@ -24,7 +24,7 @@
 //     phy_top  the 7-series transceiver cannot be paired with a PIPE
 //                   level VIP, so a behavioural PIPE PHY takes its place and
 //                   carries the pcieVHost endpoint on its far side
-//     firmware.hex  read by riscv_pcie_soc.sv with $readmemh, copied into the
+//     firmware.hex  read by soc_top.sv with $readmemh, copied into the
 //                   simulation directory by the Makefile
 //
 //   Everything else -- the hard macro, the transaction layer, the CPU, the
@@ -370,22 +370,27 @@ module tb;
 //   0xBAD00001  RC-switched only: the switch is up, no endpoint behind it
 //   0xBAD00002  a later config request failed (UR/CA/timeout)
 //   0xBAD00003  BAR0 is not implemented, is I/O, or does not fit
+//   0xBAD00004  the burst self-test (PIO_BURST=1) read back other data
+//   0xBAD00005  the Tx side never came free (wait_tx_ready)
 // Everything before that is the enumeration sequence.
 
   logic [31:0] result_marker;
   integer      tlp_tx_count;
 
-  // The marker only says pass or fail. These two carry the payload the test
+  // The marker only says pass or fail. These carry the payload the test
   // actually moved across the link, so the summary can show the data rather
-  // than just the verdict:
-  //   mem_wr_payload  the dword written to the endpoint by a Memory Write TLP
-  //                   (tx.header0[31:24] == 0x40 marks one)
-  //   mem_rd_payload  the dword the last completion brought back, read by the
-  //                   firmware out of rx.data (offset 0x14)
+  // than just the verdict. They watch the SOC's TLP streams, not its CSR:
+  //   mem_wr_payload  the dword of the last 1-DW Memory Write TLP
+  //   mem_rd_payload  the dword of the last 1-DW CplD, frozen when the
+  //                   marker lands: the memory read-back
+  //   burst_wr_dw     payload DWORDs of Memory Writes longer than 1 DW
+  //   burst_rd_dw     payload DWORDs of CplDs longer than 1 DW
   logic [31:0] mem_wr_payload;
   logic [31:0] mem_rd_payload;
   logic [31:0] rx_data_last;
   logic        mem_wr_seen;
+  integer      burst_wr_dw;
+  integer      burst_rd_dw;
 
   initial begin
     result_marker  = 32'hffff_ffff;
@@ -394,43 +399,153 @@ module tb;
     mem_rd_payload = 32'h0;
     rx_data_last   = 32'h0;
     mem_wr_seen    = 1'b0;
+    burst_wr_dw    = 0;
+    burst_rd_dw    = 0;
   end
 
-  // Every firmware read of rx.data. The last one before the marker is the
-  // memory read-back, so it is frozen into mem_rd_payload when the marker lands.
+  // A TLP starts with DW0 in tdata[31:0] and DW1 in [63:32]; DW2 and the
+  // first payload DWORD of a 3-DW header follow in the next beat
+  bit          tx_sop = 1'b1, tx_beat1 = 1'b0, rx_sop = 1'b1, rx_beat1 = 1'b0;
+  logic [31:0] tx_dw0, rx_dw0;
+  integer      tx_beat_n = 0;  // beat of the TLP on s_axis_tx, 0 = DW0/DW1
+
+  // The throughput report (PIO_BURST=1, 3.sw/common/pcie.c pcie_perf_test):
+  // a 7-DW Memory Write to BAR0 + 0x300: magic | DWORDs moved, the cycles of
+  // 1-DW writes, burst write, 1-DW reads, burst read, the CPU clock in kHz,
+  // and the 1-DW writes as one batch
+  logic [31:0] perf_rep[7];
+  bit          perf_tlp = 1'b0, perf_seen = 1'b0;
+
   always @(posedge dut.user_clk) begin
-    if (dut.u_soc.mem.valid && dut.u_soc.mem.ready &&
-        dut.u_soc.is_bridge && !(|dut.u_soc.mem.wstrb) &&
-        dut.u_soc.mem.addr[7:0] == 8'h14) begin
-      rx_data_last = dut.u_soc.mem.rdata;
+    if (dut.s_axis_tx.tvalid && dut.s_axis_tx.tready) begin
+      if (tx_sop) begin
+        tx_dw0       = dut.s_axis_tx.tdata[31:0];
+        tlp_tx_count = tlp_tx_count + 1;
+        tx_beat_n    = 0;
+        // Fmt/Type 0x40: a 3-DW Memory Write
+        if (tx_dw0[31:24] == 8'h40 && tx_dw0[9:0] > 10'd1) begin
+          burst_wr_dw = burst_wr_dw + tx_dw0[9:0];
+        end
+      end
+      else begin
+        tx_beat_n = tx_beat_n + 1;
+      end
+      if (tx_beat1 && tx_dw0[31:24] == 8'h40 && tx_dw0[9:0] == 10'd1) begin
+        mem_wr_payload = dut.s_axis_tx.tdata[63:32];
+        mem_wr_seen    = 1'b1;
+      end
+      // beat k carries DW 2k and 2k+1; payload DWORD i is DW 3+i
+      if (tx_beat1) begin
+        perf_tlp = (tx_dw0[31:24] == 8'h40) && (tx_dw0[9:0] == 10'd7) &&
+                   (dut.s_axis_tx.tdata[11:0] == 12'h300);
+      end
+      if (perf_tlp && tx_beat_n >= 1) begin
+        if (2 * tx_beat_n - 3 >= 0) perf_rep[2*tx_beat_n-3] = dut.s_axis_tx.tdata[31:0];
+        if (2 * tx_beat_n - 2 < 7) perf_rep[2*tx_beat_n-2] = dut.s_axis_tx.tdata[63:32];
+        if (dut.s_axis_tx.tlast) perf_seen = (perf_rep[0][31:16] == 16'h9E5F);
+      end
+      tx_beat1 = tx_sop & ~dut.s_axis_tx.tlast;
+      tx_sop   = dut.s_axis_tx.tlast;
+      if (dut.s_axis_tx.tlast) perf_tlp = 1'b0;
     end
   end
 
-  // A write is counted on the CSR request strobe, once per access: picorv32
-  // holds valid until ready, but eduBOS5 stores are one-cycle requests whose
-  // ready comes after valid has dropped
-  // tx.data (0x0C) launches a TLP; status.result (0x24) carries the marker
+  // MB/s of n DWORDs moved in c cycles at f kHz
+  function automatic real perf_mbs(input integer n, input logic [31:0] c, input logic [31:0] f);
+    return (c == 0) ? 0.0 : real'(4 * n) * real'(f) / (real'(c) * 1000.0);
+  endfunction
+
+  // The perf check, on the reference run only (the 3.sw README table; the
+  // make file writes its ceilings into perf_max.cfg, 0 elsewhere): no count
+  // above its ceiling. Ceilings only, no ratios: a faster 1-DW path lowers
+  // every gain, and must not fail the check. Other builds only print
+  bit perf_fail;  // a bit starts at 0
+
+  task automatic perf_max_check(input string what, input logic [31:0] c, input integer max);
+    if (max > 0 && c > max) begin
+      $display("  PERF CHECK .............. FAIL: %s %0d cycles, ceiling %0d", what, c, max);
+      perf_fail = 1'b1;
+    end
+  endtask
+
+  task automatic check_perf();
+    integer fh, code;
+    integer mx[5];  // 1-DW writes, batch, burst write, 1-DW reads, burst read
+
+    mx = '{default: 0};
+    fh = $fopen("perf_max.cfg", "r");
+    if (fh != 0) begin
+      code = $fscanf(fh, "%d %d %d %d %d", mx[0], mx[1], mx[2], mx[3], mx[4]);
+      $fclose(fh);
+    end
+    if (mx[0] <= 0) begin
+      $display("  PERF CHECK .............. not this build (reference run only)");
+      return;
+    end
+    perf_max_check("1-DW writes", perf_rep[1], mx[0]);
+    perf_max_check("batch", perf_rep[6], mx[1]);
+    perf_max_check("burst write", perf_rep[2], mx[2]);
+    perf_max_check("1-DW reads", perf_rep[3], mx[3]);
+    perf_max_check("burst read", perf_rep[4], mx[4]);
+    if (!perf_fail) begin
+      $display("  PERF CHECK .............. PASS");
+    end
+  endtask
+
+  task automatic report_perf();
+    integer n;
+    n = perf_rep[0][15:0];
+    if (perf_rep[5] == 0) begin
+      $display("  PIO throughput .......... not measured (no cycle counter)");
+      return;
+    end
+    $display("  PIO throughput, %0d DWORDs (%0d bytes), firmware cycles at %0.1f MHz:",
+             n, 4 * n, real'(perf_rep[5]) / 1000.0);
+    $display("    write  %2d x 1-DW  %6d cycles  %6.1f MB/s", n, perf_rep[1],
+             perf_mbs(n, perf_rep[1], perf_rep[5]));
+    $display("    write  %2d x 1-DW  %6d cycles  %6.1f MB/s  %0.1fx  (one batch)", n,
+             perf_rep[6], perf_mbs(n, perf_rep[6], perf_rep[5]),
+             real'(perf_rep[1]) / real'(perf_rep[6]));
+    $display("    write   1 x %0d-DW %6d cycles  %6.1f MB/s  %0.1fx", n, perf_rep[2],
+             perf_mbs(n, perf_rep[2], perf_rep[5]), real'(perf_rep[1]) / real'(perf_rep[2]));
+    $display("    read   %2d x 1-DW  %6d cycles  %6.1f MB/s", n, perf_rep[3],
+             perf_mbs(n, perf_rep[3], perf_rep[5]));
+    $display("    read    1 x %0d-DW %6d cycles  %6.1f MB/s  %0.1fx", n, perf_rep[4],
+             perf_mbs(n, perf_rep[4], perf_rep[5]), real'(perf_rep[3]) / real'(perf_rep[4]));
+    check_perf();
+  endtask
+
   always @(posedge dut.user_clk) begin
-    if (dut.u_soc.u_soc_csr.cpuif_req && (|dut.u_soc.mem.wstrb)) begin
-
-      if (dut.u_soc.mem.addr[7:0] == 8'h0c) begin
-        tlp_tx_count = tlp_tx_count + 1;
-
-        // Fmt/Type 0x40 is a Memory Write; its payload is this very dword
-        if (dut.u_soc.tx_dw0[31:24] == 8'h40) begin
-          mem_wr_payload = dut.u_soc.mem.wdata;
-          mem_wr_seen    = 1'b1;
+    if (dut.m_axis_rx.tvalid && dut.m_axis_rx.tready) begin
+      if (rx_sop) begin
+        rx_dw0 = dut.m_axis_rx.tdata[31:0];
+        // Fmt/Type 0x4A: CplD
+        if (rx_dw0[31:24] == 8'h4A && rx_dw0[9:0] > 10'd1) begin
+          burst_rd_dw = burst_rd_dw + rx_dw0[9:0];
         end
       end
-
-      if (dut.u_soc.mem.addr[7:0] == 8'h24) begin
-        result_marker  = dut.u_soc.mem.wdata;
-        mem_rd_payload = rx_data_last;
-        $display("\n%t  TB     ===> FIRMWARE RESULT 0x%08h  (%s)\n", $realtime,
-                 dut.u_soc.mem.wdata,
-                 (dut.u_soc.mem.wdata == 32'h0000_face) ? "PASS" : "FAIL");
-        ->result_seen;
+      if (rx_beat1 && rx_dw0[31:24] == 8'h4A && rx_dw0[9:0] == 10'd1) begin
+        rx_data_last = dut.m_axis_rx.tdata[63:32];
       end
+      rx_beat1 = rx_sop & ~dut.m_axis_rx.tlast;
+      rx_sop   = dut.m_axis_rx.tlast;
+    end
+  end
+
+  // The marker is a CSR write, counted on the request strobe, once per
+  // access: picorv32 holds valid until ready, but eduBOS5 stores are
+  // one-cycle requests whose ready comes after valid has dropped.
+  // status.result is at offset 0x2C (csr.rdl); the whole offset is compared,
+  // as the payload windows (0x1000, 0x2000) repeat its low byte
+  always @(posedge dut.user_clk) begin
+    if (dut.u_soc.u_soc_csr.cpuif_req && (|dut.u_soc.mem.wstrb) &&
+        dut.u_soc.mem.addr[13:0] == 14'h002c) begin
+      result_marker  = dut.u_soc.mem.wdata;
+      mem_rd_payload = rx_data_last;
+      $display("\n%t  TB     ===> FIRMWARE RESULT 0x%08h  (%s)\n", $realtime,
+               dut.u_soc.mem.wdata,
+               (dut.u_soc.mem.wdata == 32'h0000_face) ? "PASS" : "FAIL");
+      ->result_seen;
     end
   end
 
@@ -475,6 +590,11 @@ module tb;
       else
         $display("  Payload read back ....... 0x%08h  (MISMATCH)", mem_rd_payload);
     end
+    if (burst_wr_dw != 0 || burst_rd_dw != 0) begin
+      $display("  Burst DWORDs ............ %0d written, %0d completed", burst_wr_dw,
+               burst_rd_dw);
+    end
+    if (perf_seen) report_perf();
 
     case (result_marker)
       32'h0000_face: $display("  FIRMWARE RESULT ......... PASS (0x%08h)", result_marker);
@@ -483,12 +603,17 @@ module tb;
       32'hbad0_0001: $display("  FIRMWARE RESULT ......... switch up, no endpoint behind it (0x%08h)", result_marker);
       32'hbad0_0002: $display("  FIRMWARE RESULT ......... config request failed (0x%08h)", result_marker);
       32'hbad0_0003: $display("  FIRMWARE RESULT ......... BAR0 not usable (0x%08h)", result_marker);
+      32'hbad0_0004: $display("  FIRMWARE RESULT ......... burst read back wrong (0x%08h)", result_marker);
+      32'hbad0_0005: $display("  FIRMWARE RESULT ......... Tx side stuck (0x%08h)", result_marker);
       default:       $display("  FIRMWARE RESULT ......... not reached yet");
     endcase
     $display("--------------------------------------------------------");
     // the result sets the exit status
     if (result_marker !== 32'h0000_face) begin
       $fatal(1, "firmware result 0x%08h, not PASS (0x0000face)", result_marker);
+    end
+    if (perf_fail) begin
+      $fatal(1, "PIO throughput below its check (PERF CHECK above)");
     end
   endtask
 

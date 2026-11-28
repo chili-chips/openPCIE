@@ -102,8 +102,8 @@ set xdc_files [list "$common_dir/xdc/RC.common.xdc" \
                     "$origin_dir/xdc/$lane_xdc"]
 
 set top_sv "$src_dir/RC_opensource.sv"
-set soc_sv "$src_dir/riscv_pcie_soc.sv"
-# CPU: eduBOS5 (the default, riscv_pcie_soc.sv) and picorv32 (SOC_CPU_PICORV32)
+set soc_sv "$src_dir/soc_top.sv"
+# CPU: eduBOS5 (the default, soc_top.sv) and picorv32 (SOC_CPU_PICORV32)
 set cpu_v  [list {*}[lmap f {edubos5_pkg.sv edubos5_rf.sv edubos5_alu.sv edubos5.sv} \
                        {file join $src_dir CPU.eduBOS5 $f}] \
                  "$src_dir/picorv32.CHILI.sv" \
@@ -191,7 +191,7 @@ foreach f [concat $svfiles $csr_files $cpu_v [list $soc_sv $top_sv]] {
 }
 
 # ---- firmware.hex as a Memory Initialization File ---------------------------
-# riscv_pcie_soc.sv does  $readmemh("firmware.hex", ram)  with a bare name, so
+# soc_top.sv does  $readmemh("firmware.hex", ram)  with a bare name, so
 # Vivado has to know where to look for it. The "Memory Initialization Files"
 # type puts its directory into the synthesis search path.
 add_files -norecurse $hex_file
@@ -211,6 +211,12 @@ if { $mcp_xdc ne "" } {
 set_property top RC_opensource [current_fileset]
 set_property top_auto_set 0 [current_fileset]
 
+# Post-route physical optimisation: x4 Gen2's 250 MHz user clock closes with
+# it (2026-11-27, payload-window SOC: WNS -0.082 ns -> +0.036 ns, one eduBOS5
+# path); the other builds pass either way
+set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED true [get_runs impl_1]
+set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE AggressiveExplore [get_runs impl_1]
+
 update_compile_order -fileset sources_1
 
 # ---- Summary ----------------------------------------------------------------
@@ -225,7 +231,7 @@ puts "  link      : x$pcie_lanes Gen$pcie_gen"
 puts "  cpu       : $cpu"
 puts "  top       : RC_opensource"
 puts "  src/pcie  : [llength $svfiles] .sv  +  [llength $vfiles] .v   (0.common.opensource)"
-puts "  src/      : CPU.eduBOS5/, picorv32.CHILI.sv, riscv_pcie_soc.sv, RC_opensource.sv"
+puts "  src/      : CPU.eduBOS5/, picorv32.CHILI.sv, soc_top.sv, RC_opensource.sv"
 puts "  csr       : PeakRDL -- csr_pkg.sv, csr.sv, soc_csr.sv"
 puts "  xdc       : [join [lmap f [concat $xdc_files $mcp_xdc] {file tail $f}] {, }]"
 puts "  firmware  : $hex_file"

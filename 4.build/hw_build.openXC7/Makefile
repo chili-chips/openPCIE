@@ -132,7 +132,7 @@ endif
 
 # ---- CPU --------------------------------------------------------------------
 # edubos5 (src/CPU.eduBOS5, 2-stage), edubos5_3stg or picorv32; see
-# riscv_pcie_soc.sv. Default: edubos5_3stg at x4 Gen2 (250 MHz user clock),
+# soc_top.sv. Default: edubos5_3stg at x4 Gen2 (250 MHz user clock),
 # else edubos5
 CPU_DEF = $(if $(and $(filter 4,$(LANES)),$(filter 2,$(GEN))),edubos5_3stg,edubos5)
 CPU    ?= $(CPU_DEF)
@@ -196,7 +196,7 @@ PCIE_DIR = $(SRC_DIR)/pcie
 # The pin-to-channel mapping is straight out of prjxray package_pins.csv.
 
 # firmware.hex: the firmware of this build's VARIANT, made by ../sw_build into
-# the build's work folder (rule below WORK). riscv_pcie_soc.sv reads it via
+# the build's work folder (rule below WORK). soc_top.sv reads it via
 # $readmemh with a bare name, so a copy must sit in Yosys' working directory.
 # The tracked ../sw_build/firmware.hex stays the RC-direct board build.
 FIRMWARE = $(WORK)/fw/firmware.hex
@@ -205,14 +205,20 @@ FIRMWARE = $(WORK)/fw/firmware.hex
 # build_artifacts/ holds the bitstreams, side by side (in git), and work/ (not
 # in git): the chipdb, and one folder per build for its netlist, FASM, frames,
 # logs and sv2v output. Only the default build (default CPU, read_slang, the
-# prjxray assembler, SEED 3) of a committed link (BIT_LINKS) writes its
+# prjxray assembler, SEED 3, no TIMING_OPT) of a committed link (BIT_LINKS) writes its
 # bitstream to build_artifacts/; any other keeps it in its own work folder, so
 # it never replaces a committed one.
 SEED_DEF  = 3
 SEED     ?= $(SEED_DEF)
+# TIMING_OPT=R[,N]: nextpnr's timing-driven placement pass on the LUTs and
+# flops of the critical paths (-o timing-opt, openXC7 nextpnr): a cell moves
+# up to R tiles, N rounds (default 30). Off by default
+TIMING_OPT ?=
+comma     := ,
+OPT_SFX    = $(if $(TIMING_OPT),.topt$(subst $(comma),_,$(TIMING_OPT)))
 OUT_DIR   = build_artifacts
 WORK_ROOT = $(OUT_DIR)/work
-BUILD_SFX = $(CPU_SFX)$(if $(filter sv2v,$(FRONTEND)),.sv2v)$(if $(filter-out prjxray,$(ASSEMBLER)),.$(ASSEMBLER))$(if $(filter-out $(SEED_DEF),$(SEED)),.seed$(SEED))
+BUILD_SFX = $(CPU_SFX)$(if $(filter sv2v,$(FRONTEND)),.sv2v)$(if $(filter-out prjxray,$(ASSEMBLER)),.$(ASSEMBLER))$(if $(filter-out $(SEED_DEF),$(SEED)),.seed$(SEED))$(OPT_SFX)
 WORK      = $(WORK_ROOT)/$(LINK).$(VARIANT)$(BUILD_SFX)
 BIT_LINKS = x1g2 x4g1 x4g2
 BIT_DIR   = $(if $(BUILD_SFX)$(filter-out $(BIT_LINKS),$(LINK)),$(WORK),$(OUT_DIR))
@@ -265,7 +271,7 @@ SV_PCIE_REST = $(filter-out $(SV_PKG) $(SV_IF), $(sort $(wildcard $(PCIE_DIR)/*.
 # through sv2v together with the rest of the design.
 EDUBOS5_DIR = $(SRC_DIR)/CPU.eduBOS5
 SV_CPU_picorv32 = $(EDUBOS5_DIR)/edubos5_pkg.sv $(SRC_DIR)/picorv32.CHILI.sv \
-                  $(SRC_DIR)/picorv32_pcpi_mul.sv $(SRC_DIR)/picorv32_pcpi_div.sv  # riscv_pcie_soc imports edubos5_pkg
+                  $(SRC_DIR)/picorv32_pcpi_mul.sv $(SRC_DIR)/picorv32_pcpi_div.sv  # soc_top imports edubos5_pkg
 SV_CPU_edubos5  = $(addprefix $(EDUBOS5_DIR)/,edubos5_pkg.sv edubos5_rf.sv edubos5_alu.sv edubos5.sv)
 SV_CPU_edubos5_3stg = $(SV_CPU_edubos5)
 CPU_DEFS = $(if $(filter picorv32,$(CPU)),-DSOC_CPU_PICORV32) \
@@ -275,7 +281,7 @@ CPU_DEFS = $(if $(filter picorv32,$(CPU)),-DSOC_CPU_PICORV32) \
 
 SV_TOP = \
     $(SV_CPU_$(CPU)) \
-    $(SRC_DIR)/riscv_pcie_soc.sv \
+    $(SRC_DIR)/soc_top.sv \
     $(SRC_DIR)/$(TOP).sv
 
 SV_ORDERED = $(SV_PKG) $(SV_CSR_PKG) $(SV_IF) $(SV_PCIE_REST) $(SV_CSR) $(SV_TOP)
@@ -310,7 +316,8 @@ help:
 	@echo " make FRONTEND=sv2v   through sv2v instead of read_slang"
 	@echo " make ASSEMBLER=fpga-as  one-step assembler (writes RXCDR_CFG wrong, #41)"
 	@echo " make SEED=<n>        another nextpnr seed (default $(SEED_DEF))"
-	@echo "   Any non-default CPU, FRONTEND, ASSEMBLER or SEED keeps its bitstream in"
+	@echo " make TIMING_OPT=R[,N]  nextpnr's critical-path placement pass, R tiles, N rounds"
+	@echo "   Any non-default CPU, FRONTEND, ASSEMBLER, SEED or TIMING_OPT keeps its bitstream in"
 	@echo "   $(WORK_ROOT)/<build>/, so it never replaces a committed one."
 	@echo " make convert         sv2v conversion + splitting only (FRONTEND=sv2v)"
 	@echo " make check-env       verify the tools are present"
@@ -480,7 +487,7 @@ $(WORK)/top.json: $(EXTRACT_TIMESTAMP) $(PURE_V_FILES) $(FIRMWARE)
 	@echo " Synthesis (Yosys)  --  top: $(TOP), part: $(PART)"
 	@echo "================================================================"
 	@mkdir -p $(WORK)
-	@# riscv_pcie_soc does $readmemh("firmware.hex") with a bare name ->
+	@# soc_top does $readmemh("firmware.hex") with a bare name ->
 	@# a copy must sit in Yosys' working directory
 	@cp -f $(FIRMWARE) firmware.hex
 	@# The GT channel is pinned through PACKAGE_PIN constraints on the GT
@@ -534,6 +541,7 @@ $(WORK)/top.fasm: $(WORK)/top.json $(CHIPDB)/$(PART).bin $(XDC_FILE)
 	    --fasm $@ \
 	    --write $(WORK)/top_routed.json \
 	    --seed $(SEED) \
+	    $(if $(TIMING_OPT),-o timing-opt=$(TIMING_OPT)) \
 	    --timing-allow-fail \
 	    --verbose \
 	    > $(WORK)/nextpnr.log 2>&1; \

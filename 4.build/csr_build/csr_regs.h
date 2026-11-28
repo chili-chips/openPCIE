@@ -26,7 +26,7 @@
 // address map in csr.rdl places its "csr" instance
 #define CSR_BASE  ((uint32_t)(uintptr_t)&(((CSR_TOP_T *)0)->csr))
 
-// Byte address of a register: CSR_ADDR(tx.header0), CSR_ADDR(table.entry[i].ip).
+// Byte address of a register: CSR_ADDR(tx.send), CSR_ADDR(table.entry[i].ip).
 // The member's offset in the generated struct keeps csr.h the single source
 // of truth for the layout. Not offsetof(): C++ wants a constant array index
 // there, and register arrays may be indexed at run time.
@@ -35,7 +35,7 @@
 // Accessors
 //
 //   CSR_REG32(member)          the whole register, one 32-bit access:
-//                                  CSR_REG32(tx.header0) = h0;
+//                                  CSR_REG32(tx_payload.mem[0]) = h0;
 //                                  uint32_t s = CSR_REG32(status.phy);
 //   CSR_GET(member, FLD)       one field, out of a 32-bit read
 //   CSR_SET(member, FLD, v)    one field, written alone: a byte, half-word
@@ -46,7 +46,7 @@
 //                              occupies. For a field that shares a byte with
 //                              another field
 //
-// FLD is the generated field prefix, e.g. CSR__RX__HEADER_INFO__TAG.
+// FLD is the generated field prefix, e.g. CSR__RX__VALID__VALID.
 //
 // Do NOT dereference through the struct itself. "peakrdl c-header" marks every
 // struct __attribute__((packed)), which tells the compiler the members may be
@@ -81,8 +81,8 @@
 // Extract a field out of a register value that has already been read, using
 // the bit mask and bit position "peakrdl c-header" emits for that field:
 //
-//    uint32_t hdr = CSR_REG32(rx.header_info);       // one bus read
-//    uint8_t  tag = RDL_FIELD(hdr, CSR__RX__HEADER_INFO__TAG);
+//    uint32_t v  = CSR_REG32(rx.valid);              // one bus read
+//    uint32_t ok = RDL_FIELD(v, CSR__RX__VALID__VALID);
 //
 // Reading a register once and picking the fields out of the copy matters when
 // the hardware can change it between two reads.

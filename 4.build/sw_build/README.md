@@ -42,6 +42,8 @@ The register map comes from `../csr_build/generated-files/` (`csr.h`, `csr_top.h
 | `make SIM=1` | short start-up delay, for co-simulation (see below; `5.sim` does this itself) |
 | `make COUNTERS=0` | waits count loops, for a CPU without `rdcycle` ([below](#timing-the-waits)) |
 | `make MUL=0` | `-march=rv32i`, for a CPU without RV32M (default `MUL=1`: `rv32im`) |
+| `make PIO_BURST=1` | the self-test adds a 32-DW burst check and, RC-direct, the throughput test ([3.sw](../../3.sw/README.md#4-pio-throughput-bursts-against-1-dw-requests)); default 0, as the board's endpoint, the AMD PIO example, answers only 1-DW requests. 5.sim builds 1 |
+| `make SW_DIR=../../3.sw/tests/soc_tx` | another firmware's `main.c`, e.g. the SOC bench's tests ([5.sim/soc](../../5.sim/soc/run-soc.sh)) |
 | `make OUT=<dir>` | write the three files to `<dir>` instead of this folder |
 | `make info` | print the resolved configuration |
 | `make clean` | remove the three generated files |
@@ -65,7 +67,7 @@ The firmware waits three times ([`3.sw/common/pcie.h`](../../3.sw/common/pcie.h)
 
 ## Building for co-simulation
 
-`make SIM=1` shortens the waits (table above), so a run fits in under 0.7 ms of simulated time (0.4 ms on eduBOS5, 0.66 ms on PicoRV32). The hardware build is unaffected.
+`make SIM=1` shortens the waits (table above), so a run takes well under the 2 ms `RUN_US` limit (eduBOS5 at x1 Gen2: 0.27 ms with the board's `PIO_BURST=0`, 0.60 ms with the throughput test). The hardware build is unaffected.
 
 You do not run it by hand: `make` in [`5.sim`](../../5.sim) builds its own copy every time, with `make SIM=1 OUT=5.sim/obj/fw`. So the `firmware.hex` tracked here is always the board build.
 
@@ -79,7 +81,7 @@ You do not run it by hand: `make` in [`5.sim`](../../5.sim) builds its own copy 
 | `firmware.bin` | intermediate, raw image |
 | **`firmware.hex`** | **the hardware build** - both Vivado and openXC7, and the RTL core in co-simulation |
 
-`riscv_pcie_soc.sv` loads its RAM with `$readmemh("firmware.hex", ram)`, so the file is one 32-bit little-endian word per line, 8 hex digits, no `0x` prefix. Step 3 emits exactly that.
+`soc_top.sv` loads its RAM with `$readmemh("firmware.hex", ram)`, so the file is one 32-bit little-endian word per line, 8 hex digits, no `0x` prefix. Step 3 emits exactly that.
 
 ## Notes
 

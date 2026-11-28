@@ -40,19 +40,20 @@
 //   This file defines the Control and Status Registers (CSR) of the
 //   openPCIE Root Complex SOC -- the TLP transmit/receive window that the
 //   RISC-V firmware uses in place of the AMD-proprietary hardware FSM.
+//   The layout is openCologne-PCIE's: every TLP, header and payload, goes
+//   through a payload window, so a Memory request may carry a burst.
 //
 //   Register map:
 //
-//     0x3000_0000  tx.header0      TLP header DW0            (W)
-//     0x3000_0004  tx.header1      TLP header DW1            (W)
-//     0x3000_0008  tx.header2      TLP header DW2            (W)
-//     0x3000_000C  tx.data         TLP payload DW + SEND     (W, triggers)
-//     0x3000_0010  rx.status       Completion status         (R)
-//     0x3000_0014  rx.data         Completion payload DW     (R)
-//     0x3000_0018  rx.header_info  Completion header DW2     (R)
-//     0x3000_001C  status.err      fatal error received      (R)
-//     0x3000_0020  status.phy      Tx FSM state + buffers    (R)
-//     0x3000_0024  status.result   firmware result marker    (RW)
+//     0x3000_0000  -               free
+//     0x3000_000C  tx.send         send N TLPs from tx_payload (W, triggers)
+//     0x3000_0010  -               free
+//     0x3000_0020  rx.valid        a TLP waits; writing 1 frees it (R, W)
+//     0x3000_0024  status.err      fatal error received      (R, W1C)
+//     0x3000_0028  status.phy      Tx FSM busy + buffers     (R)
+//     0x3000_002C  status.result   firmware result marker    (RW)
+//     0x3000_1000  rx_payload      the RX ring's head TLP    (R, 1024 DW)
+//     0x3000_2000  tx_payload      the TLPs to send          (W, 1024 DW)
 //==========================================================================
 
 addrmap csr {
@@ -66,130 +67,52 @@ addrmap csr {
    addressing = compact;
 
    //-----------------------------------------------------------------------
-   // Tx -- the TLP the CPU hands over to the PCIe link
+   // Tx -- the TLPs the CPU hands over to the PCIe link
    //-----------------------------------------------------------------------
    regfile tx {
       name = "csr.tx";
-      desc = "TLP Transmit CSR (CPU --> PCIe link)";
+      desc = "TLP Transmit CSR (CPU --> PCIe link). The TLPs go in
+              tx_payload, header first; writing tx.send launches them.";
 
-      reg {
-         name = "csr.tx.header0";
-         desc = "TLP Header DW0 -- Fmt/Type, TC, attributes and Length";
-
-         field {
-            name = "csr.tx.header0.hdr[31:0]";
-            desc = "1st header DWORD of the outgoing TLP";
-            sw = rw;
-            hw = r;
-         } hdr[32] = 0;
-      } header0;
-
-      reg {
-         name = "csr.tx.header1";
-         desc = "TLP Header DW1 -- Requester ID, Tag and byte enables";
+      external reg {
+         name = "csr.tx.send";
+         desc = "TLP Send -- writing this register STARTS the transfer";
 
          field {
-            name = "csr.tx.header1.hdr[31:0]";
-            desc = "2nd header DWORD of the outgoing TLP";
-            sw = rw;
+            name = "csr.tx.send.count[7:0]";
+            desc = "The number of TLPs to send. The firmware writes them back
+                    to back into tx_payload from entry 0, header first, then
+                    their number here, LAST: the Tx FSM sends them in order,
+                    each one's length from its DW0 (Fmt and Length).
+                    External: nothing is stored, the write starts the FSM.";
+            sw = w;
             hw = r;
-         } hdr[32] = 0;
-      } header1;
-
-      reg {
-         name = "csr.tx.header2";
-         desc = "TLP Header DW2 -- address, or Bus/Device/Function and register";
-
-         field {
-            name = "csr.tx.header2.hdr[31:0]";
-            desc = "3rd header DWORD of the outgoing TLP";
-            sw = rw;
-            hw = r;
-         } hdr[32] = 0;
-      } header2;
-
-      reg {
-         name = "csr.tx.data";
-         desc = "TLP Payload DWORD -- writing this register STARTS the transfer";
-
-         field {
-            name = "csr.tx.data.payload[31:0]";
-            desc = "Payload DWORD of the outgoing TLP. A software write to this
-                    register is what launches the Tx FSM, so it must be written
-                    LAST, after the three header registers. The write strobe is
-                    exported to logic as the 'swmod' output of this field.";
-            sw = rw;
-            hw = r;
-            swmod = true;
-         } payload[32] = 0;
-      } data;
+         } count[7:0] = 0;
+      } send @ 0x0C;
    } tx @ 0x00;
 
    //-----------------------------------------------------------------------
-   // Rx -- the Completion TLP coming back from the link
+   // Rx -- the TLPs coming in from the link, captured as-is
    //-----------------------------------------------------------------------
    regfile rx {
       name = "csr.rx";
-      desc = "TLP Receive CSR (PCIe link --> CPU)";
+      desc = "TLP Receive CSR (PCIe link --> CPU). Incoming TLPs queue up in
+              a ring, as they are. rx_payload shows the oldest, the head:
+              entry i is its DW i. The firmware decodes it, then frees it.";
 
-      reg {
-         name = "csr.rx.status";
-         desc = "Completion Status Register";
-
-         field {
-            name = "csr.rx.status.cpl_status[2:0]";
-            desc = "Completion Status of the last received Completion TLP:
-                    0 = SC (Successful Completion), 1 = UR (Unsupported
-                    Request), 2 = CRS (Configuration Retry Status),
-                    4 = CA (Completer Abort)";
-            sw = r;
-            hw = w;
-            we;
-         } cpl_status[2:0] = 0;
-      } status;
-
-      reg {
-         name = "csr.rx.data";
-         desc = "Completion Payload Register";
+      external reg {
+         name = "csr.rx.valid";
+         desc = "Receive Status Register";
 
          field {
-            name = "csr.rx.data.payload[31:0]";
-            desc = "Payload DWORD of the last received Completion TLP";
-            sw = r;
-            hw = w;
-            we;
-         } payload[32] = 0;
-      } data;
-
-      reg {
-         name = "csr.rx.header_info";
-         desc = "Completion Header Register -- 3rd DWORD of the Completion TLP";
-
-         field {
-            name = "csr.rx.header_info.requester_id[15:0]";
-            desc = "Requester ID the Completion is addressed to. Software
-                    compares it against its own ID to filter foreign traffic.";
-            sw = r;
-            hw = w;
-            we;
-         } requester_id[31:16] = 0;
-
-         field {
-            name = "csr.rx.header_info.tag[7:0]";
-            desc = "Tag of the request this Completion belongs to";
-            sw = r;
-            hw = w;
-            we;
-         } tag[15:8] = 0;
-
-         field {
-            name = "csr.rx.header_info.lower_addr[6:0]";
-            desc = "Lower Address field of the Completion header";
-            sw = r;
-            hw = w;
-            we;
-         } lower_addr[6:0] = 0;
-      } header_info;
+            name = "csr.rx.valid.valid";
+            desc = "Reads 1 while a TLP is waiting in rx_payload. Writing 1
+                    frees it, and the next TLP in the ring takes its place.
+                    External: nothing is stored, the ring is the state.";
+            sw = rw;
+            hw = r;
+         } valid[0:0] = 0;
+      } valid @ 0x10;
    } rx @ 0x10;
 
    //-----------------------------------------------------------------------
@@ -218,16 +141,15 @@ addrmap csr {
 
       reg {
          name = "csr.status.phy";
-         desc = "PCIe PHY / Tx FSM Status Register";
+         desc = "Tx FSM / PCIe hard macro Status Register";
 
          field {
-            name = "csr.status.phy.tx_state[1:0]";
-            desc = "State of the Tx FSM: 0 = IDLE, 1 = SEND_CYCLE_1,
-                    2 = SEND_CYCLE_2. Software polls for 0 before it starts
-                    loading the next TLP.";
+            name = "csr.status.phy.tx_busy";
+            desc = "The Tx FSM is sending. Software polls for 0 before it
+                    writes the next TLPs into tx_payload.";
             sw = r;
             hw = w;
-         } tx_state[7:6] = 0;
+         } tx_busy[0:0] = 0;
 
          field {
             name = "csr.status.phy.tx_buf_avail[5:0]";
@@ -235,7 +157,7 @@ addrmap csr {
                     (tx_buf_avail). Software waits for a non-zero value.";
             sw = r;
             hw = w;
-         } tx_buf_avail[5:0] = 0;
+         } tx_buf_avail[13:8] = 0;
       } phy;
 
       reg {
@@ -245,14 +167,39 @@ addrmap csr {
          field {
             name = "csr.status.result.marker[31:0]";
             desc = "Result marker the firmware writes when it stops, e.g.
-                    0x0000FACE for PASS. Unlike tx.data, writing it launches
+                    0x0000FACE for PASS. Unlike tx.send, writing it launches
                     no TLP: the value goes to logic only, to the PASS LED and
                     to an ILA.";
             sw = rw;
             hw = r;
          } marker[32] = 0;
       } result;
-   } status @ 0x1C;
+   } status @ 0x24;
+
+   //-----------------------------------------------------------------------
+   // Payload windows -- every DWORD of a TLP, header first. Each is one
+   // RAMB36 (1024 x 32, true dual port): all of one block RAM
+   //-----------------------------------------------------------------------
+   external mem {
+      name = "csr.rx_payload";
+      desc = "The head TLP of the RX ring, header first, while rx.valid
+              reads 1: entry i is its DW i. The window spans the ring:
+              entries past the head show the TLPs behind it.";
+      mementries = 1024;
+      memwidth = 32;
+      sw = r;
+   } rx_payload @ 0x1000;
+
+   external mem {
+      name = "csr.tx_payload";
+      desc = "The TLPs to send, back to back from entry 0, header first:
+              entry i is DW i of the batch. Writing their number into tx.send
+              then launches them; each one's Fmt and Length say how many
+              entries it takes.";
+      mementries = 1024;
+      memwidth = 32;
+      sw = w;
+   } tx_payload @ 0x2000;
 };
 
 //==========================================================================

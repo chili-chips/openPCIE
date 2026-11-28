@@ -5,7 +5,8 @@
 # Accepted lint findings, read by run-lint.sh.
 #
 # One waiver per line:  <phase> <regex>
-#   <phase>  tags | verilator | yosys | reset | slang | verible | cdc
+#   <phase>  tags | verilator | yosys | reset | ram | iob | slang | verible |
+#            cdc | check-timing | methodology
 #   <regex>  extended regex (grep -E), matched against one finding line as it
 #            appears in <phase>.all of a run-lint.sh work directory
 # A finding that matches is waived. Put the reason on a comment line above it.
@@ -66,8 +67,17 @@ verilator ^%Warning-UNUSEDSIGNAL: src/pcie/axis_if\.sv:[0-9]+:[0-9]+: (Signal is
 verilator ^%Warning-UNUSEDSIGNAL: src/pcie/pipe_if\.sv:[0-9]+:[0-9]+: Bits of signal are not used: 'tx_ctrl'\[5\]$
 
 # Descriptor signals (step 3): pcie_pkg header DWs and sideband, partial field
-# use by design; whole-signal "not used" is still reported
-verilator ^%Warning-UNUSEDSIGNAL: .*Bits of signal are not used: '([A-Za-z0-9_]*_hdr_[A-Za-z0-9_]*|[A-Za-z0-9_]*_dw[0-3]|[A-Za-z0-9_]*_tuser)'
+# use by design, also as function arguments (pcie_pkg's TLP size functions);
+# whole-signal "not used" is still reported
+verilator ^%Warning-UNUSEDSIGNAL: .*Bits of (signal|function variable) are not used: '([A-Za-z0-9_]*_hdr_[A-Za-z0-9_]*|[A-Za-z0-9_]*_dw[0-3]|[A-Za-z0-9_]*_tuser)'
+
+# csr.sv is generated (PeakRDL regblock --rt-read-response): its 1-stage
+# write-after-read stall register, cpuif_req_stall_sr, shifts out by 1 on purpose
+slang ^csr\.sv:[0-9]+:[0-9]+: warning: shift count of .32.d1. overflows 1-bit operand \[-Wshift-count-overflow\]$
+
+# pcie_pkg header layouts kept as reference, not used by the RTL at present
+# (user, 2026-11-27): the tlp_type codes
+verilator ^%Warning-UNUSEDPARAM: src/pcie/pcie_pkg\.sv:[0-9]+:[0-9]+: Parameter is not used: 'TLP_TYPE_(CPL|CFG)'$
 
 # PIPE clock mux select: pipe_clk_sel_q drives the BUFGCTRL S0/S1 that switch
 # pipe_clk between 125 and 250 MHz; the XDC false-paths S0/S1 and makes the
@@ -101,10 +111,32 @@ slang ^src/.*\.sv:[0-9]+:[0-9]+: warning: .case[zx]?. marked .(unique|priority).
 # name is anchored to its instance path: the SoC (u_soc.) or eduBOS5 alone with
 # RV32M (no prefix).
 #   eduBOS5: operands, load/store offset, data address, ALU result and operand
-#   signs, the divider's data path; the SoC: the instruction word from the RAM;
-#   PicoRV32 (CPU=picorv32): its read data, the RAM's read data, the PCPI
-#   instruction word, and its multiplier's and divider's operands (RV32M)
-reset '(u_soc\.cpu\.)?(rs1_reg|rs2_reg|ls_offset_reg|dmem_addr|g_md\.(div_res|dvs|r_sh))'
+#   signs, the divider's data path; the SoC: the instruction word from the RAM,
+#   the TLP RAMs' read data (tx_pl_a_q, rx_pl_q: the DW0 a TLP's length comes
+#   from, read before it is used) and eduBOS5's store data (dmem_wdat: the
+#   tx.send count); PicoRV32 (CPU=picorv32): its read data, the RAM's read
+#   data, the PCPI instruction word, and its multiplier's and divider's
+#   operands (RV32M)
+reset '(u_soc\.cpu\.)?(rs1_reg|rs2_reg|ls_offset_reg|dmem_addr|dmem_wdat|g_md\.(div_res|dvs|r_sh))'
 reset '(u_soc\.cpu\.)?u_alu\.(alu_minus_reg|aluin_[12]_31_reg)'
-reset 'u_soc\.(imem_rdat|ram_rdata|cpu\.mem_rdata_q)'
+reset 'u_soc\.(imem_rdat|ram_rdata|tx_pl_a_q|rx_pl_q|cpu\.mem_rdata_q)'
 reset 'u_soc\.cpu\.(pcpi_insn|g_enable_mul\.pcpi_mul\.rs1|g_enable_div\.pcpi_div\.(dividend|divisor))'
+
+# ---- iob, check-timing, methodology (added 2026-11-27, with the phases) ----
+# iob: the link LEDs are slow status pins, not data: no I/O flop. led[3:2]
+# are the inverted fw_pass and trn_link_up (RC_opensource.sv)
+iob ^src/RC_opensource\.sv:[0-9]+: 'led_link_up\[[23]\]' output: driven by logic
+# iob: PERST# is a reset, not data: it is ANDed with the MMCM lock into the
+# reset synchronizer's clear (clk_rst_gen.sv)
+iob ^src/pcie/clk_rst_gen\.sv:[0-9]+: 'perst_n' input: no flop takes it directly
+# check-timing: PERST# has its false path (RC.common.xdc); the LEDs have no
+# output delay, being slow status pins. The counts catch a new pin
+check-timing ^no_input_delay: There is 1 input port with no input delay but user has a false path constraint\. \(MEDIUM\)$
+check-timing ^no_output_delay: There are 2 ports with no output delay specified\. \(HIGH\)$
+# methodology: the reset synchronizer's asynchronous clear is PERST# and the
+# MMCM lock through one LUT; its release is synchronized (u_rst_sync0/1), a
+# glitch can only assert the reset early
+methodology ^LUTAR-1 Warning: LUT cell u_pcie/u_clk_rst_gen/u_rst_sync0_i_1, .* drives asynchronous preset/clear pin\(s\) u_pcie/u_clk_rst_gen/u_rst_sync0/CLR, u_pcie/u_clk_rst_gen/u_rst_sync1/CLR\.
+# methodology: the SOC RAMs answer the next clock by design (the CPU and the
+# Tx fetch take the data straight from the RAM), so no output register is merged
+methodology ^SYNTH-6 Warning: The timing for the instance u_soc/(ram_reg_[0-9]+|rx_pl_reg|tx_pl_reg), implemented as a RAM block

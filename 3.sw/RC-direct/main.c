@@ -54,11 +54,9 @@
 // RESULT_CFG_FAILED  0xBAD00002    a config request to the endpoint failed (pcie.h)
 #define RESULT_BAR0_FAILED 0xBAD00003 // BAR0 is missing, I/O, or does not fit
 
-int main() {
+int main(void) {
 
-	tx_tag = 0;
-
-	wait_cycles(US2WAIT(STARTUP_US));
+    wait_cycles(US2WAIT(STARTUP_US));
 
     uint32_t dev_id;
 
@@ -72,9 +70,9 @@ int main() {
         halt(RESULT_BAR0_FAILED);
     }
 
-    cfg_write32(1, 0, CFG_COMMAND, CMD_MEM_BUS_MASTER);
+    cfg_write32(1, 0, CFG_COMMAND, CMD_MEM_SPACE);
 
-	uint32_t test_data = 0x00000006;
+    uint32_t test_data = 0x00000006;
     uint32_t readback;
 
 #ifdef HM_PROBE
@@ -90,11 +88,15 @@ int main() {
 
     pcie_mem_write(test_addr, test_data);
 
-    if (pcie_mem_read(test_addr, &readback) == CPL_STAT_SC && readback == test_data) {
-        halt(RESULT_PASS);
-    } else {
+    if (pcie_mem_read(test_addr, &readback) != CPL_STAT_SC || readback != test_data) {
         halt(RESULT_FAIL);
     }
+#ifdef PIO_BURST
+    if (pcie_burst_test(test_addr + 0x40) != 0 || pcie_perf_test(test_addr) != 0) {
+        halt(RESULT_BURST_FAILED);
+    }
+#endif
+    halt(RESULT_PASS);
 }
 
 //--------------------------------------------------------------------------

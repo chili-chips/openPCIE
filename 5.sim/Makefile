@@ -258,7 +258,7 @@ endif
 #         executed by RTL.
 #
 # The DUT is identical in all three; only the module plugged into the CPU
-# socket of riscv_pcie_soc.sv changes. See models/soc_cpu.VPROC.native.sv.
+# socket of soc_top.sv changes. See models/soc_cpu.VPROC.native.sv.
 CPU             ?= rtl
 
 # The RISC-V core: edubos5 (2-stage), edubos5_3stg or picorv32. The default
@@ -314,6 +314,15 @@ ifeq ($(MUL),0)
 endif
 ifeq ($(SIM),janushdl)
   CPUDEFINE     += --define SOC_MUL_RTL
+endif
+
+# PIO_BURST=1 (default here; the board build is PIO_BURST=0): the firmware's
+# self-test also sends a 32-DW Memory Write and reads it back in one Memory
+# Read (PIO_BURST, 3.sw/common/pcie.c). pcieVHost's endpoint takes bursts;
+# the board's, the AMD PIO example, does not
+PIO_BURST       ?= 1
+ifeq ($(filter 0 1,$(PIO_BURST)),)
+  $(error PIO_BURST must be 0 or 1 (got "$(PIO_BURST)"))
 endif
 
 # DUMP_SOC_CPU (the CPU in WaveCrux, tb.sv) and SOC_IPC (the IPC count, tb.sv)
@@ -403,7 +412,7 @@ DEFS             = -DVPROC_SV -DVPROC -DEXCLUDE_LTSSM $(ISS_DEFS) \
                    -DEP_GEN=$(SIM_GEN) -DRC_GEN=$(SIM_RC_GEN) $(if $(filter 1,$(SIM_SPEED_TEST)),-DSPEED_TEST) \
                    $(if $(filter-out none,$(SIM_FAULT)),-DSIM_FAULT_$(shell echo $(SIM_FAULT) | tr a-z A-Z)) \
                    $(if $(filter serial,$(IFACE)),-DSIM_SERIAL) -DA7RC_LITERAL=$(A7RC) \
-                   $(if $(filter 1,$(HM_PROBE)),-DHM_PROBE) \
+                   $(if $(filter 1,$(HM_PROBE)),-DHM_PROBE) $(if $(filter 1,$(PIO_BURST)),-DPIO_BURST) \
                    -DLANE_REV_EP=$(if $(filter ep both,$(SIM_LANE_REV)),1,0) -DLANE_REV_RC=$(if $(filter rc both,$(SIM_LANE_REV)),1,0)
 
 VOBJDIR          = $(CURDIR)/obj
@@ -462,6 +471,14 @@ HOST_AR         ?= ar
 #   make run RUN_US=40000
 RUN_US          ?= 2000
 
+# PIO throughput ceilings, in CPU cycles: 1-DW writes, the batch, the burst
+# write, 1-DW reads, the burst read (the run of 2026-11-27 plus 10%). tb.sv
+# fails a run above one. They hold only for the reference run (xsim, x1 Gen2,
+# CPU=rtl, CORE=edubos5, RC=hm, direct, no FW_OPT, SIM_SPEED_TEST or fault):
+# elsewhere 0, and tb.sv checks nothing
+PERF_REF         = $(and $(filter xsim,$(SIM)),$(filter rtl,$(CPU)),$(filter edubos5,$(CORE)),$(filter 1,$(SIM_LANES)),$(filter 2,$(SIM_GEN)),$(filter hm,$(RC)),$(filter direct,$(VARIANT)),$(filter 1,$(MUL)),$(filter 0,$(HM_PROBE)),$(filter none,$(SIM_FAULT)),$(filter 0,$(SIM_SPEED_TEST)),$(if $(FW_OPT),,1))
+PERF_MAX        ?= $(if $(PERF_REF),2290 2277 651 10956 1443,0 0 0 0 0)
+
 XILINX_VIVADO   ?= /tools/Xilinx/2026.2/Vivado
 GLBL             = $(XILINX_VIVADO)/data/verilog/src/glbl.v
 XILLIBS          = -L unisims_ver -L unimacro_ver -L secureip
@@ -470,7 +487,7 @@ XILLIBS          = -L unisims_ver -L unimacro_ver -L secureip
 # start-up delay (SIM=1), into obj/fw -- not into 4.build/sw_build, whose
 # firmware.hex stays the board build. VARIANT=switched builds the RC-switched
 # firmware, and puts a switch with endpoints behind the link partner
-# (usercode/pcie_switch.cpp). riscv_pcie_soc.sv reads firmware.hex with a bare
+# (usercode/pcie_switch.cpp). soc_top.sv reads firmware.hex with a bare
 # name, so a copy sits in this folder; the ISS (CPU=iss) runs
 # obj/fw/firmware.elf.
 VARIANT         ?= direct
@@ -582,12 +599,12 @@ $(VOBJDIR)/fw_main.o: $(FW_SRC_DIR)/RC-$(VARIANT)/main.c $(FW_HOST_DEPS) | $(VOB
 
 # The user code differs per CPU option (VUserMain0, the ISS and its defines),
 # per VARIANT (the switch model, the firmware), per SIM_GEN/SIM_SPEED_TEST/SIM_FAULT
-# (the endpoint), per RC, IFACE and A7RC (the RC model), per SIM_LANE_REV (both) and per COUNTERS and MUL (ISS_DEFS): a change of any throws the objects and the library away, so
+# (the endpoint), per RC, IFACE and A7RC (the RC model), per SIM_LANE_REV (both) and per COUNTERS, MUL (ISS_DEFS) and PIO_BURST: a change of any throws the objects and the library away, so
 # that the next build cannot mix them. obj/.cpu holds them for the last build.
 CPU_STAMP = $(VOBJDIR)/.cpu
 $(CPU_STAMP): FORCE | $(VOBJDIR)
-	@if [ "$$(cat $@ 2>/dev/null)" != "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(MUL) $(HM_PROBE) $(SIM_LANE_REV)" ]; then \
-	    rm -f $(VOBJDIR)/*.o $(USERLIB) $(VPROC_PLI); echo "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(MUL) $(HM_PROBE) $(SIM_LANE_REV)" > $@; fi
+	@if [ "$$(cat $@ 2>/dev/null)" != "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(MUL) $(HM_PROBE) $(PIO_BURST) $(SIM_LANE_REV)" ]; then \
+	    rm -f $(VOBJDIR)/*.o $(USERLIB) $(VPROC_PLI); echo "$(CPU) $(VARIANT) $(SIM_GEN) $(SIM_RC_GEN) $(SIM_POLARITY) $(SIM_SPEED_TEST) $(SIM_FAULT) $(RC) $(IFACE) $(A7RC) $(COUNTERS) $(MUL) $(HM_PROBE) $(PIO_BURST) $(SIM_LANE_REV)" > $@; fi
 
 # Rule to build library of user code
 $(USERLIB): $(CPU_STAMP) $(VOBJS)
@@ -629,7 +646,7 @@ endif
 # carry timestamps from the future, and a stale image would then look newer
 # than its sources.
 firmware.hex: FORCE
-	@$(MAKE) --no-print-directory -C $(BLD_DIR)/sw_build SIM=1 VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) MUL=$(MUL) HM_PROBE=$(HM_PROBE) \
+	@$(MAKE) --no-print-directory -C $(BLD_DIR)/sw_build SIM=1 VARIANT=$(VARIANT) COUNTERS=$(COUNTERS) MUL=$(MUL) HM_PROBE=$(HM_PROBE) PIO_BURST=$(PIO_BURST) \
 	    LINK=x$(SIM_LANES)g$(SIM_GEN) OUT=$(FW_DIR)
 	@cp -f $(FW_DIR)/firmware.hex $@
 
@@ -642,12 +659,16 @@ firmware.hex: FORCE
 run_us.cfg: FORCE
 	@echo $(RUN_US) > $@
 
+# and the perf ceilings from this one, at the end of the run
+perf_max.cfg: FORCE
+	@echo $(PERF_MAX) > $@
+
 iss.cfg: FORCE
 	@sed -E -e "s/-V [A-Z0-9]+/-V $(ISS_CORE)/" -e "s|-t [^ ]*firmware\.elf|-t obj/fw/firmware.elf|" vusermain.cfg > $@
 
 FORCE:
 
-sim: sysverilog run_us.cfg $(RUN_CFG)
+sim: sysverilog run_us.cfg perf_max.cfg $(RUN_CFG)
 	@A7RC_SEED=$(SEED) $(SIMEXE) $(SIMFLAGS)
 
 # A run with DUMP_VCD also converts tb.vcd into the tracked FST, named like
@@ -660,15 +681,15 @@ sim: sysverilog run_us.cfg $(RUN_CFG)
 # a tracked dump.
 DUMP_TAG = $(if $(filter rtl,$(CPU)),$(filter-out $(CORE_DEF),$(CORE)),$(CPU))$(if $(filter 1,$(SIM_SPEED_TEST)),.speed)$(if $(filter-out none,$(SIM_FAULT)),.fault-$(SIM_FAULT))$(if $(filter 1,$(A7RC)),.a7rc)$(if $(filter-out 1,$(SEED)),.seed$(SEED))
 DUMP_FST = tb.x$(SIM_LANES)g$(SIM_GEN).$(if $(filter model,$(RC)),model$(if $(filter serial,$(IFACE)),.serial)$(if $(filter-out none,$(PHY)),.phy-$(PHY)),$(VARIANT))$(if $(filter 1,$(SIM_LANE_REVERSE)),.rev)$(if $(DUMP_TAG),.$(patsubst .%,%,$(DUMP_TAG))).fst
-run: sysverilog run_us.cfg $(RUN_CFG)
+run: sysverilog run_us.cfg perf_max.cfg $(RUN_CFG)
 	@rm -f xsim.log; A7RC_SEED=$(SEED) $(SIM_RUN); rc=$$?; $(if $(filter xsim,$(SIM)),grep -q '^Fatal:' xsim.log && rc=1;) \
 	$(if $(findstring DUMP_VCD,$(USRSIMOPTS)),bash tools/vcd2fst.sh tb.vcd $(DUMP_FST);) exit $$rc
 
 # The tester over seeds 1 to SEEDS, each in obj/regress/<seed>/ with its own
 # copy of the snapshot (xsim.dir), so seeds can run side by side
-regress: sysverilog run_us.cfg $(RUN_CFG)
+regress: sysverilog run_us.cfg perf_max.cfg $(RUN_CFG)
 	@bash $(BFM)/4.build/regress.sh $(SEEDS) $(REGRESS_JOBS) $(REGRESS_S) $(REGRESS_TRIES) $(REGRESS_QUIET) \
-	    $(VOBJDIR)/regress "xsim.dir $(notdir $(VPROC_PLI)) run_us.cfg $(RUN_CFG)" -- $(SIM_RUN); s=$$?; \
+	    $(VOBJDIR)/regress "xsim.dir $(notdir $(VPROC_PLI)) run_us.cfg perf_max.cfg $(RUN_CFG)" -- $(SIM_RUN); s=$$?; \
 	$(if $(filter fail,$(REGRESS_DUMP)),for d in $(VOBJDIR)/regress/*/; do [ ! -e $$d/failed ] || \
 	    $(MAKE) --no-print-directory wavecrux RC=model SEED=$$(basename $$d) WCX_OPEN=0; done;) exit $$s
 
@@ -689,7 +710,7 @@ wavecrux:
 fst:
 	@bash tools/vcd2fst.sh tb.vcd $(DUMP_FST)
 
-rungui: sysverilog run_us.cfg $(RUN_CFG)
+rungui: sysverilog run_us.cfg perf_max.cfg $(RUN_CFG)
 	@A7RC_SEED=$(SEED) $(SIMEXE) -g --autoloadwcfg $(SIMFLAGS)
 
 gui: rungui
@@ -744,7 +765,7 @@ help:
 
 clean:
 	@rm -rf $(WORKDIR) $(VOBJDIR) $(USERLIB) $(VPROC_PLI) xelab.* xvlog.* xsim.* *.wdb .Xil
-	@rm -rf firmware.hex run_us.cfg iss.cfg *.jou *.log webtalk*
+	@rm -rf firmware.hex run_us.cfg perf_max.cfg iss.cfg *.jou *.log webtalk*
 
 # -----------------------------------------------------------------------------
 # Project:     openPCIE

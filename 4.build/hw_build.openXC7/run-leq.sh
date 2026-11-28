@@ -103,14 +103,14 @@ cpu_files() {  # $1 = src dir
     local E=$1/CPU.eduBOS5
     echo $E/edubos5_pkg.sv $E/edubos5_rf.sv $E/edubos5_alu.sv $E/edubos5.sv
   else
-    echo $1/CPU.eduBOS5/edubos5_pkg.sv $1/picorv32.CHILI.sv $1/picorv32_pcpi_mul.sv $1/picorv32_pcpi_div.sv  # riscv_pcie_soc imports edubos5_pkg
+    echo $1/CPU.eduBOS5/edubos5_pkg.sv $1/picorv32.CHILI.sv $1/picorv32_pcpi_mul.sv $1/picorv32_pcpi_div.sv  # soc_top imports edubos5_pkg
   fi
 }
 files() {  # $1 = src dir; same order as SV_ORDERED in the Makefile
   local P=$1/pcie
   echo bb.sv bram_bb.sv fdce.sv $P/link_pkg.sv $P/pcie_pkg.sv "$CSR/csr_pkg.sv" $(ls $P/*_if.sv) \
        $(ls $P/*.sv | grep -v -e '_if.sv$' -e '_pkg.sv$') \
-       "$CSR/csr.sv" $1/soc_csr.sv $(cpu_files $1) $1/riscv_pcie_soc.sv $1/$TOP.sv
+       "$CSR/csr.sv" $1/soc_csr.sv $(cpu_files $1) $1/soc_top.sv $1/$TOP.sv
 }
 BB="t:PCIE_2_1 t:GTPE2_CHANNEL t:GTPE2_COMMON t:MMCME2_ADV t:BUFG t:BUFGCTRL t:IBUFDS_GTE2 t:RAMB36E1 t:BRAM_TDP_MACRO"
 PREP="hierarchy -top $TOP; proc; flatten; memory; async2sync"

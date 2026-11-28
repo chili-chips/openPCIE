@@ -4,7 +4,7 @@
 
 //==========================================================================
 // riscv-formal wrapper for eduBOS5 (run-riscv-formal.sh): the core with free
-// memories, as the SOC (riscv_pcie_soc.sv) connects it.
+// memories, as the SOC (soc_top.sv) connects it.
 //  - IMEM: synchronous read; the word changes only if the address changed.
 //  - DMEM: free read data; dmem_rdy only answers a pending read (load_wait),
 //    the SOC's bus rule. EDUBOS5_STORE_WAIT (STORE_WAITS_RDY=1): it also

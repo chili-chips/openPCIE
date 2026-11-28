@@ -77,12 +77,18 @@ $(PKRDLTOP): MakefileCSR
 	               '#define CSR_TOP_T  $(RDLPCIETOP)_t' '#endif' > $@
 	$(call spdx_c,$@)
 
+# --rt-read-response: the read data and ack leave csr.sv from a flop, a clock
+# after the request. Without it, the CPU address through the decode of the
+# payload windows into soc_csr's read register misses 250 MHz (x4 Gen2)
 rtl: $(RDLSRC)
-	@$(PEAKRDL) regblock $^ -o $(GENDIR)/ --cpuif passthrough --default-reset arst_n --top $(RDLCSRTOP)
+	@$(PEAKRDL) regblock $^ -o $(GENDIR)/ --cpuif passthrough --default-reset arst_n --rt-read-response --top $(RDLCSRTOP)
 	$(call spdx_c,$(GENDIR)/$(RDLCSRTOP).sv)
 	$(call spdx_c,$(GENDIR)/$(RDLCSRTOP)_pkg.sv)
 
+# peakrdl html names its pages by content and never deletes one: cleared
+# first, or the pages of removed registers stay behind
 $(PKRDLHTML): $(RDLSRC) FORCE
+	@rm -rf $@
 	@$(PEAKRDL) html $(RDLSRC) -o $@ --top $(RDLPCIETOP)
 
 $(PKRDLMD): $(RDLSRC) FORCE

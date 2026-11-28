@@ -54,7 +54,7 @@ module tb_muldiv;
   logic [31:0] mem[MEM_WORDS];
 
   // IMEM: synchronous read. DMEM: ready the clock after a request, as the SOC
-  // RAM; dmem_rdy only answers a pending read (riscv_pcie_soc.sv, load_wait)
+  // RAM; dmem_rdy only answers a pending read (soc_top.sv, load_wait)
   logic ram_ready, load_wait, store_ok;
   always_ff @(posedge clk) begin
     imem_rdat <= mem[imem_addr];

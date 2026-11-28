@@ -17,7 +17,7 @@
 # All three outputs land in this folder, or in OUT=<dir>: the co-simulation
 # builds its own SIM=1 copy that way (see 5.sim/Makefile), so the firmware.hex
 # here is always the board build. The hardware build consumes firmware.hex --
-# riscv_pcie_soc.sv reads it with $readmemh("firmware.hex", ram), one 32-bit
+# soc_top.sv reads it with $readmemh("firmware.hex", ram), one 32-bit
 # word per line, hex, no prefix.
 #
 # The two variants share the output names. Every make rebuilds from scratch
@@ -57,7 +57,7 @@ else
 endif
 
 # ---- Timing the waits -------------------------------------------------------
-# COUNTERS=1 (default): the SOC has the CPU's cycle counter (riscv_pcie_soc.sv),
+# COUNTERS=1 (default): the SOC has the CPU's cycle counter (soc_top.sv),
 # the waits read it (rdcycle) and take real time at any -O; LINK gives the CPU
 # clock, the PCIe user clock. COUNTERS=0: the SOC has none (SOC_NO_COUNTERS),
 # the waits count loops. The hardware must match: 5.sim and hw_build.openXC7
@@ -76,7 +76,7 @@ ifeq ($(COUNTERS),1)
 endif
 
 # ---- Multiply and divide ----------------------------------------------------
-# MUL=1 (default): the SOC's CPU has RV32M (riscv_pcie_soc.sv: eduBOS5
+# MUL=1 (default): the SOC's CPU has RV32M (soc_top.sv: eduBOS5
 # USE_HW_MUL, PicoRV32 ENABLE_MUL/DIV), the firmware is built for rv32im.
 # MUL=0: RV32I only (SOC_NO_MUL); gcc then needs no libgcc, as the firmware
 # has no multiply or divide it cannot do with shifts. The hardware must match:
@@ -86,6 +86,16 @@ ifeq ($(filter 0 1,$(MUL)),)
     $(error MUL must be 0 or 1, got "$(MUL)")
 endif
 MUL_ARCH = $(if $(filter 1,$(MUL)),m)
+
+# PIO_BURST=1: the self-test also sends a 32-DW Memory Write and reads it back in
+# one Memory Read (-DPIO_BURST, 3.sw/common/pcie.c). PIO_BURST=0 (default): 1-DW
+# requests only, as the board's endpoint, the AMD PIO example, answers no
+# other. 5.sim builds PIO_BURST=1 by default: its endpoint takes bursts.
+PIO_BURST ?= 0
+ifeq ($(filter 0 1,$(PIO_BURST)),)
+    $(error PIO_BURST must be 0 or 1, got "$(PIO_BURST)")
+endif
+BURST_CFLAGS = $(if $(filter 1,$(PIO_BURST)),-DPIO_BURST)
 
 # ---- Paths ------------------------------------------------------------------
 # Sources live in 3.sw/; this Makefile only builds, it does not hold sources.
@@ -123,7 +133,9 @@ ARCH    = -march=rv32i$(MUL_ARCH)$(CNT_ARCH) -mabi=ilp32
 # code than none), as the tracked board build. For QA, e.g. 5.sim: make run
 # FW_OPT=-O0 or FW_OPT=-O2. The result must not depend on it
 FW_OPT ?= -Os -flto
-CFLAGS  = $(ARCH) -ffreestanding -nostdlib -I$(COMMON_DIR) $(CSR_CFLAGS) $(SIM_CFLAGS) $(CNT_CFLAGS) $(FW_OPT)
+# -fno-tree-loop-distribute-patterns: no memset/memcpy calls made out of
+# loops at -O2 and up; there is no libc to link them from
+CFLAGS  = $(ARCH) -ffreestanding -nostdlib -fno-tree-loop-distribute-patterns -I$(COMMON_DIR) $(CSR_CFLAGS) $(SIM_CFLAGS) $(CNT_CFLAGS) $(BURST_CFLAGS) $(FW_OPT)
 LDFLAGS = -Wl,-Bstatic,-T,$(COMMON_DIR)/sections.lds,--strip-debug
 
 # start.S must come first -- it holds the reset vector.
@@ -161,6 +173,7 @@ help:
 	@echo  make VARIANT=switched    build the RC-switched firmware
 	@echo  make SIM=1               short start-up delay, for co-simulation
 	@echo  make MUL=0               RV32I only: no multiply or divide (default MUL=1, rv32im)
+	@echo  make PIO_BURST=1         self-test with a 32-DW burst (default PIO_BURST=0, the AMD PIO endpoint)
 	@echo  make info                print the resolved configuration
 	@echo  make clean               remove the three generated files
 	@echo ================================================================
@@ -169,6 +182,7 @@ info:
 	@echo VARIANT : $(VARIANT)
 	@echo SIM     : $(SIM)
 	@echo MUL     : $(MUL)
+	@echo PIO_BURST: $(PIO_BURST)
 	@echo ARCH    : $(ARCH)
 	@echo OUT     : $(OUT)
 	@echo SW_DIR  : $(SW_DIR)
@@ -180,7 +194,7 @@ info:
 # ---- 1) link ----------------------------------------------------------------
 $(OUT)/firmware.elf: $(DEPS)
 	@echo ================================================================
-	@echo  Compile and link into firmware.elf   [$(VARIANT), SIM=$(SIM), MUL=$(MUL)]
+	@echo  Compile and link into firmware.elf   [$(VARIANT), SIM=$(SIM), MUL=$(MUL), PIO_BURST=$(PIO_BURST)]
 	@echo ================================================================
 	@mkdir -p $(OUT)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(SRCS)
@@ -196,12 +210,12 @@ $(OUT)/firmware.bin: $(OUT)/firmware.elf
 
 # ---- 3) hex for $readmemh ---------------------------------------------------
 # One 32-bit little-endian word per line, 8 hex digits, no 0x prefix -- exactly
-# what $readmemh expects.
+# what $readmemh expects. The image is padded with zeros to whole words.
 $(OUT)/firmware.hex: $(OUT)/firmware.bin
 	@echo ================================================================
 	@echo  bin to hex into firmware.hex
 	@echo ================================================================
-	$(PYTHON) -c "import struct; f=open('$<','rb'); d=f.read(); f.close(); [print('{:08x}'.format(struct.unpack('<I', d[i:i+4])[0])) for i in range(0, len(d), 4)]" > $@
+	$(PYTHON) -c "import struct; f=open('$<','rb'); d=f.read(); f.close(); d+=bytes(-len(d)%4); [print('{:08x}'.format(struct.unpack('<I', d[i:i+4])[0])) for i in range(0, len(d), 4)]" > $@
 	@echo ================================================================
 	@echo  SUCCESS -- firmware.elf, firmware.bin, firmware.hex
 	@echo ================================================================

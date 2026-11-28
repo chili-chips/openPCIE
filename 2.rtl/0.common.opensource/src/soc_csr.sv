@@ -96,12 +96,12 @@ module soc_csr
 
   assign cpuif_ack             = cpuif_rd_ack | cpuif_wr_ack;
 
-  // PeakRDL-regblock answers in the SAME cycle as the request when the block
-  // has no external or buffered registers: decoded_req is combinational from
-  // cpuif_req, and both the ack and the read data come straight back out of
-  // the always_comb readback mux. Waiting a cycle for the ack therefore hangs
-  // the bus forever, so the acknowledge is accepted either in the request
-  // cycle or in any later one.
+  // PeakRDL-regblock may answer in the SAME cycle as the request (a write to
+  // a plain register: decoded_req is combinational from cpuif_req) or later
+  // (a read, as MakefileCSR passes --rt-read-response; an external register
+  // or memory, when its logic acks). Waiting a cycle for the ack would hang
+  // the bus forever on the first, so the acknowledge is accepted either in
+  // the request cycle or in any later one.
   assign cpuif_done            = cpuif_ack & (cpuif_req | csr_busy);
 
   always_ff @(posedge clk or negedge resetn) begin
@@ -134,11 +134,11 @@ module soc_csr
           rdat <= '0;
         end
         else begin
-          rdy <= 1'b0;
-          if (cpuif_done) begin
-            rdy  <= 1'b1;
-            rdat <= cpuif_rd_data;
-          end
+          // rdat loads on every clock: the CPU takes it only with rdy, so
+          // the late cpuif_done needs to reach rdy alone, not a clock
+          // enable of 32 flops (250 MHz)
+          rdy  <= cpuif_done;
+          rdat <= cpuif_rd_data;
         end
       end
     end

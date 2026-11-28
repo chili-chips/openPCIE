@@ -82,7 +82,12 @@ package pcie_pkg;
     logic [9:0] length;    // [9:0]  payload length in DW, 0 = 1024
   } pcie_tlp_dw0_t;
 
-  // tlp_type codes the design decodes
+  // ---- Header layouts, for reference ----------------------------------------
+  // Not used by the RTL at present: the SOC passes TLPs through as they are
+  // (soc_top.sv), and the firmware builds and decodes the headers. Kept as
+  // documentation of the layouts, in one place, for testbenches and checks.
+
+  // tlp_type codes
   localparam logic [4:0] TLP_TYPE_CPL = 5'b01010;  // Completion (Cpl, CplD)
   localparam logic [3:0] TLP_TYPE_CFG = 4'b0010;   // tlp_type[4:1]: Configuration;
                                                    // tlp_type[0]: Type 0 / Type 1
@@ -119,6 +124,38 @@ package pcie_pkg;
     logic [31:0]   dw1;  // [63:32]
     pcie_tlp_dw0_t dw0;  // [31:0]
   } pcie_trn_desc_t;
+
+  // ---- TLP sizes, from DW0 (the same functions as openCologne-PCIE's tl_pkg)
+  typedef logic [10:0] tlp_dw_cnt_t;  // payload DWs, 1 .. 1024
+  typedef logic [11:0] tlp_dws_t;     // the whole TLP in DWs: header, payload, digest
+  typedef logic [10:0] tlp_words_t;   // the whole TLP in 64-bit beats
+
+  function automatic logic tlp_has_data(input pcie_tlp_dw0_t hdr_dw0);
+    return hdr_dw0.fmt[1];
+  endfunction
+
+  function automatic logic tlp_4dw(input pcie_tlp_dw0_t hdr_dw0);
+    return hdr_dw0.fmt[0];
+  endfunction
+
+  function automatic tlp_dw_cnt_t tlp_length_dw(input pcie_tlp_dw0_t hdr_dw0);
+    return (hdr_dw0.length == 10'd0) ? 11'd1024 : {1'b0, hdr_dw0.length};
+  endfunction
+
+  // header and payload DWs: the TLP without its digest
+  function automatic tlp_dws_t tlp_body_dw(input pcie_tlp_dw0_t hdr_dw0);
+    return (tlp_4dw(hdr_dw0) ? 12'd4 : 12'd3)
+         + (tlp_has_data(hdr_dw0) ? {1'b0, tlp_length_dw(hdr_dw0)} : 12'd0);
+  endfunction
+
+  // the whole TLP in beats: header, payload and digest
+  function automatic tlp_words_t tlp_words(input pcie_tlp_dw0_t hdr_dw0);
+    return 11'((tlp_body_dw(hdr_dw0) + {11'd0, hdr_dw0.td} + 12'd1) >> 1);
+  endfunction
+
+  // tkeep of a 64-bit beat: both DWs, or the low one only
+  localparam logic [TRN_KEEP_W-1:0] KEEP_ALL = 8'hFF;
+  localparam logic [TRN_KEEP_W-1:0] KEEP_LO  = 8'h0F;
 
   // ---- AXI-Stream sideband --------------------------------------------------
 

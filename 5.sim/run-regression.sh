@@ -61,6 +61,7 @@ run hm-speed            SIM_SPEED_TEST=1 "$@"
 run hm-x4               SIM_LANES=4 "$@"
 run hm-x4g2             SIM_LANES=4 SIM_GEN=2 "$@"
 run hm-switched         VARIANT=switched "$@"
+run hm-noburst          PIO_BURST=0 "$@"
 run hm-vproc            CPU=vproc "$@"
 run hm-iss              CPU=iss "$@"
 run hm-picorv32         CORE=picorv32 "$@"
@@ -106,6 +107,12 @@ bash ../2.rtl/0.common.opensource/src/CPU.eduBOS5/sim/run-muldiv.sh > $LOG/muldi
 np=$(grep -a -c '^PASS' $LOG/muldiv.log); nf=$(grep -a -c '^FAIL' $LOG/muldiv.log)
 [ "$nf" = 0 ] && [ "$np" -ge 4 ] || ok=0
 report muldiv $((SECONDS - t0)) $ok "run-muldiv.sh (eduBOS5 RV32M)" "$np PASS, $nf FAIL"
+
+# The SOC alone (soc/tb_soc.sv, Verilator): the Tx batches, the Rx ring
+# filled past full, the request layer's split reads and discards
+t0=$SECONDS
+bash soc/run-soc.sh all > $LOG/soc.log 2>&1 && ok=1 || ok=0
+report soc $((SECONDS - t0)) $ok "soc/run-soc.sh all (tx, rx, cpl)" "$(grep -a -c 'TEST PASSED' $LOG/soc.log) of 3 PASSED"
 
 echo "regression: $fails unexpected"
 [ $fails = 0 ]

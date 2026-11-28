@@ -15,7 +15,7 @@ Don't override. Generated from: openpcie
 
 - Absolute Address: 0x0
 - Base Offset: 0x0
-- Size: 0x30000028
+- Size: 0x30003000
 
 |  Offset  |Identifier|Name|
 |----------|----------|----|
@@ -37,15 +37,17 @@ No supported members.
 
 - Absolute Address: 0x30000000
 - Base Offset: 0x30000000
-- Size: 0x28
+- Size: 0x3000
 
 <p>openPCIE Root Complex CSR</p>
 
-|Offset|Identifier|   Name   |
-|------|----------|----------|
-| 0x00 |    tx    |  csr.tx  |
-| 0x10 |    rx    |  csr.rx  |
-| 0x1C |  status  |csr.status|
+|Offset|Identifier|     Name     |
+|------|----------|--------------|
+|0x0000|    tx    |    csr.tx    |
+|0x0010|    rx    |    csr.rx    |
+|0x0024|  status  |  csr.status  |
+|0x1000|rx_payload|csr.rx_payload|
+|0x2000|tx_payload|csr.tx_payload|
 
 ## tx register file
 
@@ -53,162 +55,69 @@ No supported members.
 - Base Offset: 0x0
 - Size: 0x10
 
-<p>TLP Transmit CSR (CPU --&gt; PCIe link)</p>
+<p>TLP Transmit CSR (CPU --&gt; PCIe link). The TLPs go in
+tx_payload, header first; writing tx.send launches them.</p>
 
-|Offset|Identifier|     Name     |
-|------|----------|--------------|
-|  0x0 |  header0 |csr.tx.header0|
-|  0x4 |  header1 |csr.tx.header1|
-|  0x8 |  header2 |csr.tx.header2|
-|  0xC |   data   |  csr.tx.data |
+|Offset|Identifier|    Name   |
+|------|----------|-----------|
+|  0xC |   send   |csr.tx.send|
 
-### header0 register
-
-- Absolute Address: 0x30000000
-- Base Offset: 0x0
-- Size: 0x4
-
-<p>TLP Header DW0 -- Fmt/Type, TC, attributes and Length</p>
-
-|Bits|Identifier|Access|Reset|          Name          |
-|----|----------|------|-----|------------------------|
-|31:0|    hdr   |  rw  | 0x0 |csr.tx.header0.hdr[31:0]|
-
-#### hdr field
-
-<p>1st header DWORD of the outgoing TLP</p>
-
-### header1 register
-
-- Absolute Address: 0x30000004
-- Base Offset: 0x4
-- Size: 0x4
-
-<p>TLP Header DW1 -- Requester ID, Tag and byte enables</p>
-
-|Bits|Identifier|Access|Reset|          Name          |
-|----|----------|------|-----|------------------------|
-|31:0|    hdr   |  rw  | 0x0 |csr.tx.header1.hdr[31:0]|
-
-#### hdr field
-
-<p>2nd header DWORD of the outgoing TLP</p>
-
-### header2 register
-
-- Absolute Address: 0x30000008
-- Base Offset: 0x8
-- Size: 0x4
-
-<p>TLP Header DW2 -- address, or Bus/Device/Function and register</p>
-
-|Bits|Identifier|Access|Reset|          Name          |
-|----|----------|------|-----|------------------------|
-|31:0|    hdr   |  rw  | 0x0 |csr.tx.header2.hdr[31:0]|
-
-#### hdr field
-
-<p>3rd header DWORD of the outgoing TLP</p>
-
-### data register
+### send register
 
 - Absolute Address: 0x3000000C
 - Base Offset: 0xC
 - Size: 0x4
 
-<p>TLP Payload DWORD -- writing this register STARTS the transfer</p>
+<p>TLP Send -- writing this register STARTS the transfer</p>
 
-|Bits|Identifier|Access|Reset|           Name          |
-|----|----------|------|-----|-------------------------|
-|31:0|  payload |  rw  | 0x0 |csr.tx.data.payload[31:0]|
+|Bits|Identifier|Access|Reset|         Name         |
+|----|----------|------|-----|----------------------|
+| 7:0|   count  |   w  | 0x0 |csr.tx.send.count[7:0]|
 
-#### payload field
+#### count field
 
-<p>Payload DWORD of the outgoing TLP. A software write to this
-register is what launches the Tx FSM, so it must be written
-LAST, after the three header registers. The write strobe is
-exported to logic as the 'swmod' output of this field.</p>
+<p>The number of TLPs to send. The firmware writes them back
+to back into tx_payload from entry 0, header first, then
+their number here, LAST: the Tx FSM sends them in order,
+each one's length from its DW0 (Fmt and Length).
+External: nothing is stored, the write starts the FSM.</p>
 
 ## rx register file
 
 - Absolute Address: 0x30000010
 - Base Offset: 0x10
-- Size: 0xC
+- Size: 0x14
 
-<p>TLP Receive CSR (PCIe link --&gt; CPU)</p>
+<p>TLP Receive CSR (PCIe link --&gt; CPU). Incoming TLPs queue up in
+a ring, as they are. rx_payload shows the oldest, the head:
+entry i is its DW i. The firmware decodes it, then frees it.</p>
 
-|Offset| Identifier|       Name       |
-|------|-----------|------------------|
-|  0x0 |   status  |   csr.rx.status  |
-|  0x4 |    data   |    csr.rx.data   |
-|  0x8 |header_info|csr.rx.header_info|
+|Offset|Identifier|    Name    |
+|------|----------|------------|
+| 0x10 |   valid  |csr.rx.valid|
 
-### status register
+### valid register
 
-- Absolute Address: 0x30000010
-- Base Offset: 0x0
+- Absolute Address: 0x30000020
+- Base Offset: 0x10
 - Size: 0x4
 
-<p>Completion Status Register</p>
+<p>Receive Status Register</p>
 
-|Bits|Identifier|Access|Reset|             Name            |
-|----|----------|------|-----|-----------------------------|
-| 2:0|cpl_status|   r  | 0x0 |csr.rx.status.cpl_status[2:0]|
+|Bits|Identifier|Access|Reset|       Name       |
+|----|----------|------|-----|------------------|
+|  0 |   valid  |  rw  | 0x0 |csr.rx.valid.valid|
 
-#### cpl_status field
+#### valid field
 
-<p>Completion Status of the last received Completion TLP:
-0 = SC (Successful Completion), 1 = UR (Unsupported
-Request), 2 = CRS (Configuration Retry Status),
-4 = CA (Completer Abort)</p>
-
-### data register
-
-- Absolute Address: 0x30000014
-- Base Offset: 0x4
-- Size: 0x4
-
-<p>Completion Payload Register</p>
-
-|Bits|Identifier|Access|Reset|           Name          |
-|----|----------|------|-----|-------------------------|
-|31:0|  payload |   r  | 0x0 |csr.rx.data.payload[31:0]|
-
-#### payload field
-
-<p>Payload DWORD of the last received Completion TLP</p>
-
-### header_info register
-
-- Absolute Address: 0x30000018
-- Base Offset: 0x8
-- Size: 0x4
-
-<p>Completion Header Register -- 3rd DWORD of the Completion TLP</p>
-
-| Bits| Identifier |Access|Reset|                 Name                |
-|-----|------------|------|-----|-------------------------------------|
-| 6:0 | lower_addr |   r  | 0x0 |  csr.rx.header_info.lower_addr[6:0] |
-| 15:8|     tag    |   r  | 0x0 |     csr.rx.header_info.tag[7:0]     |
-|31:16|requester_id|   r  | 0x0 |csr.rx.header_info.requester_id[15:0]|
-
-#### lower_addr field
-
-<p>Lower Address field of the Completion header</p>
-
-#### tag field
-
-<p>Tag of the request this Completion belongs to</p>
-
-#### requester_id field
-
-<p>Requester ID the Completion is addressed to. Software
-compares it against its own ID to filter foreign traffic.</p>
+<p>Reads 1 while a TLP is waiting in rx_payload. Writing 1
+frees it, and the next TLP in the ring takes its place.
+External: nothing is stored, the ring is the state.</p>
 
 ## status register file
 
-- Absolute Address: 0x3000001C
-- Base Offset: 0x1C
+- Absolute Address: 0x30000024
+- Base Offset: 0x24
 - Size: 0xC
 
 <p>PCIe Link Status CSR</p>
@@ -221,7 +130,7 @@ compares it against its own ID to filter foreign traffic.</p>
 
 ### err register
 
-- Absolute Address: 0x3000001C
+- Absolute Address: 0x30000024
 - Base Offset: 0x0
 - Size: 0x4
 
@@ -239,31 +148,30 @@ software writes 1 to it</p>
 
 ### phy register
 
-- Absolute Address: 0x30000020
+- Absolute Address: 0x30000028
 - Base Offset: 0x4
 - Size: 0x4
 
-<p>PCIe PHY / Tx FSM Status Register</p>
+<p>Tx FSM / PCIe hard macro Status Register</p>
 
 |Bits| Identifier |Access|Reset|              Name              |
 |----|------------|------|-----|--------------------------------|
-| 5:0|tx_buf_avail|   r  | 0x0 |csr.status.phy.tx_buf_avail[5:0]|
-| 7:6|  tx_state  |   r  | 0x0 |  csr.status.phy.tx_state[1:0]  |
+|  0 |   tx_busy  |   r  | 0x0 |     csr.status.phy.tx_busy     |
+|13:8|tx_buf_avail|   r  | 0x0 |csr.status.phy.tx_buf_avail[5:0]|
+
+#### tx_busy field
+
+<p>The Tx FSM is sending. Software polls for 0 before it
+writes the next TLPs into tx_payload.</p>
 
 #### tx_buf_avail field
 
 <p>Number of free transmit buffers in the PCIe hard macro
 (tx_buf_avail). Software waits for a non-zero value.</p>
 
-#### tx_state field
-
-<p>State of the Tx FSM: 0 = IDLE, 1 = SEND_CYCLE_1,
-2 = SEND_CYCLE_2. Software polls for 0 before it starts
-loading the next TLP.</p>
-
 ### result register
 
-- Absolute Address: 0x30000024
+- Absolute Address: 0x3000002C
 - Base Offset: 0x8
 - Size: 0x4
 
@@ -276,6 +184,33 @@ loading the next TLP.</p>
 #### marker field
 
 <p>Result marker the firmware writes when it stops, e.g.
-0x0000FACE for PASS. Unlike tx.data, writing it launches
+0x0000FACE for PASS. Unlike tx.send, writing it launches
 no TLP: the value goes to logic only, to the PASS LED and
 to an ILA.</p>
+
+## rx_payload memory
+
+- Absolute Address: 0x30001000
+- Base Offset: 0x1000
+- Size: 0x1000
+
+<p>The head TLP of the RX ring, header first, while rx.valid
+reads 1: entry i is its DW i. The window spans the ring:
+entries past the head show the TLPs behind it.</p>
+
+No supported members.
+
+
+## tx_payload memory
+
+- Absolute Address: 0x30002000
+- Base Offset: 0x2000
+- Size: 0x1000
+
+<p>The TLPs to send, back to back from entry 0, header first:
+entry i is DW i of the batch. Writing their number into tx.send
+then launches them; each one's Fmt and Length say how many
+entries it takes.</p>
+
+No supported members.
+

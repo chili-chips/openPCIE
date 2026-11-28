@@ -54,9 +54,9 @@
 //     bus 3..6  dev 0 .... the endpoint cards, BAR0 at the window base
 //
 //   Everything on bus 1 is reached with Type 0 Configuration TLPs, everything
-//   deeper with Type 1. That selection is NOT made here -- riscv_pcie_soc.sv
-//   derives it from the bus number in TX_HEADER2. The RTL is the same as for
-//   RC-direct, whose requests all go to bus 1.
+//   deeper with Type 1. pcie_cfg_write() and pcie_cfg_read() (common/pcie.c)
+//   pick it from the bus number. The RTL is the same as for RC-direct, whose
+//   requests all go to bus 1.
 //==========================================================================
 
 #include "pcie.h"
@@ -69,6 +69,14 @@
 
 #define WINDOW_BASE       0x10000000
 #define WINDOW_SIZE       0x00100000
+
+// A downstream link must train within 100 ms of the port's set-up (PCIe Base
+// 6.6.1); its Link Status is read LINK_TRIES times over that time. The
+// simulation build shortens it with STARTUP_US
+#ifndef LINK_WAIT_US
+#define LINK_WAIT_US      STARTUP_US
+#endif
+#define LINK_TRIES        10
 
 // Result markers written to PCIE_RESULT
 #define RESULT_PASS        0x0000FACE // every endpoint that was found passed
@@ -119,9 +127,45 @@ static void bridge_set_window(uint32_t bus, uint32_t dev,
     cfg_write32(bus, dev, CFG_MEM_LIMITS, (limit_field << 16) | base_field);
 }
 
-int main() {
+// The windows this RC does not use, I/O and prefetchable memory, closed:
+// base above limit. Their reset values are not defined, and 0/0 would open
+// the first 4 KB (I/O) or 1 MB (memory)
+static void bridge_close_unused(uint32_t bus, uint32_t dev) {
+    cfg_write32(bus, dev, CFG_IO_LIMITS, 0x000000F0);    // base 0xF000, limit 0x0FFF
+    cfg_write32(bus, dev, CFG_IO_HI, 0);
+    cfg_write32(bus, dev, CFG_PREF_LIMITS, 0x0000FFF0);  // base 0xFFF00000, limit 0xFFFFF
+    cfg_write32(bus, dev, CFG_PREF_BASE_HI, 0);
+    cfg_write32(bus, dev, CFG_PREF_LIM_HI, 0);
+}
 
-    tx_tag = 0;
+// A downstream port's link: 1 once its Data Link Layer is up. The PCI
+// Express Capability is found on the capability list; a port that does not
+// report the link state (Link Capabilities [20], optional below 5 GT/s)
+// counts as up, and its slot is probed as before
+static int port_link_up(uint32_t bus, uint32_t dev) {
+    uint32_t cap = cfg_read32_checked(bus, dev, CFG_CAP_PTR) & 0xFC;
+
+    while (cap != 0) {
+        uint32_t hdr = cfg_read32_checked(bus, dev, cap);
+
+        if ((hdr & 0xFF) == CAP_ID_PCIE) {
+            if (!(cfg_read32_checked(bus, dev, cap + CAP_LINK_CAP) & (1u << 20))) {
+                return 1;
+            }
+            for (int i = 0; i < LINK_TRIES; i++) {
+                if (cfg_read32_checked(bus, dev, cap + CAP_LINK_STATUS) & (1u << 29)) {
+                    return 1;
+                }
+                wait_cycles(US2WAIT(LINK_WAIT_US / LINK_TRIES));
+            }
+            return 0;
+        }
+        cap = (hdr >> 8) & 0xFC;
+    }
+    return 1;
+}
+
+int main(void) {
 
     wait_cycles(US2WAIT(STARTUP_US));
 
@@ -139,8 +183,9 @@ int main() {
 
     // One window covering all four downstream windows: 0x10000000 - 0x103FFFFF
     bridge_set_window(SWITCH_BUS, 0, WINDOW_BASE, NUM_PORTS * WINDOW_SIZE);
+    bridge_close_unused(SWITCH_BUS, 0);
 
-    cfg_write32(SWITCH_BUS, 0, CFG_COMMAND, CMD_MEM_BUS_MASTER);
+    cfg_write32(SWITCH_BUS, 0, CFG_COMMAND, CMD_MEM_SPACE);
 
     //----------------------------------------------------------------------
     // STEP 2: the four downstream ports on the internal bus 2
@@ -154,12 +199,25 @@ int main() {
                          SWITCH_INTERNAL, port_bus[p], port_bus[p]);
 
         bridge_set_window(SWITCH_INTERNAL, port_dev[p], base, WINDOW_SIZE);
+        bridge_close_unused(SWITCH_INTERNAL, port_dev[p]);
 
-        cfg_write32(SWITCH_INTERNAL, port_dev[p], CFG_COMMAND, CMD_MEM_BUS_MASTER);
+        cfg_write32(SWITCH_INTERNAL, port_dev[p], CFG_COMMAND, CMD_MEM_SPACE);
     }
 
     //----------------------------------------------------------------------
-    // STEP 3: the endpoint cards, one per downstream port, always device 0 on
+    // STEP 3: the downstream links. A slot whose link does not come up is
+    // empty; the others get the 100 ms a device has after its link is up
+    // before it must answer (PCIe Base 6.6.1), once for all ports
+    //----------------------------------------------------------------------
+    int link_up[NUM_PORTS];
+
+    for (int p = 0; p < NUM_PORTS; p++) {
+        link_up[p] = port_link_up(SWITCH_INTERNAL, port_dev[p]);
+    }
+    wait_cycles(US2WAIT(STARTUP_US));
+
+    //----------------------------------------------------------------------
+    // STEP 4: the endpoint cards, one per downstream port, always device 0 on
     // the secondary bus of that port. Slots may be empty, so each one is
     // probed first and silently skipped when there is no answer.
     //----------------------------------------------------------------------
@@ -170,7 +228,7 @@ int main() {
         uint32_t base = WINDOW_BASE + (uint32_t)p * WINDOW_SIZE;
 
         ep_bar0[p] = 0;
-        if (!device_present(port_bus[p], 0)) {
+        if (!link_up[p] || !device_present(port_bus[p], 0)) {
             continue;
         }
 
@@ -181,7 +239,7 @@ int main() {
             halt(RESULT_BAR0_FAILED);
         }
 
-        cfg_write32(port_bus[p], 0, CFG_COMMAND, CMD_MEM_BUS_MASTER);
+        cfg_write32(port_bus[p], 0, CFG_COMMAND, CMD_MEM_SPACE);
 
         found++;
     }
@@ -191,7 +249,7 @@ int main() {
     }
 
     //----------------------------------------------------------------------
-    // STEP 4: memory write / readback through the switch, one endpoint at a
+    // STEP 5: memory write / readback through the switch, one endpoint at a
     // time. This is the same self-test the direct build runs, repeated for
     // every populated slot.
     //----------------------------------------------------------------------
@@ -211,6 +269,11 @@ int main() {
             readback != test_data) {
             failures++;
         }
+#ifdef PIO_BURST
+        if (pcie_burst_test(ep_bar0[p] + 0x40) != 0) {
+            failures++;
+        }
+#endif
     }
 
     if (failures == 0) {

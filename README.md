@@ -195,7 +195,7 @@ One [test bench](5.sim/README.md), three interchangeable CPUs: the RTL core that
   * `vproc`: a [_VProc_](https://github.com/wyvernSemi/vproc)-based [`soc_cpu.VPROC.native`](5.sim/models/README.md#soc_cpuvprocnative), firmware compiled for the host
   * `iss`: RISC-V code on the [rv32 ISS model](5.sim/models/rv32/README.md)
 * Link: the [_pcieVHost VIP_](https://github.com/wyvernSemi/pcievhost), from [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), our PCIE model on it (PIPE wrappers, the Artix-7 RC model)
-  * x1 or x4 (`make SIM_LANES=4`), always Gen1: pcieVHost models Gen1 only
+  * x1 or x4 (`make SIM_LANES=4`), Gen2 at x1 (default), Gen1 at x4 (`SIM_GEN=2` for x4 Gen2)
   * RC-direct, or RC-switched (`make VARIANT=switched`): a switch with two endpoints and two empty slots, walked through in a [hands-on tutorial](5.sim/README.md#pcie-through-a-switch-a-hands-on-tutorial)
 * Memory: a C [sparse memory model](https://github.com/wyvernSemi/mem_model), reachable from logic through an [HDL component](5.sim/models/README.md#vproc-and-mem_model) and from _pcieVHost_ software through an API
 
@@ -418,7 +418,8 @@ The design now builds with [_openXC7_ 1.0.0](https://lnkd.in/p/gsDArjSt), what _
 ### Beyond the plan
 
 - **x4 and Gen2.** The RC builds as x4 Gen1 (default), x4 Gen2 or x1 Gen2, with the user clock scaled to the link (62.5, 125 or 250 MHz). Vivado meets timing on all three, and the x4 co-simulation passes. On hardware, the x4 link trained before the user-clock fix; x4 TLP traffic is not re-tested yet ([2.rtl](2.rtl/README.md#link-width-speed-and-user-clock)).
-- **eduBOS5, our own RISC-V core.** It replaces PicoRV32 as the default CPU, with twice its IPC: the firmware finishes in 390.2 µs instead of 667.2 µs. Its 3-stage form is the only core here that closes x4 Gen2's 250 MHz. Checked against the ISA with riscv-formal, and its multicycle paths proven formally ([eduBOS5](2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md)).
+- **eduBOS5, our own RISC-V core.** It replaces PicoRV32 as the default CPU, with twice its IPC: the board firmware (`PIO_BURST=0`, x1 Gen1, 2026-10) finished in 390.2 µs instead of 667.2 µs. Its 3-stage form is the only core here that closes x4 Gen2's 250 MHz. Checked against the ISA with riscv-formal, and its multicycle paths proven formally ([eduBOS5](2.rtl/0.common.opensource/src/CPU.eduBOS5/README.md)).
+- **PIO bursts.** The SOC hands TLPs to the firmware whole, header and payload, through two block RAM windows, in the same layout as openCologne-PCIE. A Memory Write or Read carries up to 32 DW in one TLP: in simulation, 3.5x the throughput of 1-DW requests for writes and 7.6x for reads. Incoming TLPs queue in a ring, so none is lost ([3.sw](3.sw/README.md#4-pio-throughput-bursts-against-1-dw-requests), [4.build](4.build/README.md#the-register-map)).
 - **RC-switched in simulation.** A switch model behind the link (two endpoints, two empty ports) runs the RC-switched firmware end to end, enumeration through memory traffic ([5.sim](5.sim/README.md#rc-switched-a-switch-behind-the-link)).
 - **A PCIE TLP decoder in WaveCrux.** Our experimental TLP decoder is now Ferrite's official `pcie-tlp` decoder in [wavecrux-decoders](https://github.com/Ferrite-Engineering/wavecrux-decoders/tree/main/decoders/pcie-tlp): every TLP of the co-simulation, named and paired, in the waveform viewer ([5.sim](5.sim/README.md#wavecrux-decoders)).
 
@@ -542,6 +543,9 @@ The **Envox**, our next-door buddy, is responsible for the birth of our backplan
 | openXC7 nextpnr | [nextpnr#182](https://github.com/openXC7/nextpnr/issues/182) | `set_multicycle_path`: `-from` drops the constraint; inferred registers cannot be selected | open |
 | fpga-assembler | [`282ef7c2`](https://github.com/lromor/fpga-assembler/commit/282ef7c2) | `fpga-as` writes `RXCDR_CFG` wrong on every GTP lane | fixed upstream, not yet in the toolchain |
 | Yosys | [yosys#6498](https://github.com/YosysHQ/yosys/issues/6498) | wrong `IBUFDS_GTE2.CLKSWING_CFG` default | open |
+| Yosys | [yosys#6573](https://github.com/YosysHQ/yosys/issues/6573) | `abc9` drops alias names of a net, so XDC `get_nets` misses them | open |
+| openXC7 nextpnr | [nextpnr#251](https://github.com/openXC7/nextpnr/issues/251) | `-o timing-opt` measured at x4 Gen2 (+8%/+9%, -12% by seed); a post-route setup pass, the step Vivado closes 250 MHz with | open |
+| nextpnr | [YosysHQ/nextpnr#1954](https://github.com/YosysHQ/nextpnr/issues/1954) | the same post-route critical-path pass for upstream himbaechel | open |
 | fpga-assembler | [lromor/fpga-assembler#66](https://github.com/lromor/fpga-assembler/issues/66) | compressed bitstreams (Multiple Frame Write), as Vivado makes | open |
 | sv-elab | [sv-elab#282](https://github.com/povik/sv-elab/issues/282) | no `real` parameters on primitives (`MMCME2_ADV`) | open |
 | JanusHDL | [#1](https://github.com/chili-chips/openPCIE/issues/1) | 0.17.0: what simulates and what does not | open |
@@ -560,13 +564,15 @@ Numbers without a link were filed from an account that is no longer available. J
 
 Want to help the open PCIE community grow? See [Contributions](CONTRIBUTING.md).
 
-**Independent verification.** [openpcie-uvm](https://github.com/Sandeep-bhardwaj/openpcie-uvm) by Sandeep-bhardwaj (MIT, Oct 2026) is a UVM environment for our `riscv_pcie_soc` on Vivado xsim: the AXI4-Stream TLP port under backpressure, the bridge registers, completion capture, reset in mid-traffic. It tests openPCIE at `6e48e11` (July 2026), above the hard block; PCIE protocol is out of its scope. Its three findings, and where they stand on `main`:
+**Independent verification.** [openpcie-uvm](https://github.com/Sandeep-bhardwaj/openpcie-uvm) by Sandeep-bhardwaj (MIT, Oct 2026) is a UVM environment for our `riscv_pcie_soc` (now `soc_top`) on Vivado xsim: the AXI4-Stream TLP port under backpressure, the bridge registers, completion capture, reset in mid-traffic. It tests openPCIE at `6e48e11` (July 2026), above the hard block; PCIE protocol is out of its scope. Its three findings, and where they stand on `main`:
 
 | Finding | On `main` |
 |---|---|
 | RTL-SIM-001: `ram` written by both `$readmemh` and an `always_ff` (VCS refuses it) | fixed: a plain `always` |
-| TX-PROTO-004: the TX state machine tests `tready` a cycle early; a stalling sink loses the TLP header | TX state machine rewritten in `2d810aa` to hold each beat until `tvalid && tready`; not re-run with its tests |
-| REG-004: register writes ignore address bit 5 | the registers are now generated from SystemRDL (`soc_csr.sv`); not re-checked |
+| TX-PROTO-004: the TX state machine tests `tready` a cycle early; a stalling sink loses the TLP header | TX state machine rewritten in `2d810aa` to hold each beat until `tvalid && tready`, and again on 2026-11-27 (payload windows); not re-run with its tests |
+| REG-004: register writes ignore address bit 5 | the registers are now generated from SystemRDL (`csr.sv`, bridged by `soc_csr.sv`); not re-checked |
+
+Its tests drive the register map before 2026-11-27 (header and data registers), which the payload windows replaced.
 
 Questions are welcome ===> [![issues](https://badgen.net/github/open-issues/chili-chips/openPCIE?label=issues)](https://github.com/chili-chips/openPCIE/issues).
 

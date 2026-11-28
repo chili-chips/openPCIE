@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 # eduBOS5 3-stage pipeline (EN_WAIT4REGS=1) only: multicycle paths, Vivado.
-# Derived from the RTL, for the openPCIE SOC hierarchy (riscv_pcie_soc.sv).
+# Derived from the RTL, for the openPCIE SOC hierarchy (soc_top.sv).
 #
 # In FETCH_INSTR the core drives pc + 1 to the instruction port; after a jump
 # or taken branch, FETCH_TARGET fetches again from pc. The fetched word, and the

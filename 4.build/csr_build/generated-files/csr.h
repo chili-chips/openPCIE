@@ -19,115 +19,42 @@ typedef struct __attribute__ ((__packed__)) {
     uint32_t mem[2048];
 } openpcie__imem_t;
 
-// reg - csr::tx::header0
-#define CSR__TX__HEADER0__HDR_bm 0xffffffff
-#define CSR__TX__HEADER0__HDR_bp 0
-#define CSR__TX__HEADER0__HDR_bw 32
-#define CSR__TX__HEADER0__HDR_reset 0x0
+// reg - csr::tx::send
+#define CSR__TX__SEND__COUNT_bm 0xff
+#define CSR__TX__SEND__COUNT_bp 0
+#define CSR__TX__SEND__COUNT_bw 8
+#define CSR__TX__SEND__COUNT_reset 0x0
 typedef union {
     struct __attribute__ ((__packed__)) {
-        uint32_t hdr :32;
+        uint32_t count :8;
+        uint32_t :24;
     } f;
     uint32_t w;
-} csr__tx__header0_t;
-
-// reg - csr::tx::header1
-#define CSR__TX__HEADER1__HDR_bm 0xffffffff
-#define CSR__TX__HEADER1__HDR_bp 0
-#define CSR__TX__HEADER1__HDR_bw 32
-#define CSR__TX__HEADER1__HDR_reset 0x0
-typedef union {
-    struct __attribute__ ((__packed__)) {
-        uint32_t hdr :32;
-    } f;
-    uint32_t w;
-} csr__tx__header1_t;
-
-// reg - csr::tx::header2
-#define CSR__TX__HEADER2__HDR_bm 0xffffffff
-#define CSR__TX__HEADER2__HDR_bp 0
-#define CSR__TX__HEADER2__HDR_bw 32
-#define CSR__TX__HEADER2__HDR_reset 0x0
-typedef union {
-    struct __attribute__ ((__packed__)) {
-        uint32_t hdr :32;
-    } f;
-    uint32_t w;
-} csr__tx__header2_t;
-
-// reg - csr::tx::data
-#define CSR__TX__DATA__PAYLOAD_bm 0xffffffff
-#define CSR__TX__DATA__PAYLOAD_bp 0
-#define CSR__TX__DATA__PAYLOAD_bw 32
-#define CSR__TX__DATA__PAYLOAD_reset 0x0
-typedef union {
-    struct __attribute__ ((__packed__)) {
-        uint32_t payload :32;
-    } f;
-    uint32_t w;
-} csr__tx__data_t;
+} csr__tx__send_t;
 
 // regfile - csr::tx
 typedef struct __attribute__ ((__packed__)) {
-    csr__tx__header0_t header0;
-    csr__tx__header1_t header1;
-    csr__tx__header2_t header2;
-    csr__tx__data_t data;
+    uint8_t RESERVED_0_b[0xc];
+    csr__tx__send_t send;
 } csr__tx_t;
 
-// reg - csr::rx::status
-#define CSR__RX__STATUS__CPL_STATUS_bm 0x7
-#define CSR__RX__STATUS__CPL_STATUS_bp 0
-#define CSR__RX__STATUS__CPL_STATUS_bw 3
-#define CSR__RX__STATUS__CPL_STATUS_reset 0x0
+// reg - csr::rx::valid
+#define CSR__RX__VALID__VALID_bm 0x1
+#define CSR__RX__VALID__VALID_bp 0
+#define CSR__RX__VALID__VALID_bw 1
+#define CSR__RX__VALID__VALID_reset 0x0
 typedef union {
     struct __attribute__ ((__packed__)) {
-        uint32_t cpl_status :3;
-        uint32_t :29;
+        uint32_t valid :1;
+        uint32_t :31;
     } f;
     uint32_t w;
-} csr__rx__status_t;
-
-// reg - csr::rx::data
-#define CSR__RX__DATA__PAYLOAD_bm 0xffffffff
-#define CSR__RX__DATA__PAYLOAD_bp 0
-#define CSR__RX__DATA__PAYLOAD_bw 32
-#define CSR__RX__DATA__PAYLOAD_reset 0x0
-typedef union {
-    struct __attribute__ ((__packed__)) {
-        uint32_t payload :32;
-    } f;
-    uint32_t w;
-} csr__rx__data_t;
-
-// reg - csr::rx::header_info
-#define CSR__RX__HEADER_INFO__LOWER_ADDR_bm 0x7f
-#define CSR__RX__HEADER_INFO__LOWER_ADDR_bp 0
-#define CSR__RX__HEADER_INFO__LOWER_ADDR_bw 7
-#define CSR__RX__HEADER_INFO__LOWER_ADDR_reset 0x0
-#define CSR__RX__HEADER_INFO__TAG_bm 0xff00
-#define CSR__RX__HEADER_INFO__TAG_bp 8
-#define CSR__RX__HEADER_INFO__TAG_bw 8
-#define CSR__RX__HEADER_INFO__TAG_reset 0x0
-#define CSR__RX__HEADER_INFO__REQUESTER_ID_bm 0xffff0000
-#define CSR__RX__HEADER_INFO__REQUESTER_ID_bp 16
-#define CSR__RX__HEADER_INFO__REQUESTER_ID_bw 16
-#define CSR__RX__HEADER_INFO__REQUESTER_ID_reset 0x0
-typedef union {
-    struct __attribute__ ((__packed__)) {
-        uint32_t lower_addr :7;
-        uint32_t :1;
-        uint32_t tag :8;
-        uint32_t requester_id :16;
-    } f;
-    uint32_t w;
-} csr__rx__header_info_t;
+} csr__rx__valid_t;
 
 // regfile - csr::rx
 typedef struct __attribute__ ((__packed__)) {
-    csr__rx__status_t status;
-    csr__rx__data_t data;
-    csr__rx__header_info_t header_info;
+    uint8_t RESERVED_0_f[0x10];
+    csr__rx__valid_t valid;
 } csr__rx_t;
 
 // reg - csr::status::err
@@ -145,19 +72,20 @@ typedef union {
 } csr__status__err_t;
 
 // reg - csr::status::phy
-#define CSR__STATUS__PHY__TX_BUF_AVAIL_bm 0x3f
-#define CSR__STATUS__PHY__TX_BUF_AVAIL_bp 0
+#define CSR__STATUS__PHY__TX_BUSY_bm 0x1
+#define CSR__STATUS__PHY__TX_BUSY_bp 0
+#define CSR__STATUS__PHY__TX_BUSY_bw 1
+#define CSR__STATUS__PHY__TX_BUSY_reset 0x0
+#define CSR__STATUS__PHY__TX_BUF_AVAIL_bm 0x3f00
+#define CSR__STATUS__PHY__TX_BUF_AVAIL_bp 8
 #define CSR__STATUS__PHY__TX_BUF_AVAIL_bw 6
 #define CSR__STATUS__PHY__TX_BUF_AVAIL_reset 0x0
-#define CSR__STATUS__PHY__TX_STATE_bm 0xc0
-#define CSR__STATUS__PHY__TX_STATE_bp 6
-#define CSR__STATUS__PHY__TX_STATE_bw 2
-#define CSR__STATUS__PHY__TX_STATE_reset 0x0
 typedef union {
     struct __attribute__ ((__packed__)) {
+        uint32_t tx_busy :1;
+        uint32_t :7;
         uint32_t tx_buf_avail :6;
-        uint32_t tx_state :2;
-        uint32_t :24;
+        uint32_t :18;
     } f;
     uint32_t w;
 } csr__status__phy_t;
@@ -181,11 +109,24 @@ typedef struct __attribute__ ((__packed__)) {
     csr__status__result_t result;
 } csr__status_t;
 
+// mem - csr::rx_payload
+typedef struct __attribute__ ((__packed__)) {
+    uint32_t mem[1024];
+} csr__rx_payload_t;
+
+// mem - csr::tx_payload
+typedef struct __attribute__ ((__packed__)) {
+    uint32_t mem[1024];
+} csr__tx_payload_t;
+
 // addrmap - csr
 typedef struct __attribute__ ((__packed__)) {
     csr__tx_t tx;
     csr__rx_t rx;
     csr__status_t status;
+    uint8_t RESERVED_30_fff[0xfd0];
+    csr__rx_payload_t rx_payload;
+    csr__tx_payload_t tx_payload;
 } csr_t;
 
 // addrmap - openpcie
@@ -196,7 +137,7 @@ typedef struct __attribute__ ((__packed__)) {
 } openpcie_t;
 
 
-static_assert(sizeof(openpcie_t) == 0x30000028, "Packing error");
+static_assert(sizeof(openpcie_t) == 0x30003000, "Packing error");
 
 #ifdef __cplusplus
 }

@@ -18,7 +18,7 @@ The PCIE model is [openPCIE_BFM](https://github.com/chili-chips/openPCIE_BFM), t
 
 ## soc_cpu.VPROC.native
 
-The CPU model in use. A drop-in for either RISC-V core (eduBOS5 by default, or PicoRV32), selected by `` `ifdef SOC_CPU_VPROC `` in `riscv_pcie_soc.sv`; nothing else changes. It presents picorv32's **native** bus ports -- `mem_valid`, `mem_ready`, `mem_addr`, `mem_wdata`, `mem_wstrb`, `mem_rdata` -- with a _VProc_ behind them.
+The CPU model in use. A drop-in for either RISC-V core (eduBOS5 by default, or PicoRV32), selected by `` `ifdef SOC_CPU_VPROC `` in `soc_top.sv`; nothing else changes. It presents picorv32's **native** bus ports -- `mem_valid`, `mem_ready`, `mem_addr`, `mem_wdata`, `mem_wstrb`, `mem_rdata` -- with a _VProc_ behind them.
 
 * **Idle cycle between accesses.** _VProc_ holds `WE`/`RD` until it samples `WRAck`/`RDAck` at a rising edge, like `mem_valid`/`mem_ready`. Unlike picorv32 it does not guarantee an idle cycle between accesses, so a small state machine inserts one. Without it, back-to-back accesses can catch the trailing edge of the previous ready.
 * **No instruction memory.** The program runs on the host, as native code or inside the _rv32_ ISS, so the SOC's 8 KB RAM holds no program. Only CSR accesses (`0x3000_0000`) reach this bus.

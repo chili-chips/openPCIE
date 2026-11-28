@@ -10,7 +10,7 @@
 //   (picorv32's mem_valid/mem_ready bus, which eduBOS5 drives too).
 //
 //   Drop-in replacement for the RTL core (eduBOS5 or PicoRV32) in
-//   riscv_pcie_soc.sv, so
+//   soc_top.sv, so
 //   that the CPU of the SOC can be a native C/C++ program (or the rv32 ISS)
 //   instead of the RTL core. Everything else in the design -- the CSR, the
 //   PCIe stack, the top level -- is untouched and runs exactly as it does
@@ -21,7 +21,7 @@
 //   NOTE on the difference from models/soc_cpu.VPROC.sv: that wrapper speaks
 //   the `soc_if` bus interface of the sibling Chili.CHIPS SOC infrastructure,
 //   which this design does not have. Here the picorv32 *native* memory
-//   interface is driven instead, which is what riscv_pcie_soc.sv decodes.
+//   interface is driven instead, which is what soc_top.sv decodes.
 //
 //   Protocol note. VProc holds WE/RD asserted until it samples WRAck/RDAck at
 //   a rising edge, then updates them on the following edge. The bus follows

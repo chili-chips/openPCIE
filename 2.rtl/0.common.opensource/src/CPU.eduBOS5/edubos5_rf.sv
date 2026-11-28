@@ -31,7 +31,7 @@ module edubos5_rf
   // 0, its INIT value. ASIC: no power-up value, so a read mux forces it.
   //
   // A plain always, not always_ff, by design (the SOC's RAM rule, as for its
-  // ram in riscv_pcie_soc.sv): IEEE 1800-2017 9.2.2.4 forbids any other
+  // ram in soc_top.sv): IEEE 1800-2017 9.2.2.4 forbids any other
   // process to write a variable that an always_ff writes, and the initial
   // block that sets rf to 0 (the RAM's INIT) is such a process. Plain always
   // is the legal form, and the one in the Vivado and Yosys RAM templates, so

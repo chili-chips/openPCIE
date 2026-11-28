@@ -38,7 +38,7 @@
 //--------------------------------------------------------------------------
 
 interface mem_if;
-  // picorv32 native memory bus inside riscv_pcie_soc: the CPU (picorv32 or
+  // picorv32 native memory bus inside soc_top: the CPU (picorv32 or
   // the VProc model) issues a request, the RAM or the CSR block answers it.
   logic        valid;
   logic [31:0] addr;

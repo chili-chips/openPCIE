@@ -16,7 +16,7 @@ Simon's [end-to-end PCIE sim](../../5.sim), one of the project's three pillars.
 
 | | |
 |---|---|
-| Target device | `xc7a200tfbg484-3`, Acorn CLE-215P |
+| Target device | `xc7a200tfbg484-3`, Acorn CLE-215+ |
 | Link | **PCIE x4 Gen1** by default, **x1 Gen2** selectable. On hardware: x1 Gen2 works; x4 Gen2 trained (backplane RC4 ⇔ EP4 island), but its TLPs needed the new user clock, not re-tested |
 | Note | x4 can only be tested in the **Direct** topology; [RC-switched](../3.Bonus--RC-switched.opensource) is x1 |
 | Vivado build | works |
@@ -91,7 +91,7 @@ The register window at `0x3000_0000` is **generated** by `peakrdl` from [`4.buil
 |---|---|---|
 | `csr_pkg.sv`, `csr.sv` | `4.build/csr_build/generated-files/` | `soc_csr.sv` in this design |
 | `csr.h` | same | the firmware in `3.sw/`, through `csr_regs.h` (also in co-simulation) |
-| `openpcie.md`, `html/` | same | the documentation of the map itself |
+| `openpcie.md`, `html/` (not in git) | same | the documentation of the map itself |
 
 `soc_csr.sv` is the only hand-written piece: it bridges the picorv32-style memory bus to the generated block's "passthrough" CPU interface, one request per CPU access. Regenerate after every edit of `csr.rdl`:
 
@@ -103,7 +103,7 @@ Map and flow: [`4.build/README.md`](../../4.build/README.md#csr-hal-compilation)
 
 ### The CPU
 
-`riscv_pcie_soc.sv` picks the CPU by `ifdef`: eduBOS5 by default, `SOC_CPU_PICORV32` for PicoRV32 ([eduBOS5 README](../0.common.opensource/src/CPU.eduBOS5/README.md)), and `SOC_CPU_VPROC`. Only [`5.sim`](../../5.sim) sets the last: it swaps the core for a VProc virtual processor, so the firmware compiled for the host, or the rv32 ISS, drives the same bus. No bitstream flow defines it; the synthesised design always has a real core.
+`soc_top.sv` picks the CPU by `ifdef`: eduBOS5 by default, `SOC_CPU_PICORV32` for PicoRV32 ([eduBOS5 README](../0.common.opensource/src/CPU.eduBOS5/README.md)), and `SOC_CPU_VPROC`. Only [`5.sim`](../../5.sim) sets the last: it swaps the core for a VProc virtual processor, so the firmware compiled for the host, or the rv32 ISS, drives the same bus. No bitstream flow defines it; the synthesised design always has a real core.
 
 ```sh
 cd ../../5.sim

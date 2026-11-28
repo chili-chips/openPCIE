@@ -22,7 +22,7 @@
 
 x0 is never written, so it must read 0 from the start: an FPGA RAM has a power-up value (its INIT), an ASIC does not, hence the mux.
 
-`riscv_pcie_soc.sv` connects eduBOS5 to the dual-port SOC RAM, no instruction/data mux: fetch on port B (read-only), loads and stores on port A, through the SOC memory bus shared with the CSR. PicoRV32 has one bus for both, on port A.
+`soc_top.sv` connects eduBOS5 to the dual-port SOC RAM, no instruction/data mux: fetch on port B (read-only), loads and stores on port A, through the SOC memory bus shared with the CSR. PicoRV32 has one bus for both, on port A.
 
 | File | |
 |---|---|
@@ -60,7 +60,7 @@ The rv32 ISS models both (`-V EDUBOS5STG2`, `-V EDUBOS5STG3`, see [5.sim](../../
 | rv32 ISS | 1.3.3, modified | instruction-level model, cycle-exact against the RTL | [5.sim](../../../../5.sim/README.md), `make CPU=iss` |
 | Verilator | 5.052 | lint; accepts the SVA too (`--assert`); 2-state power-up; RV32M test (5.055) | `run-lint.sh`, [`sim/run-power-up.sh`](sim/run-power-up.sh), [`sim/run-muldiv.sh`](sim/run-muldiv.sh) |
 | Icarus Verilog + sv2v | 13.0, v0.0.13 | 4-state power-up; RV32M test, also with the DSP48E1 primitive (14.0) | [`sim/run-power-up.sh`](sim/run-power-up.sh), [`sim/run-muldiv.sh`](sim/run-muldiv.sh) |
-| Verible | v0.0-4296-g0f262651 | style lint, format | `run-lint.sh`, `run-format.sh` |
+| Verible | v0.0-4302-gc6b29d62 | style lint, format | `run-lint.sh`, `run-format.sh` |
 | Yosys + slang (`read_slang`), openXC7 v1.0.0 | 0.69 | lint; equivalence (LEQ): an RTL change keeps behaviour | `run-lint.sh`, `run-leq.sh` |
 | ABC `pdr` (`yosys-abc`) | 1.01, in Yosys 0.69 | the static multicycle proof, unbounded | [`formal/run-mcp-formal.sh`](formal/run-mcp-formal.sh) |
 | ABC `bmc3` (`yosys-abc`) | 1.01, in Yosys 0.69 | bounded runs: the negative tests, the miter | [`formal/run-mcp-formal.sh`](formal/run-mcp-formal.sh) |
@@ -75,7 +75,7 @@ The scripts named `run-*.sh` are in [4.build/hw_build.openXC7](../../../../4.bui
 
 ## CPU options compared: the SOC only
 
-**Scope:** `riscv_pcie_soc`: the CPU, the 8 KB RAM and the 10-register CSR (read data registered, `soc_csr.sv`). Built 2026-10-25 in the x4 Gen2 design, where the SOC runs on the 250 MHz `user_clk`: same RTL and firmware, CPU picked with `CPU=` ([openXC7](../../../../4.build/hw_build.openXC7/README.md#cpu-options-compared)) or `::cpu` (Vivado). The 3-stage includes its jump refetch and registered shift (October 2026). The entire design, openXC7 against Vivado: [openXC7 README](../../../../4.build/hw_build.openXC7/README.md#openxc7-compared-with-vivado-the-entire-design).
+**Scope:** `soc_top`: the CPU, the 8 KB RAM and the 10-register CSR (read data registered, `soc_csr.sv`). Built 2026-10-25 in the x4 Gen2 design, where the SOC runs on the 250 MHz `user_clk`: same RTL and firmware, CPU picked with `CPU=` ([openXC7](../../../../4.build/hw_build.openXC7/README.md#cpu-options-compared)) or `::cpu` (Vivado). The 3-stage includes its jump refetch and registered shift (October 2026). The entire design, openXC7 against Vivado: [openXC7 README](../../../../4.build/hw_build.openXC7/README.md#openxc7-compared-with-vivado-the-entire-design).
 
 | | PicoRV32 | eduBOS5 2-stage | eduBOS5 3-stage |
 |---|---|---|---|
@@ -440,7 +440,7 @@ The 2-stage column is the **negative test**. It must fail somewhere, and only a 
    1. `dmem_rdy` was already high in a load's `EXECUTE`, so the core skipped `LOAD_DATA` (the FSM's `EXECUTE` branch in `edubos5.sv`).
    2. It then selected the load's byte lane with a `dmem_addr` built from a 1st-edge value.
 
-   A real path through the multicycle constraint. But in this SOC, `dmem_rdy` only follows a pending read (`riscv_pcie_soc.sv`, `load_wait`), so it cannot occur; the harness now assumes that bus rule.
+   A real path through the multicycle constraint. But in this SOC, `dmem_rdy` only follows a pending read (`soc_top.sv`, `load_wait`), so it cannot occur; the harness now assumes that bus rule.
 
    The next counterexample, at clock 10, needed a store with an illegal `funct3` (111). The core issues a bus cycle without write strobes; the SOC takes it for a read and answers with `dmem_rdy`, which reaches the next load's `EXECUTE`. GCC never emits that encoding, so the harness now assumes legal RV32I stores.
 
@@ -478,7 +478,7 @@ The habit: when a property is hard to prove, ask whether the RTL could make it e
 Formal found two things in eduBOS5 itself, and pointed to a third improvement:
 
 1. **An illegal store goes unnoticed.** A store with `funct3` 3 to 7 issues a bus cycle without write strobes, which the SOC takes for a read. A CSR or FIFO with read side effects loses data, and the returned `dmem_rdy` makes the next load write a stale value. GCC never emits such a store, but a jump into data or corrupted code does. [riscv-formal](#riscv-formal-every-instruction-against-the-isa) finds it too. **Proposal:** an illegal-instruction trap that rejects unknown opcodes and `funct3` values.
-2. **A hidden bus assumption.** In `EXECUTE`, the 3-stage core takes any `dmem_rdy` as the answer to the current load and skips `LOAD_DATA` (the FSM's `EXECUTE` branch in `edubos5.sv`). Right only if `dmem_rdy` is a one-cycle pulse answering a pending read: never high before it, never held after. The openPCIE SOC guarantees this (`load_wait` in `riscv_pcie_soc.sv`); an always-ready memory does not, and then loads return stale data and the multicycle constraint is unsafe. **Proposal:** document this rule at the `dmem_rdy` port and in this README.
+2. **A hidden bus assumption.** In `EXECUTE`, the 3-stage core takes any `dmem_rdy` as the answer to the current load and skips `LOAD_DATA` (the FSM's `EXECUTE` branch in `edubos5.sv`). Right only if `dmem_rdy` is a one-cycle pulse answering a pending read: never high before it, never held after. The openPCIE SOC guarantees this (`load_wait` in `soc_top.sv`); an always-ready memory does not, and then loads return stale data and the multicycle constraint is unsafe. **Proposal:** document this rule at the `dmem_rdy` port and in this README.
 3. **A capture side that is hard to prove.** The 3-stage pipeline registers loaded junk at the 1st edge and relied on the 2nd to overwrite it. **Done:** `go2exec`, a clock-enable flop in the 3-stage build only, loads them only at the edge that ends `EXECUTE` ([section 7](#7-the-lesson-rtl-and-formal-help-each-other)):
    - The constraint is safe by construction: nothing loads an unsettled value. Before, any new logic reading these registers in `EXECUTE` could have broken it, unnoticed.
    - `dmem_addr` is never built from an unsettled value, which removes the multicycle part of finding 2.

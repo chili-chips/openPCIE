@@ -42,7 +42,7 @@ module edubos5_mcp_miter
     end
   end
 
-  // the openPCIE SOC's data bus (riscv_pcie_soc.sv): ready reaches the core
+  // the openPCIE SOC's data bus (soc_top.sv): ready reaches the core
   // only in the cycle after a read that was still waiting
   logic load_wait = 1'b0;
   always_ff @(posedge clk) begin

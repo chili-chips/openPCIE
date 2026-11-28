@@ -23,7 +23,8 @@ set_property IOSTANDARD LVCMOS33 [get_ports {led_link_up[3]}]
 set_property PACKAGE_PIN G1 [get_ports clk_req]
 set_property IOSTANDARD LVCMOS33 [get_ports clk_req]
 
-create_clock -period 10.000 -name txoutclk [get_nets u_pcie.u_phy_top.u_gtp_wrapper.gt_txoutclk]
+# pcie_top's name for lane 0 TXOUTCLK: Yosys main's abc9 drops the deeper aliases
+create_clock -period 10.000 -name txoutclk [get_nets u_pcie.pipe_txoutclk]
 
 create_clock -period  8.000 -name clk_125mhz [get_nets u_pcie.u_clk_rst_gen.clk_125mhz]
 create_clock -period  4.000 -name clk_250mhz [get_nets u_pcie.u_clk_rst_gen.clk_250mhz]

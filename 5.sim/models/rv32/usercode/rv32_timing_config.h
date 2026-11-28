@@ -64,7 +64,7 @@ private:
     // Core Timing models
     const rv32_iss_timing_t riscV         = {1, 4, 3, 3, 4, 34, 4};
     // openPCIE: linear, jump, load and store measured on the RTL in the openPCIE SOC
-    // (riscv_pcie_soc.sv, RAM ready one cycle after valid), fetch included. PicoRV32
+    // (soc_top.sv, RAM ready one cycle after valid), fetch included. PicoRV32
     // with BARREL_SHIFTER=0, ENABLE_COUNTERS=0: a least-squares fit, as it prefetches
     // and its shifts take 1 cycle per 4 or 1 bit (upstream: 4, 4, 5, 5). eduBOS5:
     // exact (upstream: 2, 2, 3, 3 and 3, 3, 4, 4); the 3-stage takes 1 cycle more
